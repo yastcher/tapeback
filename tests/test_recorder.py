@@ -27,8 +27,8 @@ def test_detect_devices_auto(settings):
     """Auto-detect should parse pactl JSON output."""
     pactl_output = json.dumps(
         {
-            "default_sink": "alsa_output.pci-0000_00_1f.3.analog-stereo",
-            "default_source": "alsa_input.pci-0000_00_1f.3.analog-stereo",
+            "default_sink_name": "alsa_output.pci-0000_00_1f.3.analog-stereo",
+            "default_source_name": "alsa_input.pci-0000_00_1f.3.analog-stereo",
         }
     )
 

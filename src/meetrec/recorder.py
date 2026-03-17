@@ -39,7 +39,7 @@ def detect_devices(settings: Settings) -> tuple[str, str]:
         info = json.loads(result.stdout)
 
         if monitor == "auto":
-            default_sink = info.get("default_sink", "")
+            default_sink = info.get("default_sink_name") or info.get("default_sink", "")
             if not default_sink:
                 raise RuntimeError(
                     "No default sink found. Run 'pactl list sources short' to check devices."
@@ -47,7 +47,7 @@ def detect_devices(settings: Settings) -> tuple[str, str]:
             monitor = f"{default_sink}.monitor"
 
         if mic == "auto":
-            default_source = info.get("default_source", "")
+            default_source = info.get("default_source_name") or info.get("default_source", "")
             if not default_source:
                 raise RuntimeError(
                     "No default source found. Run 'pactl list sources short' to check devices."

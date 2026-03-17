@@ -1,5 +1,5 @@
 [project]
-name = "meetrec"
+name = "echo-vault"
 version = "0.1.0"
 description = "Local meeting audio recorder with transcription for Obsidian"
 readme = "README.md"
