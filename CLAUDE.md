@@ -10,6 +10,8 @@ No web servers, databases, Docker, GUI.
 
 ## Safety rules
 
+- Всегда сначала надо решить причину проблемы, а не следствие.
+- Перед планированием надо продумать оптимальную систему типов.
 - Never delete or overwrite files without backup or user confirmation
 - Never delete files not tracked in git. Run `git ls-files <path>` before removing any file. If untracked — ask user.
 - Never simplify architecture by removing existing features unless explicitly asked.

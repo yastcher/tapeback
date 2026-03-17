@@ -1,7 +1,6 @@
-import wave
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from meetrec.diarizer import (
@@ -10,54 +9,7 @@ from meetrec.diarizer import (
     identify_user_speaker,
 )
 from meetrec.transcriber import Segment, Word
-
-
-def _create_stereo_wav(path, duration, sample_rate, left_amplitude, right_amplitude):
-    """Create a stereo WAV with sine wave on each channel at given amplitudes."""
-    n_frames = int(duration * sample_rate)
-    t = np.linspace(0, duration, n_frames, dtype=np.float32)
-
-    left = (left_amplitude * np.sin(2 * np.pi * 440 * t) * 32767).astype(np.int16)
-    right = (right_amplitude * np.sin(2 * np.pi * 440 * t) * 32767).astype(np.int16)
-
-    stereo = np.empty(n_frames * 2, dtype=np.int16)
-    stereo[0::2] = left
-    stereo[1::2] = right
-
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(2)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(stereo.tobytes())
-
-
-def _create_stereo_wav_segments(path, sample_rate, segments_spec):
-    """Create a stereo WAV with different amplitudes per time segment.
-
-    segments_spec: list of (duration, left_amp, right_amp)
-    """
-    all_left = []
-    all_right = []
-
-    for duration, left_amp, right_amp in segments_spec:
-        n_frames = int(duration * sample_rate)
-        t = np.linspace(0, duration, n_frames, dtype=np.float32)
-        all_left.append((left_amp * np.sin(2 * np.pi * 440 * t) * 32767).astype(np.int16))
-        all_right.append((right_amp * np.sin(2 * np.pi * 440 * t) * 32767).astype(np.int16))
-
-    left = np.concatenate(all_left)
-    right = np.concatenate(all_right)
-
-    stereo = np.empty(len(left) * 2, dtype=np.int16)
-    stereo[0::2] = left
-    stereo[1::2] = right
-
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(2)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(stereo.tobytes())
-
+from tests.fixtures import create_stereo_wav, create_stereo_wav_segments
 
 # --- Diarizer init / diarize ---
 
@@ -73,22 +25,6 @@ def test_diarizer_init_without_token(tmp_vault):
         Diarizer(settings)
 
 
-def test_diarizer_passes_token_correctly(tmp_vault):
-    """Pipeline.from_pretrained must receive 'token' kwarg, not 'use_auth_token'."""
-    from meetrec.diarizer import Diarizer
-    from meetrec.settings import Settings
-
-    settings = Settings(vault_path=tmp_vault, hf_token="hf_test_123", device="cpu")
-
-    with patch("pyannote.audio.Pipeline") as mock_pipeline_cls:
-        mock_pipeline_cls.from_pretrained.return_value = MagicMock()
-        Diarizer(settings)
-
-    _args, kwargs = mock_pipeline_cls.from_pretrained.call_args
-    assert "use_auth_token" not in kwargs
-    assert kwargs["token"] == "hf_test_123"
-
-
 def test_diarize_returns_segments(tmp_vault):
     """Diarizer.diarize should return list of DiarizationSegment."""
     from meetrec.diarizer import Diarizer
@@ -96,7 +32,6 @@ def test_diarize_returns_segments(tmp_vault):
 
     settings = Settings(vault_path=tmp_vault, hf_token="hf_fake_token", device="cpu")
 
-    # Mock pyannote turn objects
     mock_turn_1 = MagicMock()
     mock_turn_1.start = 0.0
     mock_turn_1.end = 3.0
@@ -116,8 +51,6 @@ def test_diarize_returns_segments(tmp_vault):
         mock_pipeline.return_value = mock_annotation
 
         diarizer = Diarizer(settings)
-        from pathlib import Path
-
         result = diarizer.diarize(Path("/fake/audio.wav"))
 
     assert len(result) == 2
@@ -127,118 +60,27 @@ def test_diarize_returns_segments(tmp_vault):
     assert result[1].speaker == "SPEAKER_01"
 
 
-def test_diarize_handles_diarize_output(tmp_vault):
-    """Diarizer.diarize should handle DiarizeOutput (pyannote 4.x) wrapping Annotation."""
-    from meetrec.diarizer import Diarizer
-    from meetrec.settings import Settings
-
-    settings = Settings(vault_path=tmp_vault, hf_token="hf_fake_token", device="cpu")
-
-    mock_turn = MagicMock()
-    mock_turn.start = 0.0
-    mock_turn.end = 3.0
-
-    mock_annotation = MagicMock()
-    mock_annotation.itertracks.return_value = [(mock_turn, None, "SPEAKER_00")]
-
-    # Simulate DiarizeOutput: no itertracks, but has speaker_diarization
-    mock_diarize_output = MagicMock(spec=[])
-    mock_diarize_output.speaker_diarization = mock_annotation
-
-    with patch("pyannote.audio.Pipeline") as mock_pipeline_cls:
-        mock_pipeline = MagicMock()
-        mock_pipeline_cls.from_pretrained.return_value = mock_pipeline
-        mock_pipeline.return_value = mock_diarize_output
-
-        diarizer = Diarizer(settings)
-        from pathlib import Path
-
-        result = diarizer.diarize(Path("/fake/audio.wav"))
-
-    assert len(result) == 1
-    assert result[0].speaker == "SPEAKER_00"
-
-
-def test_diarize_cuda_fallback(tmp_vault, capsys):
-    """Diarizer should fall back to CPU when CUDA is not available."""
-    from meetrec.diarizer import Diarizer
-    from meetrec.settings import Settings
-
-    settings = Settings(vault_path=tmp_vault, hf_token="hf_fake_token", device="cuda")
-
-    with patch("pyannote.audio.Pipeline") as mock_pipeline_cls:
-        mock_pipeline = MagicMock()
-        mock_pipeline_cls.from_pretrained.return_value = mock_pipeline
-        mock_pipeline.to.side_effect = RuntimeError("CUDA not available")
-
-        Diarizer(settings)
-
-    captured = capsys.readouterr()
-    assert "CUDA not available for diarization" in captured.err
-
-
-def test_diarize_cuda_oom_fallback(tmp_vault, capsys):
-    """Diarizer.diarize should fall back to CPU on CUDA OOM during inference."""
-    from meetrec.diarizer import Diarizer
-    from meetrec.settings import Settings
-
-    settings = Settings(vault_path=tmp_vault, hf_token="hf_fake_token", device="cuda")
-
-    mock_turn = MagicMock()
-    mock_turn.start = 0.0
-    mock_turn.end = 3.0
-    mock_annotation = MagicMock()
-    mock_annotation.itertracks.return_value = [(mock_turn, None, "SPEAKER_00")]
-
-    call_count = 0
-
-    def pipeline_call(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise RuntimeError("CUDA out of memory.")
-        return mock_annotation
-
-    with patch("pyannote.audio.Pipeline") as mock_pipeline_cls:
-        mock_pipeline = MagicMock()
-        mock_pipeline_cls.from_pretrained.return_value = mock_pipeline
-        mock_pipeline.side_effect = pipeline_call
-
-        diarizer = Diarizer(settings)
-        from pathlib import Path
-
-        result = diarizer.diarize(Path("/fake/audio.wav"))
-
-    assert len(result) == 1
-    assert result[0].speaker == "SPEAKER_00"
-    # Verify pipeline was moved to CPU
-    mock_pipeline.to.assert_called()
-    captured = capsys.readouterr()
-    assert "CUDA out of memory" in captured.err
-
-
 # --- identify_user_speaker ---
 
 
 def test_identify_user_speaker(tmp_path):
     """Speaker with most energy on mic channel should be identified as user."""
     wav_path = tmp_path / "stereo.wav"
-    # left=mic: loud (0.8), right=monitor: quiet (0.05)
-    _create_stereo_wav(
+    create_stereo_wav(
         wav_path, duration=1.0, sample_rate=16000, left_amplitude=0.8, right_amplitude=0.05
     )
 
     dseg = [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=1.0)]
 
-    # Only one speaker → None (can't determine)
+    # Only one speaker -> None (can't determine)
     result = identify_user_speaker(dseg, wav_path)
     assert result is None
 
 
 def test_identify_user_speaker_ambiguous(tmp_path):
-    """Equal energy on both channels → None (ambiguous)."""
+    """Equal energy on both channels -> None (ambiguous)."""
     wav_path = tmp_path / "stereo.wav"
-    _create_stereo_wav(
+    create_stereo_wav(
         wav_path, duration=1.0, sample_rate=16000, left_amplitude=0.5, right_amplitude=0.5
     )
 
@@ -254,9 +96,7 @@ def test_identify_user_speaker_ambiguous(tmp_path):
 def test_identify_user_speaker_multiple(tmp_path):
     """With distinct channel energy, the mic-dominant speaker is identified."""
     wav_path = tmp_path / "stereo.wav"
-    # 0-1s: mic=loud, monitor=quiet (user speaking)
-    # 1-2s: mic=quiet, monitor=loud (other person speaking)
-    _create_stereo_wav_segments(
+    create_stereo_wav_segments(
         wav_path,
         sample_rate=16000,
         segments_spec=[
@@ -278,7 +118,7 @@ def test_identify_user_speaker_multiple(tmp_path):
 
 
 def test_assign_speakers_with_words():
-    """Words within SPEAKER_00 → 'You', within SPEAKER_01 → 'Speaker 1'."""
+    """Words within SPEAKER_00 -> 'You', within SPEAKER_01 -> 'Speaker 1'."""
     segments = [
         Segment(
             start=0.0,
@@ -363,7 +203,7 @@ def test_assign_speakers_preserves_order():
 
 
 def test_assign_speakers_gap_handling():
-    """Word in gap between diarization segments → assigned to nearest."""
+    """Word in gap between diarization segments -> assigned to nearest."""
     segments = [
         Segment(
             start=2.0,

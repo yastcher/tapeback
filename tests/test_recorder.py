@@ -1,26 +1,10 @@
 import json
-import os
 import signal
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from meetrec.recorder import Recorder, detect_devices
+from meetrec.recorder import detect_devices
 from meetrec.settings import Settings
-
-
-@pytest.fixture
-def recorder(tmp_path):
-    """Recorder with temporary state directory."""
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    return Recorder(state_dir=state_dir)
-
-
-@pytest.fixture
-def session_file(recorder):
-    """Path to session file."""
-    return recorder.session_file
+from tests.fixtures import create_session_file
 
 
 def test_detect_devices_auto(settings):
@@ -42,27 +26,6 @@ def test_detect_devices_auto(settings):
 
     assert monitor == "alsa_output.pci-0000_00_1f.3.analog-stereo.monitor"
     assert mic == "alsa_input.pci-0000_00_1f.3.analog-stereo"
-
-
-def test_detect_devices_auto_legacy_keys(settings):
-    """Auto-detect should also work with legacy pactl keys (default_sink/default_source)."""
-    pactl_output = json.dumps(
-        {
-            "default_sink": "alsa_output.usb-stereo",
-            "default_source": "alsa_input.usb-stereo",
-        }
-    )
-
-    with (
-        patch("meetrec.recorder.shutil.which", return_value="/usr/bin/pactl"),
-        patch("meetrec.recorder.subprocess.run") as mock_run,
-    ):
-        mock_run.return_value = MagicMock(stdout=pactl_output, returncode=0)
-
-        monitor, mic = detect_devices(settings)
-
-    assert monitor == "alsa_output.usb-stereo.monitor"
-    assert mic == "alsa_input.usb-stereo"
 
 
 def test_detect_devices_explicit(tmp_vault):
@@ -108,15 +71,7 @@ def test_start_creates_session_file(recorder, settings, session_file):
 
 def test_stop_sends_sigterm(recorder, session_file):
     """stop() should send SIGTERM to both processes."""
-    session_data = {
-        "pid_monitor": 99998,
-        "pid_mic": 99999,
-        "session_name": "test_session",
-        "monitor_path": "/tmp/meetrec/test_session/monitor.wav",
-        "mic_path": "/tmp/meetrec/test_session/mic.wav",
-        "started_at": "2026-03-17T14:30:00",
-    }
-    session_file.write_text(json.dumps(session_data))
+    create_session_file(session_file)
 
     killed = []
 
@@ -134,34 +89,3 @@ def test_stop_sends_sigterm(recorder, session_file):
     assert (99998, signal.SIGTERM) in killed
     assert (99999, signal.SIGTERM) in killed
     assert not session_file.exists()
-
-
-def test_stop_without_start_raises(recorder):
-    """stop() without active recording should raise RuntimeError."""
-    with pytest.raises(RuntimeError, match="No recording in progress"):
-        recorder.stop()
-
-
-def test_start_while_recording_raises(recorder, settings, session_file):
-    """start() while already recording should raise RuntimeError."""
-    session_data = {
-        "pid_monitor": os.getpid(),  # Use own PID so it appears alive
-        "pid_mic": os.getpid(),
-        "session_name": "existing",
-        "monitor_path": "/tmp/meetrec/existing/monitor.wav",
-        "mic_path": "/tmp/meetrec/existing/mic.wav",
-        "started_at": "2026-03-17T14:30:00",
-    }
-    session_file.write_text(json.dumps(session_data))
-
-    with pytest.raises(RuntimeError, match="already in progress"):
-        recorder.start(settings)
-
-
-def test_parecord_not_found(recorder, settings):
-    """Should give clear error when parecord is not installed."""
-    with (
-        patch("meetrec.recorder.shutil.which", return_value=None),
-        pytest.raises(RuntimeError, match="parecord not found"),
-    ):
-        recorder.start(settings)

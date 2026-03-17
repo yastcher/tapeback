@@ -1,19 +1,10 @@
 import shutil
 import wave
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-
-def _create_silent_wav(path: Path, duration: float = 1.0, sample_rate: int = 48000) -> None:
-    """Create a silent WAV file for testing."""
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        n_frames = int(duration * sample_rate)
-        wf.writeframes(b"\x00\x00" * n_frames)
+from tests.fixtures import create_silent_wav
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg required")
@@ -25,8 +16,8 @@ def test_merge_channels(tmp_path):
     mic = tmp_path / "mic.wav"
     output_dir = tmp_path / "output"
 
-    _create_silent_wav(monitor)
-    _create_silent_wav(mic)
+    create_silent_wav(monitor)
+    create_silent_wav(mic)
 
     stereo_path, mono_16k_path = merge_channels(monitor, mic, output_dir)
 
@@ -51,7 +42,7 @@ def test_convert_to_mono16k(tmp_path):
     input_file = tmp_path / "input.wav"
     output_dir = tmp_path / "output"
 
-    _create_silent_wav(input_file, sample_rate=44100)
+    create_silent_wav(input_file, sample_rate=44100)
 
     result = convert_to_mono16k(input_file, output_dir)
 
@@ -80,8 +71,8 @@ def test_ffmpeg_not_found(tmp_path):
 
     monitor = tmp_path / "monitor.wav"
     mic = tmp_path / "mic.wav"
-    _create_silent_wav(monitor)
-    _create_silent_wav(mic)
+    create_silent_wav(monitor)
+    create_silent_wav(mic)
 
     with (
         patch("meetrec.audio.shutil.which", return_value=None),
