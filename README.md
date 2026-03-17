@@ -37,9 +37,9 @@ meetrec process recording.mp3
 
 | Command | Description |
 |---------|-------------|
-| `meetrec start [NAME]` | Start recording (Ctrl+C to stop and transcribe) |
+| `meetrec start [NAME] [--no-diarize]` | Start recording (Ctrl+C to stop and transcribe) |
 | `meetrec stop` | Stop recording, transcribe, save to vault |
-| `meetrec process FILE [--name NAME]` | Process an existing audio file |
+| `meetrec process FILE [--name NAME] [--no-diarize]` | Process an existing audio file |
 | `meetrec status` | Show recording status and settings |
 
 ## Configuration
@@ -56,6 +56,24 @@ All settings via environment variables or `.env` file:
 | `MEETREC_MONITOR_SOURCE` | `auto` | PulseAudio monitor source |
 | `MEETREC_MIC_SOURCE` | `auto` | PulseAudio microphone source |
 | `MEETREC_SAMPLE_RATE` | `48000` | Audio sample rate |
+| `MEETREC_HF_TOKEN` | *(empty)* | HuggingFace token for speaker diarization |
+| `MEETREC_DIARIZE` | `true` | Enable speaker diarization |
+| `MEETREC_MAX_SPEAKERS` | *(auto)* | Max speakers hint for pyannote |
+
+## Speaker Diarization
+
+meetrec can identify who said what using [pyannote](https://github.com/pyannote/pyannote-audio).
+
+**Setup:**
+
+1. Accept pyannote model terms at https://huggingface.co/pyannote/speaker-diarization-3.1
+2. Create a HuggingFace token at https://huggingface.co/settings/tokens
+3. Add to `.env`: `MEETREC_HF_TOKEN=hf_your_token_here`
+
+When recording with two channels (mic + monitor), meetrec automatically identifies
+your voice ("You") vs other participants ("Speaker 1", "Speaker 2", ...).
+
+Without the token, transcription works normally — just without speaker labels.
 
 ## Output
 

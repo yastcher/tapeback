@@ -104,6 +104,12 @@ def merge_channels(monitor_wav: Path, mic_wav: Path, output_dir: Path) -> tuple[
     return stereo_path, mono_16k_path
 
 
+def get_channel_count(audio_path: Path) -> int:
+    """Return the number of channels in a WAV file."""
+    with wave.open(str(audio_path), "rb") as wf:
+        return wf.getnchannels()
+
+
 def convert_to_mono16k(input_file: Path, output_dir: Path) -> Path:
     """Convert any audio file to 16kHz mono WAV for Whisper.
 

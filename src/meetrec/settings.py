@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     mic_source: str = "auto"
     sample_rate: int = 48000
 
+    # HuggingFace (for pyannote)
+    hf_token: str = ""
+
+    # Diarization
+    diarize: bool = True
+    max_speakers: int | None = None
+
 
 def get_settings() -> Settings:
     """Load settings. Raises clear error if MEETREC_VAULT_PATH is not set."""
