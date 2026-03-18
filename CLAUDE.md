@@ -20,7 +20,7 @@ No web servers, databases, Docker, GUI.
 
 ## Architecture
 
-- Source: `src/meetrec/` — cli.py, recorder.py, audio.py, transcriber.py, formatter.py, settings.py
+- Source: `src/meetrec/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, settings.py
 - Settings: pydantic-settings with `MEETREC_` prefix, env vars and `.env` only
 - No config files (TOML, YAML) besides pyproject.toml
 - Max 500 lines per file — decompose if exceeded
@@ -40,7 +40,8 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 
 - pytest with mocks only at system boundaries (subprocess, file I/O)
 - Audio tests with real ffmpeg marked `@pytest.mark.skipif(not shutil.which("ffmpeg"))`
-- Fixtures in tests/conftest.py
+- Fixtures and WAV helpers in tests/fixtures.py
+- Regression tests (bug-fix) in tests/regressions/
 - **Bug fix workflow**: every fix MUST start with a failing test that reproduces the bug.
   Write the test first, verify it fails, then apply the fix and verify the test passes.
   This prevents regressions and documents the exact failure scenario.
@@ -69,7 +70,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 2. `uv run ruff format`
 3. `uv run pytest`
 4. Security review: no hardcoded secrets, no injection, no unvalidated input
-5. Update README.md if functionality changed
+5. **Always update README.md** when features, settings, commands, or architecture change
 
 Do not finish until lint and tests pass.
 

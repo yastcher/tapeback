@@ -83,7 +83,8 @@ def _stop_and_process(recorder, settings, *, diarize=True):
     segments, info = transcriber.transcribe(mono_16k_path)
 
     # Free GPU memory before diarization
-    _unload_model(transcriber)
+    del transcriber
+    _free_gpu_memory()
 
     segments = _maybe_diarize(segments, settings, mono_16k_path, stereo_path, diarize=diarize)
 
@@ -135,7 +136,8 @@ def process(audio_file, name, no_diarize):
     segments, info = transcriber.transcribe(mono_16k_path)
 
     # Free GPU memory before diarization
-    _unload_model(transcriber)
+    del transcriber
+    _free_gpu_memory()
 
     # For process: use original file for channel attribution if it's stereo WAV
     stereo_for_attribution = _get_stereo_source(audio_path)
@@ -161,10 +163,13 @@ def process(audio_file, name, no_diarize):
     click.echo(f"Saved: {md_path}", err=True)
 
 
-def _unload_model(transcriber):
-    """Delete transcriber and free GPU memory so diarizer can use CUDA."""
-    del transcriber
+def _free_gpu_memory():
+    """Free GPU memory so diarizer can use CUDA."""
     try:
+        import gc
+
+        gc.collect()
+
         import torch
 
         if torch.cuda.is_available():

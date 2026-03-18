@@ -76,9 +76,12 @@ class Transcriber:
         Returns (list of Segments, info dict with language/duration/etc).
         Falls back to CPU if CUDA fails during inference.
         """
+        # "auto" → None lets faster-whisper auto-detect language
+        language = self._settings.language if self._settings.language != "auto" else None
+
         segments_iter, info = self._model.transcribe(
             str(audio_path),
-            language=self._settings.language,
+            language=language,
             beam_size=self._settings.beam_size,
             vad_filter=self._settings.vad_filter,
             word_timestamps=True,

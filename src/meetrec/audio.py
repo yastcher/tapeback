@@ -85,14 +85,21 @@ def merge_channels(monitor_wav: Path, mic_wav: Path, output_dir: Path) -> tuple[
     subprocess.run(merge_cmd, capture_output=True, check=True)
 
     # Convert to 16kHz mono for Whisper
+    # Normalize each channel independently before mixing so quiet mic
+    # is not drowned out by loud monitor audio
     subprocess.run(
         [
             "ffmpeg",
             "-y",
             "-i",
             str(stereo_path),
-            "-ac",
-            "1",
+            "-filter_complex",
+            "channelsplit=channel_layout=stereo[mic][monitor];"
+            "[mic]loudnorm=I=-16:TP=-1.5:LRA=11[mic_n];"
+            "[monitor]loudnorm=I=-16:TP=-1.5:LRA=11[mon_n];"
+            "[mic_n][mon_n]amix=inputs=2:duration=longest[mix]",
+            "-map",
+            "[mix]",
             "-ar",
             "16000",
             str(mono_16k_path),

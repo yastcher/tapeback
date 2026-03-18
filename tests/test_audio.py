@@ -61,7 +61,10 @@ def test_empty_file_raises(tmp_path):
     monitor.write_bytes(b"")
     mic.write_bytes(b"")
 
-    with pytest.raises(RuntimeError, match="No audio recorded"):
+    with (
+        patch("meetrec.audio.shutil.which", return_value="/usr/bin/ffmpeg"),
+        pytest.raises(RuntimeError, match="No audio recorded"),
+    ):
         merge_channels(monitor, mic, tmp_path / "output")
 
 
