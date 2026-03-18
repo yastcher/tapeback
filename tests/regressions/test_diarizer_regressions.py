@@ -3,7 +3,10 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from meetrec.diarizer import DiarizationSegment, assign_speakers
 from meetrec.settings import Settings
+from meetrec.transcriber import Segment
+from tests.fixtures import create_stereo_wav_segments
 
 
 def test_diarizer_passes_token_correctly(tmp_vault):
@@ -116,3 +119,39 @@ def test_diarize_cuda_oom_fallback(tmp_vault, capsys):
     mock_pipeline.to.assert_called()
     captured = capsys.readouterr()
     assert "CUDA out of memory" in captured.err
+
+
+def test_monitor_speech_not_attributed_to_you(tmp_path):
+    """Monitor-dominant segment must not be labeled 'You' even if pyannote thinks so.
+
+    Bug: pyannote clustered monitor speech with mic speech into one speaker.
+    The channel-based override should catch this and label it correctly.
+    """
+    wav_path = tmp_path / "stereo.wav"
+    # 0-1s: monitor dominant (remote speaker), 1-2s: mic dominant (user)
+    create_stereo_wav_segments(
+        wav_path,
+        sample_rate=16000,
+        segments_spec=[
+            (1.0, 0.1, 0.8),  # remote speaker on monitor
+            (1.0, 0.8, 0.1),  # user on mic
+        ],
+    )
+
+    segments = [
+        Segment(start=0.0, end=1.0, text="Remote person talking", words=None),
+        Segment(start=1.0, end=2.0, text="I am talking", words=None),
+    ]
+
+    # Pyannote wrongly puts both segments under SPEAKER_00
+    dsegs = [
+        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=2.0),
+    ]
+
+    # identify_user_speaker would return SPEAKER_00 (mic energy is high overall)
+    result = assign_speakers(segments, dsegs, user_speaker="SPEAKER_00", stereo_wav=wav_path)
+
+    # Channel override: first segment is monitor-dominant → NOT "You"
+    assert result[0].speaker != "You"
+    # Second segment is mic-dominant → "You"
+    assert result[1].speaker == "You"

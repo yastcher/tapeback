@@ -201,7 +201,7 @@ def _maybe_diarize(segments, settings, mono_16k_path, stereo_path, *, diarize):
     if stereo_path is not None:
         user_speaker = identify_user_speaker(diarization_segments, stereo_path)
 
-    return assign_speakers(segments, diarization_segments, user_speaker)
+    return assign_speakers(segments, diarization_segments, user_speaker, stereo_path)
 
 
 def _get_stereo_source(audio_path):

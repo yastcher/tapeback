@@ -6,7 +6,9 @@ import pytest
 from meetrec.diarizer import (
     DiarizationSegment,
     assign_speakers,
+    classify_segment_by_channel,
     identify_user_speaker,
+    load_stereo_channels,
 )
 from meetrec.transcriber import Segment, Word
 from tests.fixtures import create_stereo_wav, create_stereo_wav_segments
@@ -114,7 +116,115 @@ def test_identify_user_speaker_multiple(tmp_path):
     assert result == "SPEAKER_00"
 
 
+# --- classify_segment_by_channel ---
+
+
+def test_classify_segment_by_channel_mic_dominant(tmp_path):
+    """Segment with mic RMS > monitor * 2 should return 'mic'."""
+    wav_path = tmp_path / "stereo.wav"
+    create_stereo_wav(
+        wav_path, duration=2.0, sample_rate=16000, left_amplitude=0.8, right_amplitude=0.1
+    )
+    mic, monitor, sr = load_stereo_channels(wav_path)
+    result = classify_segment_by_channel(0.0, 2.0, mic, monitor, sr)
+    assert result == "mic"
+
+
+def test_classify_segment_by_channel_monitor_dominant(tmp_path):
+    """Segment with monitor RMS > mic * 2 should return 'monitor'."""
+    wav_path = tmp_path / "stereo.wav"
+    create_stereo_wav(
+        wav_path, duration=2.0, sample_rate=16000, left_amplitude=0.1, right_amplitude=0.8
+    )
+    mic, monitor, sr = load_stereo_channels(wav_path)
+    result = classify_segment_by_channel(0.0, 2.0, mic, monitor, sr)
+    assert result == "monitor"
+
+
+def test_classify_segment_by_channel_ambiguous(tmp_path):
+    """Segment with similar energy on both channels should return None."""
+    wav_path = tmp_path / "stereo.wav"
+    create_stereo_wav(
+        wav_path, duration=2.0, sample_rate=16000, left_amplitude=0.5, right_amplitude=0.5
+    )
+    mic, monitor, sr = load_stereo_channels(wav_path)
+    result = classify_segment_by_channel(0.0, 2.0, mic, monitor, sr)
+    assert result is None
+
+
 # --- assign_speakers ---
+
+
+def test_assign_speakers_with_stereo_override(tmp_path):
+    """Channel energy should override pyannote speaker assignment."""
+    wav_path = tmp_path / "stereo.wav"
+    # 0-1s: monitor dominant (not You), 1-2s: mic dominant (You)
+    create_stereo_wav_segments(
+        wav_path,
+        sample_rate=16000,
+        segments_spec=[
+            (1.0, 0.1, 0.8),  # monitor dominant
+            (1.0, 0.8, 0.1),  # mic dominant
+        ],
+    )
+
+    segments = [
+        Segment(start=0.0, end=1.0, text="Remote speech", words=None),
+        Segment(start=1.0, end=2.0, text="My speech", words=None),
+    ]
+
+    dsegs = [
+        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=1.0),
+        DiarizationSegment(speaker="SPEAKER_01", start=1.0, end=2.0),
+    ]
+
+    # pyannote thinks SPEAKER_00 is user — but channel says otherwise
+    result = assign_speakers(segments, dsegs, user_speaker="SPEAKER_00", stereo_wav=wav_path)
+
+    assert result[0].speaker == "Speaker 1"  # monitor → not You
+    assert result[1].speaker == "You"  # mic → You
+
+
+def test_assign_speakers_stereo_fallback_on_ambiguous(tmp_path):
+    """Ambiguous channel energy should fall back to pyannote + user_speaker."""
+    wav_path = tmp_path / "stereo.wav"
+    create_stereo_wav(
+        wav_path, duration=2.0, sample_rate=16000, left_amplitude=0.5, right_amplitude=0.5
+    )
+
+    segments = [
+        Segment(start=0.0, end=1.0, text="Ambiguous", words=None),
+        Segment(start=1.0, end=2.0, text="Also ambiguous", words=None),
+    ]
+
+    dsegs = [
+        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=1.0),
+        DiarizationSegment(speaker="SPEAKER_01", start=1.0, end=2.0),
+    ]
+
+    result = assign_speakers(segments, dsegs, user_speaker="SPEAKER_00", stereo_wav=wav_path)
+
+    # Falls back to pyannote: SPEAKER_00 = user_speaker → "You"
+    assert result[0].speaker == "You"
+    assert result[1].speaker == "Speaker 1"
+
+
+def test_assign_speakers_without_stereo_backward_compat():
+    """Without stereo_wav, behavior should be identical to before."""
+    segments = [
+        Segment(start=0.0, end=2.0, text="Hello", words=None),
+        Segment(start=3.0, end=5.0, text="World", words=None),
+    ]
+
+    dsegs = [
+        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=2.5),
+        DiarizationSegment(speaker="SPEAKER_01", start=2.5, end=5.0),
+    ]
+
+    result = assign_speakers(segments, dsegs, user_speaker="SPEAKER_00")
+
+    assert result[0].speaker == "You"
+    assert result[1].speaker == "Speaker 1"
 
 
 def test_assign_speakers_with_words():
