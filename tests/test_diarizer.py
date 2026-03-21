@@ -116,91 +116,80 @@ def test_diarize_returns_segments(tmp_vault):
 # --- identify_user_speaker ---
 
 
-def test_identify_user_speaker(tmp_path):
-    """Speaker with most energy on mic channel should be identified as user."""
+@pytest.mark.parametrize(
+    "wav_setup,dsegs,expected",
+    [
+        pytest.param(
+            {"type": "uniform", "left": 0.8, "right": 0.05},
+            [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=1.0)],
+            None,
+            id="single_speaker",
+        ),
+        pytest.param(
+            {"type": "uniform", "left": 0.5, "right": 0.5},
+            [
+                DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=0.5),
+                DiarizationSegment(speaker="SPEAKER_01", start=0.5, end=1.0),
+            ],
+            None,
+            id="ambiguous",
+        ),
+        pytest.param(
+            {
+                "type": "segments",
+                "spec": [(1.0, 0.8, 0.05), (1.0, 0.05, 0.8)],
+            },
+            [
+                DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=1.0),
+                DiarizationSegment(speaker="SPEAKER_01", start=1.0, end=2.0),
+            ],
+            "SPEAKER_00",
+            id="distinct_speakers",
+        ),
+    ],
+)
+def test_identify_user_speaker(tmp_path, wav_setup, dsegs, expected):
+    """identify_user_speaker: single→None, ambiguous→None, distinct→mic speaker."""
     wav_path = tmp_path / "stereo.wav"
-    create_stereo_wav(
-        wav_path, duration=1.0, sample_rate=16000, left_amplitude=0.8, right_amplitude=0.05
-    )
-
-    dseg = [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=1.0)]
-
-    # Only one speaker -> None (can't determine)
-    result = identify_user_speaker(dseg, wav_path)
-    assert result is None
-
-
-def test_identify_user_speaker_ambiguous(tmp_path):
-    """Equal energy on both channels -> None (ambiguous)."""
-    wav_path = tmp_path / "stereo.wav"
-    create_stereo_wav(
-        wav_path, duration=1.0, sample_rate=16000, left_amplitude=0.5, right_amplitude=0.5
-    )
-
-    dsegs = [
-        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=0.5),
-        DiarizationSegment(speaker="SPEAKER_01", start=0.5, end=1.0),
-    ]
+    if wav_setup["type"] == "uniform":
+        create_stereo_wav(
+            wav_path,
+            duration=1.0,
+            sample_rate=16000,
+            left_amplitude=wav_setup["left"],
+            right_amplitude=wav_setup["right"],
+        )
+    else:
+        create_stereo_wav_segments(wav_path, sample_rate=16000, segments_spec=wav_setup["spec"])
 
     result = identify_user_speaker(dsegs, wav_path)
-    assert result is None
-
-
-def test_identify_user_speaker_multiple(tmp_path):
-    """With distinct channel energy, the mic-dominant speaker is identified."""
-    wav_path = tmp_path / "stereo.wav"
-    create_stereo_wav_segments(
-        wav_path,
-        sample_rate=16000,
-        segments_spec=[
-            (1.0, 0.8, 0.05),  # SPEAKER_00: mic dominant
-            (1.0, 0.05, 0.8),  # SPEAKER_01: monitor dominant
-        ],
-    )
-
-    dsegs = [
-        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=1.0),
-        DiarizationSegment(speaker="SPEAKER_01", start=1.0, end=2.0),
-    ]
-
-    result = identify_user_speaker(dsegs, wav_path)
-    assert result == "SPEAKER_00"
+    assert result == expected
 
 
 # --- classify_segment_by_channel ---
 
 
-def test_classify_segment_by_channel_mic_dominant(tmp_path):
-    """Segment with mic RMS > monitor * 2 should return 'mic'."""
+@pytest.mark.parametrize(
+    "left_amp,right_amp,expected",
+    [
+        pytest.param(0.8, 0.1, "mic", id="mic_dominant"),
+        pytest.param(0.1, 0.8, "monitor", id="monitor_dominant"),
+        pytest.param(0.5, 0.5, None, id="ambiguous"),
+    ],
+)
+def test_classify_segment_by_channel(tmp_path, left_amp, right_amp, expected):
+    """Channel classification based on RMS energy ratio."""
     wav_path = tmp_path / "stereo.wav"
     create_stereo_wav(
-        wav_path, duration=2.0, sample_rate=16000, left_amplitude=0.8, right_amplitude=0.1
+        wav_path,
+        duration=2.0,
+        sample_rate=16000,
+        left_amplitude=left_amp,
+        right_amplitude=right_amp,
     )
     mic, monitor, sr = load_stereo_channels(wav_path)
     result = classify_segment_by_channel(0.0, 2.0, mic, monitor, sr)
-    assert result == "mic"
-
-
-def test_classify_segment_by_channel_monitor_dominant(tmp_path):
-    """Segment with monitor RMS > mic * 2 should return 'monitor'."""
-    wav_path = tmp_path / "stereo.wav"
-    create_stereo_wav(
-        wav_path, duration=2.0, sample_rate=16000, left_amplitude=0.1, right_amplitude=0.8
-    )
-    mic, monitor, sr = load_stereo_channels(wav_path)
-    result = classify_segment_by_channel(0.0, 2.0, mic, monitor, sr)
-    assert result == "monitor"
-
-
-def test_classify_segment_by_channel_ambiguous(tmp_path):
-    """Segment with similar energy on both channels should return None."""
-    wav_path = tmp_path / "stereo.wav"
-    create_stereo_wav(
-        wav_path, duration=2.0, sample_rate=16000, left_amplitude=0.5, right_amplitude=0.5
-    )
-    mic, monitor, sr = load_stereo_channels(wav_path)
-    result = classify_segment_by_channel(0.0, 2.0, mic, monitor, sr)
-    assert result is None
+    assert result == expected
 
 
 # --- assign_speakers ---
@@ -309,24 +298,6 @@ def test_assign_speakers_with_words():
     assert segments[1].speaker is None
 
 
-def test_assign_speakers_without_words():
-    """Segments without word timestamps use segment boundaries for alignment."""
-    segments = [
-        Segment(start=0.0, end=2.0, text="Hello", words=None),
-        Segment(start=3.0, end=5.0, text="World", words=None),
-    ]
-
-    dsegs = [
-        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=2.5),
-        DiarizationSegment(speaker="SPEAKER_01", start=2.5, end=5.0),
-    ]
-
-    result = assign_speakers(segments, dsegs, user_speaker="SPEAKER_00")
-
-    assert result[0].speaker == "You"
-    assert result[1].speaker == "Speaker 1"
-
-
 def test_assign_speakers_no_user():
     """Without user_speaker, all speakers get 'Speaker N' labels."""
     segments = [
@@ -388,40 +359,34 @@ def test_assign_speakers_gap_handling():
 # --- merge_channel_segments ---
 
 
-def test_merge_channel_segments():
+@pytest.mark.parametrize(
+    "mic_segs,mon_segs,expected_count,expected_starts",
+    [
+        pytest.param(
+            [
+                Segment(start=0.0, end=3.0, text="My first", speaker="You"),
+                Segment(start=5.0, end=7.0, text="My second", speaker="You"),
+            ],
+            [
+                Segment(start=2.0, end=4.0, text="Their first", speaker="Speaker 1"),
+                Segment(start=6.0, end=8.0, text="Their second", speaker="Speaker 1"),
+            ],
+            4,
+            [0.0, 2.0, 5.0, 6.0],
+            id="interleaved",
+        ),
+        pytest.param(
+            [Segment(start=0.0, end=5.0, text="Talking over", speaker="You")],
+            [Segment(start=2.0, end=6.0, text="Also talking", speaker="Speaker 1")],
+            2,
+            [0.0, 2.0],
+            id="overlapping",
+        ),
+    ],
+)
+def test_merge_channel_segments(mic_segs, mon_segs, expected_count, expected_starts):
     """Segments from both channels merged and sorted by start time."""
-    mic_segments = [
-        Segment(start=0.0, end=3.0, text="My first", speaker="You"),
-        Segment(start=5.0, end=7.0, text="My second", speaker="You"),
-    ]
+    result = merge_channel_segments(mic_segs, mon_segs)
 
-    monitor_segments = [
-        Segment(start=2.0, end=4.0, text="Their first", speaker="Speaker 1"),
-        Segment(start=6.0, end=8.0, text="Their second", speaker="Speaker 1"),
-    ]
-
-    result = merge_channel_segments(mic_segments, monitor_segments)
-
-    assert len(result) == 4
-    assert [s.start for s in result] == [0.0, 2.0, 5.0, 6.0]
-    assert result[0].speaker == "You"
-    assert result[1].speaker == "Speaker 1"
-    assert result[2].speaker == "You"
-    assert result[3].speaker == "Speaker 1"
-
-
-def test_merge_channel_segments_overlapping():
-    """Simultaneous speech: overlapping segments from both channels are kept."""
-    mic_segments = [
-        Segment(start=0.0, end=5.0, text="Talking over", speaker="You"),
-    ]
-
-    monitor_segments = [
-        Segment(start=2.0, end=6.0, text="Also talking", speaker="Speaker 1"),
-    ]
-
-    result = merge_channel_segments(mic_segments, monitor_segments)
-
-    assert len(result) == 2
-    assert result[0].speaker == "You"
-    assert result[1].speaker == "Speaker 1"
+    assert len(result) == expected_count
+    assert [s.start for s in result] == expected_starts

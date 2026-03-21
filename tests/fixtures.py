@@ -112,3 +112,15 @@ def create_session_file(session_file, **overrides):
     }
     session_file.write_text(json.dumps(data))
     return data
+
+
+@pytest.fixture
+def stereo_wav(tmp_path):
+    """Factory fixture: returns callable(segments_spec) -> Path to stereo WAV."""
+
+    def _create(segments_spec, sample_rate=16000):
+        path = tmp_path / "stereo.wav"
+        create_stereo_wav_segments(path, sample_rate, segments_spec)
+        return path
+
+    return _create
