@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -41,6 +42,20 @@ class Settings(BaseSettings):
 
     # Post-processing
     pause_threshold: float = 1.0  # seconds — split segments on word gaps >= this
+
+    # Summarization
+    summarize: bool = True
+    llm_provider: Literal[
+        "anthropic",
+        "openai",
+        "groq",
+        "gemini",
+        "openrouter",
+        "deepseek",
+        "qwen",
+    ] = "anthropic"
+    llm_api_key: str = ""
+    llm_model: str = ""
 
 
 def get_settings() -> Settings:

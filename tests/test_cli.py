@@ -4,6 +4,7 @@ Mock only ML models (WhisperModel, pyannote Pipeline). Everything else
 (ffmpeg, file I/O, formatting) runs for real.
 """
 
+import json
 import shutil
 from unittest.mock import MagicMock, patch
 
@@ -273,3 +274,155 @@ def test_maybe_diarize_skips_and_warns(runner, tmp_path):
     settings_no_token = Settings(vault_path=vault, hf_token="", diarize=True)
     result = _maybe_diarize(segments, settings_no_token, tmp_path / "a.wav", None, diarize=True)
     assert result is segments
+
+
+# --- summarize command ---
+
+
+VALID_LLM_RESPONSE = json.dumps(
+    {
+        "brief": "Test summary.",
+        "action_items": [],
+        "key_decisions": [],
+        "is_trivial": False,
+    }
+)
+
+SAMPLE_TRANSCRIPT_MD = """\
+---
+date: 2026-03-20
+time: "14:30"
+duration: "00:10:00"
+language: en
+tags:
+  - meeting
+  - transcript
+audio: "[[attachments/audio/2026-03-20_14-30-00.wav]]"
+---
+
+# Meeting 2026-03-20 14:30
+
+[00:00:01] **You:** Hello there.
+[00:00:05] **Speaker 1:** Hi, let's discuss the plan.
+"""
+
+
+def test_summarize_command_rewrites_file(runner, tmp_path, monkeypatch):
+    """summarize command: mock LLM → file gets summary section."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
+    monkeypatch.setenv("MEETREC_LLM_API_KEY", "sk-test")
+
+    md_file = tmp_path / "transcript.md"
+    md_file.write_text(SAMPLE_TRANSCRIPT_MD)
+
+    with patch("meetrec.summarizer._call_llm", return_value=VALID_LLM_RESPONSE):
+        result = runner.invoke(cli, ["summarize", str(md_file)])
+
+    assert result.exit_code == 0, result.output
+    content = md_file.read_text()
+    assert "## Summary" in content
+    assert "Test summary." in content
+    assert "# Meeting 2026-03-20 14:30" in content
+
+
+def test_summarize_command_no_api_key(runner, tmp_path, monkeypatch):
+    """No API key → error, file unchanged."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
+    monkeypatch.delenv("MEETREC_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    md_file = tmp_path / "transcript.md"
+    md_file.write_text(SAMPLE_TRANSCRIPT_MD)
+
+    result = runner.invoke(cli, ["summarize", str(md_file)])
+
+    assert result.exit_code != 0
+    assert md_file.read_text() == SAMPLE_TRANSCRIPT_MD
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg required")
+def test_process_with_summarization(runner, tmp_path, monkeypatch):
+    """Full pipeline: process → transcribe → summarize → file has summary."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
+    monkeypatch.setenv("MEETREC_DIARIZE", "false")
+    monkeypatch.setenv("MEETREC_LLM_API_KEY", "sk-test")
+
+    audio = tmp_path / "2026-03-20_10-00-00.wav"
+    create_silent_wav(audio, duration=2.0, sample_rate=48000)
+
+    mock_model = mock_whisper_transcribe([(0.0, 5.0, "Hello from the meeting.")])
+
+    with (
+        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
+        patch("meetrec.summarizer._call_llm", return_value=VALID_LLM_RESPONSE),
+    ):
+        result = runner.invoke(cli, ["process", str(audio), "--no-diarize"])
+
+    assert result.exit_code == 0, result.output
+    md_content = (vault / "meetings" / "2026-03-20_10-00-00.md").read_text()
+    assert "## Summary" in md_content
+    assert "Test summary." in md_content
+    assert "Hello from the meeting." in md_content
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg required")
+def test_process_no_summarize_flag(runner, tmp_path, monkeypatch):
+    """--no-summarize → no LLM call."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
+    monkeypatch.setenv("MEETREC_DIARIZE", "false")
+
+    audio = tmp_path / "2026-03-20_10-00-00.wav"
+    create_silent_wav(audio, duration=2.0, sample_rate=48000)
+    mock_model = mock_whisper_transcribe([(0.0, 5.0, "Speech.")])
+
+    with (
+        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
+        patch("meetrec.summarizer._call_llm") as mock_llm,
+    ):
+        result = runner.invoke(cli, ["process", str(audio), "--no-diarize", "--no-summarize"])
+
+    assert result.exit_code == 0
+    mock_llm.assert_not_called()
+    md_content = (vault / "meetings" / "2026-03-20_10-00-00.md").read_text()
+    assert "## Summary" not in md_content
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg required")
+def test_stop_and_process_summarization_failure(tmp_path):
+    """LLM fails → warning printed, transcript still saved."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    settings = Settings(vault_path=vault, llm_api_key="sk-test")
+
+    session_dir = tmp_path / "2026-03-20_12-00-00"
+    session_dir.mkdir()
+    monitor_wav = session_dir / "monitor.wav"
+    mic_wav = session_dir / "mic.wav"
+    create_mono_wav(monitor_wav, duration=2.0, sample_rate=48000, amplitude=0.5)
+    create_mono_wav(mic_wav, duration=2.0, sample_rate=48000, amplitude=0.5)
+
+    mock_recorder = MagicMock()
+    mock_recorder.stop.return_value = (monitor_wav, mic_wav)
+    mock_model = mock_whisper_transcribe([(0.0, 5.0, "Important content.")])
+
+    with (
+        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
+        patch("pyannote.audio.Pipeline"),
+        patch("meetrec.summarizer._call_llm", side_effect=RuntimeError("API error")),
+    ):
+        _stop_and_process(mock_recorder, settings, diarize=False, do_summarize=True)
+
+    # Transcript still saved despite summarization failure
+    md_path = vault / "meetings" / "2026-03-20_12-00-00.md"
+    assert md_path.exists()
+    assert "Important content." in md_path.read_text()
+    assert "## Summary" not in md_path.read_text()

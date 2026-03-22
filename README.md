@@ -8,6 +8,7 @@ Records monitor source (other participants) + microphone (your voice) on Linux v
 
 - Records system audio (monitor) + microphone simultaneously — survives audio device hot-switching
 - Transcribes locally with faster-whisper (CUDA with CPU fallback)
+- LLM summarization — brief summary, action items, key decisions (Anthropic/OpenAI)
 - Speaker diarization via pyannote — identifies "You" vs other speakers
 - Audio channel normalization — mic and monitor balanced before transcription
 - Saves audio to vault immediately, before transcription starts
@@ -47,9 +48,10 @@ meetrec process recording.mp3
 
 | Command | Description |
 |---------|-------------|
-| `meetrec start [NAME] [--no-diarize]` | Start recording (Ctrl+C to stop and transcribe) |
+| `meetrec start [NAME] [--no-diarize] [--no-summarize]` | Start recording (Ctrl+C to stop and transcribe) |
 | `meetrec stop` | Stop recording, transcribe, save to vault |
-| `meetrec process FILE [--name NAME] [--no-diarize]` | Process an existing audio file |
+| `meetrec process FILE [--name NAME] [--no-diarize] [--no-summarize]` | Process an existing audio file |
+| `meetrec summarize FILE [--provider anthropic\|openai] [--model MODEL]` | Summarize an existing transcript |
 | `meetrec status` | Show recording status and settings |
 
 ## Configuration
@@ -76,6 +78,10 @@ All settings via environment variables or `.env` file:
 | `MEETREC_BEAM_SIZE` | `5` | Whisper beam size |
 | `MEETREC_VAD_FILTER` | `true` | Voice activity detection filter |
 | `MEETREC_CONDITION_ON_PREVIOUS_TEXT` | `false` | Whisper conditions on prior text (disable to preserve repeated speech) |
+| `MEETREC_SUMMARIZE` | `true` | Enable LLM summarization after transcription |
+| `MEETREC_LLM_PROVIDER` | `anthropic` | LLM provider (see [Summarization](#summarization) for full list) |
+| `MEETREC_LLM_API_KEY` | *(empty)* | API key (fallback: provider-specific env var, see below) |
+| `MEETREC_LLM_MODEL` | *(provider default)* | Model name override |
 
 ## Speaker Diarization
 
@@ -95,6 +101,46 @@ your voice ("You") vs other participants ("Speaker 1", "Speaker 2", ...).
 
 Without the token, transcription works normally — just without speaker labels.
 
+## Summarization
+
+After transcription, meetrec sends the transcript to an LLM to extract:
+- Brief summary (2-3 sentences)
+- Action items (who promised what, with deadlines if mentioned)
+- Key decisions
+
+**Supported providers:**
+
+| Provider | `MEETREC_LLM_PROVIDER` | Env var fallback | Default model |
+|----------|------------------------|------------------|---------------|
+| Anthropic | `anthropic` (default) | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-4o` |
+| Groq | `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` | `gemini-2.0-flash` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `google/gemma-3-27b-it:free` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-chat` |
+| Qwen | `qwen` | `DASHSCOPE_API_KEY` | `qwen-turbo` |
+
+**Setup:**
+
+Set an API key via `MEETREC_LLM_API_KEY` or the provider-specific env var:
+```bash
+# Anthropic (default)
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Free alternative — Groq
+export MEETREC_LLM_PROVIDER=groq
+export GROQ_API_KEY=gsk_...
+
+# Free alternative — OpenRouter
+export MEETREC_LLM_PROVIDER=openrouter
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+Without an API key, summarization is silently skipped — the transcript is saved normally.
+
+Use `meetrec summarize transcript.md` to (re-)summarize an existing transcript file.
+Use `--no-summarize` with `start` or `process` to skip summarization for a single run.
+
 ## How It Works
 
 ### Live recording (dual-channel pipeline)
@@ -110,6 +156,7 @@ Without the token, transcription works normally — just without speaker labels.
 9. **Diarization** — pyannote runs on monitor channel only to distinguish remote speakers ("Speaker 1", "Speaker 2", ...)
 10. **Merge** — segments from both channels combined and sorted by timestamp; overlapping segments (simultaneous speech) are preserved
 11. **Output** — markdown with timecodes and speaker labels saved to vault
+12. **Summarization** — transcript sent to LLM (Anthropic/OpenAI) for summary, action items, and key decisions (if API key configured)
 
 This dual-channel approach avoids mono mixing, which degrades both voices during simultaneous speech and can lose quiet-channel audio entirely.
 
@@ -133,6 +180,21 @@ audio: "[[attachments/audio/2026-03-17_14-30-00.wav]]"
 tags:
   - meeting
   - transcript
+---
+
+## Summary
+
+Discussed roadmap priorities and assigned tasks for the upcoming sprint.
+
+### Action Items
+
+- [ ] **Speaker 1:** Prepare backend migration plan by Monday
+- [ ] **You:** Review the slides and send feedback
+
+### Key Decisions
+
+- Start with backend changes before frontend redesign
+
 ---
 
 # Meeting 2026-03-17 14:30
@@ -174,6 +236,7 @@ tests/
 ├── test_formatter.py    # Markdown formatting and vault I/O
 ├── test_recorder.py     # PulseAudio recording control
 ├── test_settings.py     # Configuration / env vars
+├── test_summarizer.py   # LLM summarization, markdown injection
 ├── test_transcriber.py  # Whisper transcription
 └── regressions/         # Bug-fix regression tests
     ├── test_diarizer_regressions.py

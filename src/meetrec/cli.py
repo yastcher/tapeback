@@ -22,7 +22,8 @@ def cli() -> None:
 @cli.command()
 @click.argument("name", required=False)
 @click.option("--no-diarize", is_flag=True, help="Skip speaker diarization")
-def start(name: str | None, no_diarize: bool) -> None:
+@click.option("--no-summarize", is_flag=True, help="Skip LLM summarization")
+def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
     """Start recording monitor source + microphone.
 
     Runs in foreground — press Ctrl+C to stop and transcribe.
@@ -48,7 +49,9 @@ def start(name: str | None, no_diarize: bool) -> None:
     except KeyboardInterrupt:
         click.echo("\nStopping...", err=True)
         try:
-            _stop_and_process(recorder, settings, diarize=not no_diarize)
+            _stop_and_process(
+                recorder, settings, diarize=not no_diarize, do_summarize=not no_summarize
+            )
         except KeyboardInterrupt:
             click.echo("\nAborted during processing. Audio files kept in /tmp/meetrec/", err=True)
 
@@ -61,10 +64,12 @@ def stop() -> None:
     from meetrec.recorder import Recorder
 
     recorder = Recorder()
-    _stop_and_process(recorder, settings, diarize=True)
+    _stop_and_process(recorder, settings, diarize=True, do_summarize=True)
 
 
-def _stop_and_process(recorder: Recorder, settings: Settings, *, diarize: bool = True) -> None:
+def _stop_and_process(
+    recorder: Recorder, settings: Settings, *, diarize: bool = True, do_summarize: bool = True
+) -> None:
     """Stop recording and run the full dual-channel processing pipeline."""
     click.echo("Stopping recording...", err=True)
     monitor_path, mic_path = recorder.stop()
@@ -142,18 +147,23 @@ def _stop_and_process(recorder: Recorder, settings: Settings, *, diarize: bool =
     )
 
     md_path = save_markdown_to_vault(markdown, settings, session_name)
+    click.echo(f"Saved: {md_path}", err=True)
+
+    if do_summarize:
+        from meetrec.summarizer import maybe_summarize
+
+        maybe_summarize(md_path, settings)
 
     # Clean up temp files
     shutil.rmtree(monitor_path.parent, ignore_errors=True)
-
-    click.echo(f"Saved: {md_path}", err=True)
 
 
 @cli.command()
 @click.argument("audio_file", type=click.Path(exists=True))
 @click.option("--name", default=None, help="Session name for output file")
 @click.option("--no-diarize", is_flag=True, help="Skip speaker diarization")
-def process(audio_file: str, name: str | None, no_diarize: bool) -> None:
+@click.option("--no-summarize", is_flag=True, help="Skip LLM summarization")
+def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: bool) -> None:
     """Process an existing audio file (mp3, m4a, ogg, wav)."""
     settings = get_settings()
 
@@ -199,11 +209,15 @@ def process(audio_file: str, name: str | None, no_diarize: bool) -> None:
     )
 
     md_path = save_markdown_to_vault(markdown, settings, name)
+    click.echo(f"Saved: {md_path}", err=True)
+
+    if not no_summarize:
+        from meetrec.summarizer import maybe_summarize
+
+        maybe_summarize(md_path, settings)
 
     # Clean up temp
     shutil.rmtree(tmp_dir, ignore_errors=True)
-
-    click.echo(f"Saved: {md_path}", err=True)
 
 
 def _free_gpu_memory() -> None:
@@ -264,6 +278,47 @@ def _get_stereo_source(audio_path: Path) -> Path | None:
     except Exception:
         pass
     return None
+
+
+@cli.command()
+@click.argument("file", type=click.Path(exists=True))
+@click.option(
+    "--provider",
+    type=click.Choice(["anthropic", "openai", "groq", "gemini", "openrouter", "deepseek", "qwen"]),
+    default=None,
+    help="Override LLM provider",
+)
+@click.option("--model", default=None, help="Override LLM model")
+def summarize(file: str, provider: str | None, model: str | None) -> None:
+    """Summarize an existing transcript markdown file."""
+    settings = get_settings()
+
+    if provider:
+        settings.llm_provider = provider
+    if model:
+        settings.llm_model = model
+
+    from meetrec.summarizer import (
+        extract_transcript_from_markdown,
+        format_summary_markdown,
+        inject_summary_into_markdown,
+    )
+    from meetrec.summarizer import summarize as do_summarize
+
+    path = Path(file)
+    md_content = path.read_text()
+
+    transcript = extract_transcript_from_markdown(md_content)
+    if not transcript.strip():
+        click.echo("Error: No transcript content found in file.", err=True)
+        raise SystemExit(1)
+
+    click.echo("Summarizing...", err=True)
+    summary = do_summarize(transcript, settings)
+    summary_md = format_summary_markdown(summary)
+    new_content = inject_summary_into_markdown(md_content, summary_md)
+    path.write_text(new_content)
+    click.echo(f"Summary added to {path}", err=True)
 
 
 @cli.command()

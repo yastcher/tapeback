@@ -4,7 +4,7 @@
 
 CLI tool for recording meeting audio (Google Meet, Zoom, Teams, Telegram — any platform) on Linux via PulseAudio/PipeWire system audio capture. Transcribes locally with faster-whisper, saves markdown to Obsidian vault.
 
-Stack: Python 3.11+, click, faster-whisper, pydantic-settings, ffmpeg, parecord.
+Stack: Python 3.14+, click, faster-whisper, pydantic-settings, anthropic/openai, ffmpeg, parecord.
 
 No web servers, databases, Docker, GUI.
 
@@ -21,7 +21,7 @@ No web servers, databases, Docker, GUI.
 
 ## Architecture
 
-- Source: `src/meetrec/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, settings.py
+- Source: `src/meetrec/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, summarizer.py, settings.py
 - Settings: pydantic-settings with `MEETREC_` prefix, env vars and `.env` only
 - No config files (TOML, YAML) besides pyproject.toml
 - Max 500 lines per file — decompose if exceeded
@@ -64,7 +64,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - Never hardcode audio device names
 - Never use absolute paths in code or configs
 - Never add wav2vec2 or alternative diarization models — only pyannote
-- Never add summarization, translation, LLM calls — phase 3
+- Never add translation — future phase
 - Never add GUI, web server, REST API
 
 ## Before finishing
