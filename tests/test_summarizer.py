@@ -5,10 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from meetrec.models import ActionItem, Summary
 from meetrec.settings import Settings
 from meetrec.summarizer import (
-    ActionItem,
-    Summary,
     _get_model,
     _resolve_api_key,
     extract_transcript_from_markdown,

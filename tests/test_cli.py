@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from meetrec.cli import _maybe_diarize, _stop_and_process, cli
+from meetrec.models import Segment
 from meetrec.settings import Settings
-from meetrec.transcriber import Segment
 from tests.fixtures import (
     create_mono_wav,
     create_silent_wav,

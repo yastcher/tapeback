@@ -1,23 +1,13 @@
 import contextlib
 import sys
 import wave
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from meetrec.models import DiarizationSegment, Segment
 from meetrec.settings import Settings
-from meetrec.transcriber import Segment
-
-
-@dataclass
-class DiarizationSegment:
-    """A continuous speech segment from one speaker (from pyannote)."""
-
-    speaker: str  # "SPEAKER_00", "SPEAKER_01", ...
-    start: float  # seconds
-    end: float  # seconds
 
 
 def _unwrap_diarization(result: Any) -> Any:

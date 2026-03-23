@@ -21,7 +21,8 @@ No web servers, databases, Docker, GUI.
 
 ## Architecture
 
-- Source: `src/meetrec/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, summarizer.py, settings.py
+- Source: `src/meetrec/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, vault.py, summarizer.py, models.py, settings.py
+- Domain models (Segment, Word, DiarizationSegment, Summary, ActionItem) live in models.py — never in infrastructure modules
 - Settings: pydantic-settings with `MEETREC_` prefix, env vars and `.env` only
 - No config files (TOML, YAML) besides pyproject.toml
 - Max 500 lines per file — decompose if exceeded

@@ -1,29 +1,12 @@
 import sys
 from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from faster_whisper import WhisperModel
 
+from meetrec.models import Segment, Word
 from meetrec.settings import Settings
-
-
-@dataclass
-class Word:
-    start: float
-    end: float
-    word: str
-    probability: float
-
-
-@dataclass
-class Segment:
-    start: float  # seconds
-    end: float  # seconds
-    text: str
-    words: list[Word] | None = None
-    speaker: str | None = None  # None in phase 1, filled in phase 2
 
 
 class Transcriber:

@@ -1,7 +1,8 @@
 """Formatter tests — markdown generation and vault I/O pipelines."""
 
-from meetrec.formatter import format_markdown, save_to_vault
-from meetrec.transcriber import Segment
+from meetrec.formatter import format_markdown
+from meetrec.models import Segment
+from meetrec.vault import save_to_vault
 
 
 def test_format_markdown_pipeline():

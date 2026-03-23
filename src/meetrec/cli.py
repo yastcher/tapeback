@@ -10,8 +10,8 @@ import click
 from meetrec.settings import Settings, get_settings
 
 if TYPE_CHECKING:
+    from meetrec.models import Segment
     from meetrec.recorder import Recorder
-    from meetrec.transcriber import Segment
 
 
 @click.group()
@@ -81,8 +81,9 @@ def _stop_and_process(
         merge_channel_segments,
         split_on_silence,
     )
-    from meetrec.formatter import format_markdown, save_audio_to_vault, save_markdown_to_vault
+    from meetrec.formatter import format_markdown
     from meetrec.transcriber import Transcriber
+    from meetrec.vault import save_audio_to_vault, save_markdown_to_vault
 
     click.echo("Merging audio channels...", err=True)
     output_dir = monitor_path.parent
@@ -168,8 +169,9 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
     settings = get_settings()
 
     from meetrec.audio import convert_to_mono16k
-    from meetrec.formatter import format_markdown, save_audio_to_vault, save_markdown_to_vault
+    from meetrec.formatter import format_markdown
     from meetrec.transcriber import Transcriber
+    from meetrec.vault import save_audio_to_vault, save_markdown_to_vault
 
     audio_path = Path(audio_file)
 

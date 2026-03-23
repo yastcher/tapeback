@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from meetrec.diarizer import (
-    DiarizationSegment,
     Diarizer,
     assign_speakers,
     classify_segment_by_channel,
@@ -15,8 +14,8 @@ from meetrec.diarizer import (
     merge_channel_segments,
     split_on_silence,
 )
+from meetrec.models import DiarizationSegment, Segment, Word
 from meetrec.settings import Settings
-from meetrec.transcriber import Segment, Word
 from tests.fixtures import create_stereo_wav, create_stereo_wav_segments
 
 # --- Diarizer init / diarize ---

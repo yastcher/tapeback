@@ -2,6 +2,7 @@ import contextlib
 import datetime
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -175,9 +176,16 @@ class Recorder:
 
         if session_name is None:
             session_name = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d_%H-%M-%S")
+        elif not re.match(r"^[\w-]+$", session_name):
+            raise ValueError(
+                f"Invalid session name: {session_name!r}. "
+                "Only alphanumerics, dashes, and underscores are allowed."
+            )
 
-        tmp_dir = Path("/tmp/meetrec") / session_name
-        tmp_dir.mkdir(parents=True, exist_ok=True)
+        base_dir = Path("/tmp/meetrec")
+        base_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tmp_dir = base_dir / session_name
+        tmp_dir.mkdir(exist_ok=True, mode=0o700)
 
         monitor_path = tmp_dir / "monitor.wav"
         mic_path = tmp_dir / "mic.wav"

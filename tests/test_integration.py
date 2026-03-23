@@ -8,7 +8,6 @@ import pytest
 from meetrec.audio import get_channel_count, merge_channels, split_channels_16k
 from meetrec.cli import _get_stereo_source
 from meetrec.diarizer import (
-    DiarizationSegment,
     assign_speakers,
     classify_segment_by_channel,
     filter_silent_segments,
@@ -17,7 +16,7 @@ from meetrec.diarizer import (
     merge_channel_segments,
 )
 from meetrec.formatter import format_markdown
-from meetrec.transcriber import Segment
+from meetrec.models import DiarizationSegment, Segment
 from tests.fixtures import create_mono_wav, create_stereo_wav, create_stereo_wav_segments
 
 

@@ -4,10 +4,10 @@ import json
 import os
 import re
 import time
-from dataclasses import dataclass, field
 
 import click
 
+from meetrec.models import ActionItem, Summary
 from meetrec.settings import Settings
 
 _SYSTEM_PROMPT = """\
@@ -41,21 +41,6 @@ Rules:
 - Keep brief concise — 2-3 sentences max, no filler"""
 
 _RETRY_PROMPT = "Respond with valid JSON only. No other text."
-
-
-@dataclass
-class ActionItem:
-    assignee: str
-    action: str
-    deadline: str | None = None
-
-
-@dataclass
-class Summary:
-    brief: str
-    action_items: list[ActionItem] = field(default_factory=list)
-    key_decisions: list[str] = field(default_factory=list)
-    is_trivial: bool = False
 
 
 _PROVIDER_ENV_VARS: dict[str, str] = {

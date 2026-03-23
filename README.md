@@ -233,7 +233,7 @@ tests/
 ├── test_integration.py  # Multi-module pipeline integration tests
 ├── test_audio.py        # ffmpeg audio processing
 ├── test_diarizer.py     # Speaker diarization and channel analysis
-├── test_formatter.py    # Markdown formatting and vault I/O
+├── test_formatter.py    # Markdown formatting
 ├── test_recorder.py     # PulseAudio recording control
 ├── test_settings.py     # Configuration / env vars
 ├── test_summarizer.py   # LLM summarization, markdown injection
