@@ -8,6 +8,9 @@ import pytest
 from meetrec.models import ActionItem, Summary
 from meetrec.settings import Settings
 from meetrec.summarizer import (
+    _PROVIDER_ENV_VARS,
+    _build_provider_chain,
+    _call_llm,
     _get_model,
     _resolve_api_key,
     extract_transcript_from_markdown,
@@ -237,11 +240,13 @@ def test_call_llm_retries_on_429(summarize_settings):
     rate_limit_exc.status_code = 429
 
     with (
+        patch(
+            "meetrec.summarizer._build_provider_chain",
+            return_value=[("anthropic", "test-key", "test-model")],
+        ),
         patch("meetrec.summarizer._call_llm_once", side_effect=[rate_limit_exc, "ok"]) as mock,
         patch("meetrec.summarizer.time.sleep") as mock_sleep,
     ):
-        from meetrec.summarizer import _call_llm
-
         result = _call_llm("system", "user", summarize_settings)
 
     assert result == "ok"
@@ -255,12 +260,14 @@ def test_call_llm_gives_up_after_max_retries(summarize_settings):
     rate_limit_exc.status_code = 429
 
     with (
+        patch(
+            "meetrec.summarizer._build_provider_chain",
+            return_value=[("anthropic", "test-key", "test-model")],
+        ),
         patch("meetrec.summarizer._call_llm_once", side_effect=rate_limit_exc),
         patch("meetrec.summarizer.time.sleep"),
         pytest.raises(Exception, match="rate limited"),
     ):
-        from meetrec.summarizer import _call_llm
-
         _call_llm("system", "user", summarize_settings)
 
 
@@ -270,12 +277,14 @@ def test_call_llm_no_retry_on_non_429(summarize_settings):
     auth_exc.status_code = 401
 
     with (
+        patch(
+            "meetrec.summarizer._build_provider_chain",
+            return_value=[("anthropic", "test-key", "test-model")],
+        ),
         patch("meetrec.summarizer._call_llm_once", side_effect=auth_exc),
         patch("meetrec.summarizer.time.sleep") as mock_sleep,
         pytest.raises(Exception, match="unauthorized"),
     ):
-        from meetrec.summarizer import _call_llm
-
         _call_llm("system", "user", summarize_settings)
 
     mock_sleep.assert_not_called()
@@ -349,3 +358,122 @@ def test_get_model_explicit_override(tmp_vault):
     settings = Settings(vault_path=tmp_vault, llm_provider="groq", llm_model="custom-model")
 
     assert _get_model(settings) == "custom-model"
+
+
+# --- Provider fallback chain ---
+
+
+def _clear_all_provider_env_vars(monkeypatch):
+    """Remove all provider-specific API key env vars."""
+    for env_var in _PROVIDER_ENV_VARS.values():
+        monkeypatch.delenv(env_var, raising=False)
+
+
+def test_build_provider_chain_primary_first(tmp_vault, monkeypatch):
+    """Primary provider appears first in chain."""
+    _clear_all_provider_env_vars(monkeypatch)
+    settings = Settings(
+        vault_path=tmp_vault, llm_provider="groq", llm_api_key="main-key", llm_model=""
+    )
+
+    chain = _build_provider_chain(settings)
+
+    assert len(chain) == 1
+    assert chain[0] == ("groq", "main-key", "llama-3.3-70b-versatile")
+
+
+def test_build_provider_chain_includes_fallbacks(tmp_vault, monkeypatch):
+    """Chain includes all providers with available API keys."""
+    _clear_all_provider_env_vars(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
+    settings = Settings(vault_path=tmp_vault, llm_provider="anthropic", llm_api_key="ant-key")
+
+    chain = _build_provider_chain(settings)
+
+    providers = [p for p, _, _ in chain]
+    assert providers == ["anthropic", "groq", "gemini"]
+
+
+def test_build_provider_chain_skips_providers_without_keys(tmp_vault, monkeypatch):
+    """Providers without API keys are excluded from chain."""
+    _clear_all_provider_env_vars(monkeypatch)
+    settings = Settings(vault_path=tmp_vault, llm_provider="anthropic", llm_api_key="")
+
+    chain = _build_provider_chain(settings)
+
+    assert chain == []
+
+
+def test_build_provider_chain_explicit_model_for_primary_only(tmp_vault, monkeypatch):
+    """Explicit model setting applies only to primary provider."""
+    _clear_all_provider_env_vars(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
+    settings = Settings(
+        vault_path=tmp_vault,
+        llm_provider="anthropic",
+        llm_api_key="ant-key",
+        llm_model="claude-opus-4-20250514",
+    )
+
+    chain = _build_provider_chain(settings)
+
+    assert chain[0] == ("anthropic", "ant-key", "claude-opus-4-20250514")
+    assert chain[1] == ("groq", "groq-key", "llama-3.3-70b-versatile")
+
+
+def test_fallback_chain_tries_next_provider(summarize_settings):
+    """Primary provider fails → falls back to next available provider."""
+    chain = [
+        ("anthropic", "ant-key", "claude-model"),
+        ("groq", "groq-key", "groq-model"),
+    ]
+
+    primary_exc = Exception("server error")
+    primary_exc.status_code = 500
+
+    with (
+        patch("meetrec.summarizer._build_provider_chain", return_value=chain),
+        patch(
+            "meetrec.summarizer._call_provider_with_retry",
+            side_effect=[primary_exc, "fallback response"],
+        ) as mock,
+    ):
+        result = _call_llm("system", "user", summarize_settings)
+
+    assert result == "fallback response"
+    assert mock.call_count == 2
+    assert mock.call_args_list[0][0][2] == "anthropic"
+    assert mock.call_args_list[1][0][2] == "groq"
+
+
+def test_fallback_all_providers_fail(summarize_settings):
+    """All providers fail → raises last exception."""
+    chain = [
+        ("anthropic", "ant-key", "claude-model"),
+        ("groq", "groq-key", "groq-model"),
+    ]
+
+    exc1 = Exception("anthropic failed")
+    exc1.status_code = 500
+    exc2 = Exception("groq failed")
+    exc2.status_code = 500
+
+    with (
+        patch("meetrec.summarizer._build_provider_chain", return_value=chain),
+        patch(
+            "meetrec.summarizer._call_provider_with_retry",
+            side_effect=[exc1, exc2],
+        ),
+        pytest.raises(Exception, match="groq failed"),
+    ):
+        _call_llm("system", "user", summarize_settings)
+
+
+def test_fallback_empty_chain_raises(summarize_settings):
+    """No providers available → RuntimeError."""
+    with (
+        patch("meetrec.summarizer._build_provider_chain", return_value=[]),
+        pytest.raises(RuntimeError, match="No LLM providers available"),
+    ):
+        _call_llm("system", "user", summarize_settings)

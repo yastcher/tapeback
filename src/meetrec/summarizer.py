@@ -62,17 +62,47 @@ _OPENAI_COMPATIBLE_BASE_URLS: dict[str, str] = {
     "qwen": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
 }
 
+_FALLBACK_CHAIN: list[str] = [
+    "anthropic",
+    "groq",
+    "openrouter",
+    "gemini",
+    "deepseek",
+    "qwen",
+    "openai",
+]
+
+_DEFAULT_MODELS: dict[str, str] = {
+    "anthropic": "claude-sonnet-4-20250514",
+    "openai": "gpt-4o",
+    "groq": "llama-3.3-70b-versatile",
+    "gemini": "gemini-2.0-flash",
+    "openrouter": "google/gemma-3-27b-it:free",
+    "deepseek": "deepseek-chat",
+    "qwen": "qwen-turbo",
+}
+
+
+def _resolve_api_key_for_provider(provider: str, settings: Settings) -> str:
+    """Resolve API key for a specific provider. Returns empty string if unavailable.
+
+    For the primary provider (settings.llm_provider), checks MEETREC_LLM_API_KEY first.
+    For all providers, checks provider-specific env var.
+    """
+    if provider == settings.llm_provider and settings.llm_api_key:
+        return settings.llm_api_key
+
+    env_var = _PROVIDER_ENV_VARS.get(provider, "")
+    return os.environ.get(env_var, "") if env_var else ""
+
 
 def _resolve_api_key(settings: Settings) -> str:
     """Resolve API key: MEETREC_LLM_API_KEY > provider-specific env var."""
-    if settings.llm_api_key:
-        return settings.llm_api_key
-
-    env_var = _PROVIDER_ENV_VARS.get(settings.llm_provider, "")
-    key = os.environ.get(env_var, "") if env_var else ""
+    key = _resolve_api_key_for_provider(settings.llm_provider, settings)
     if key:
         return key
 
+    env_var = _PROVIDER_ENV_VARS.get(settings.llm_provider, "")
     raise RuntimeError(
         f"No API key for {settings.llm_provider}. "
         f"Set MEETREC_LLM_API_KEY or {env_var} environment variable."
@@ -83,33 +113,76 @@ def _get_model(settings: Settings) -> str:
     """Return model name: explicit setting or provider default."""
     if settings.llm_model:
         return settings.llm_model
-    defaults: dict[str, str] = {
-        "anthropic": "claude-sonnet-4-20250514",
-        "openai": "gpt-4o",
-        "groq": "llama-3.3-70b-versatile",
-        "gemini": "gemini-2.0-flash",
-        "openrouter": "google/gemma-3-27b-it:free",
-        "deepseek": "deepseek-chat",
-        "qwen": "qwen-turbo",
-    }
-    return defaults[settings.llm_provider]
+    return _DEFAULT_MODELS[settings.llm_provider]
 
 
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 5  # seconds, doubles each retry: 5, 10, 20
 
 
-def _call_llm(system_prompt: str, user_message: str, settings: Settings) -> str:
-    """Call the configured LLM provider with retry on rate limits.
+def _build_provider_chain(settings: Settings) -> list[tuple[str, str, str]]:
+    """Build ordered list of (provider, api_key, model) to try.
 
-    Retries up to _MAX_RETRIES times on 429/529 errors with exponential backoff.
+    Starts with configured primary provider, then adds available fallbacks.
+    Skips providers without API keys. Explicit llm_model applies only to primary.
     """
-    api_key = _resolve_api_key(settings)
-    model = _get_model(settings)
+    chain: list[tuple[str, str, str]] = []
 
+    primary = settings.llm_provider
+    primary_key = _resolve_api_key_for_provider(primary, settings)
+    if primary_key:
+        model = settings.llm_model or _DEFAULT_MODELS[primary]
+        chain.append((primary, primary_key, model))
+
+    for provider in _FALLBACK_CHAIN:
+        if provider == primary:
+            continue
+        key = _resolve_api_key_for_provider(provider, settings)
+        if key:
+            chain.append((provider, key, _DEFAULT_MODELS[provider]))
+
+    return chain
+
+
+def _call_llm(system_prompt: str, user_message: str, settings: Settings) -> str:
+    """Call LLM with provider fallback chain.
+
+    Tries configured provider first, then falls back through available providers.
+    Each provider is retried on rate limits before moving to the next.
+    """
+    chain = _build_provider_chain(settings)
+    if not chain:
+        raise RuntimeError(
+            "No LLM providers available. "
+            "Set MEETREC_LLM_API_KEY or a provider-specific API key environment variable."
+        )
+
+    last_exc: Exception | None = None
+    for i, (provider, api_key, model) in enumerate(chain):
+        try:
+            return _call_provider_with_retry(system_prompt, user_message, provider, api_key, model)
+        except Exception as exc:
+            last_exc = exc
+            if i < len(chain) - 1:
+                click.echo(
+                    f"Provider {provider} failed: {exc}. Trying next provider...",
+                    err=True,
+                )
+
+    raise last_exc  # type: ignore[misc]
+
+
+def _call_provider_with_retry(
+    system_prompt: str,
+    user_message: str,
+    provider: str,
+    api_key: str,
+    model: str,
+) -> str:
+    """Call a single provider with retry on rate limits (429/529)."""
     for attempt in range(_MAX_RETRIES + 1):
         try:
-            return _call_llm_once(system_prompt, user_message, settings, api_key, model)
+            return _call_llm_once(system_prompt, user_message, provider, api_key, model)
         except Exception as exc:
             status = _get_http_status(exc)
             if status not in (429, 529) or attempt == _MAX_RETRIES:
@@ -133,12 +206,12 @@ def _get_http_status(exc: Exception) -> int | None:
 def _call_llm_once(
     system_prompt: str,
     user_message: str,
-    settings: Settings,
+    provider: str,
     api_key: str,
     model: str,
 ) -> str:
     """Single LLM call without retry."""
-    if settings.llm_provider == "anthropic":
+    if provider == "anthropic":
         import anthropic
 
         ant_client = anthropic.Anthropic(api_key=api_key)
@@ -155,7 +228,7 @@ def _call_llm_once(
     # All other providers use OpenAI-compatible Chat Completions API
     import openai
 
-    base_url = _OPENAI_COMPATIBLE_BASE_URLS.get(settings.llm_provider)
+    base_url = _OPENAI_COMPATIBLE_BASE_URLS.get(provider)
     oai_client = openai.OpenAI(api_key=api_key, base_url=base_url)
     oai_response = oai_client.chat.completions.create(
         model=model,
@@ -276,12 +349,10 @@ def maybe_summarize(md_path: Path | str | None, settings: Settings) -> None:
     if not settings.summarize:
         return
 
-    try:
-        _resolve_api_key(settings)
-    except RuntimeError:
+    if not _build_provider_chain(settings):
         click.echo(
             "Warning: No LLM API key set, skipping summarization. "
-            "Set MEETREC_LLM_API_KEY or ANTHROPIC_API_KEY/OPENAI_API_KEY.",
+            "Set MEETREC_LLM_API_KEY or a provider-specific API key environment variable.",
             err=True,
         )
         return
