@@ -147,7 +147,7 @@ def _call_llm(system_prompt: str, user_message: str, settings: Settings) -> str:
             "Set MEETREC_LLM_API_KEY or a provider-specific API key environment variable."
         )
 
-    last_exc: Exception | None = None
+    last_exc: Exception = RuntimeError("No providers attempted")
     for i, (provider, api_key, model) in enumerate(chain):
         try:
             return _call_provider_with_retry(system_prompt, user_message, provider, api_key, model)
@@ -159,7 +159,7 @@ def _call_llm(system_prompt: str, user_message: str, settings: Settings) -> str:
                     err=True,
                 )
 
-    raise last_exc  # type: ignore[misc]
+    raise last_exc
 
 
 def _call_provider_with_retry(
@@ -213,7 +213,7 @@ def _call_llm_once(
         )
         block = ant_response.content[0]
         assert hasattr(block, "text")  # Always TextBlock for non-streaming
-        return block.text
+        return str(block.text)
 
     # All other providers use OpenAI-compatible Chat Completions API
     import openai

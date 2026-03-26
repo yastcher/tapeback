@@ -31,7 +31,7 @@ def test_stereo_pipeline_produces_segments(e2e_settings, e2e_output_dir):
     segments, info = _process_stereo_file(_STEREO_WAV, e2e_output_dir, e2e_settings, diarize=False)
 
     assert len(segments) > 0, "Pipeline must produce at least one segment"
-    assert info.get("duration", 0) > 0, "Duration must be positive"
+    assert float(info.get("duration", 0)) > 0, "Duration must be positive"
 
     # Mic channel segments should have "You" speaker
     you_segments = [s for s in segments if s.speaker == "You"]

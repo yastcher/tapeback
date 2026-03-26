@@ -49,7 +49,7 @@ dev = [
     "ruff>=0.9.0",
     "pytest>=9.0.0",
     "pytest-cov>=6.0.0",
-    "mypy>=1.14.0",
+    "ty>=0.0.1a7",
 ]
 
 [tool.ruff]
@@ -97,21 +97,33 @@ exclude_lines = [
     "pragma: no cover",
 ]
 
-[tool.mypy]
-strict = true
-python_version = "3.13"
-files = ["src/meetrec"]
+[tool.ty.environment]
+python-version = "3.13"
+# Project root needed for `from tests.fixtures import ...`
+# src/ needed for `from meetrec import ...`
+extra-paths = [".", "src"]
 
-[[tool.mypy.overrides]]
-module = [
-    "faster_whisper.*",
-    "pyannote.*",
-    "torch.*",
-    "torchaudio.*",
-]
-ignore_missing_imports = true
+# pydantic-settings fills required fields from env vars at runtime;
+# pyannote Pipeline stubs have incorrect __call__ signature
+[[tool.ty.overrides]]
+include = ["src/meetrec/settings.py"]
+[tool.ty.overrides.rules]
+missing-argument = "ignore"
 
-[[tool.mypy.overrides]]
-module = "meetrec.diarizer"
-# pyannote Pipeline stubs are incomplete (Pipeline | None, broken __call__)
-disallow_any_expr = false
+[[tool.ty.overrides]]
+include = ["src/meetrec/diarizer.py"]
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
+
+[[tool.ty.overrides]]
+include = ["src/meetrec/cli.py"]
+[tool.ty.overrides.rules]
+# click.Choice validates provider at runtime before assignment
+invalid-assignment = "ignore"
+
+[[tool.ty.overrides]]
+include = ["tests/"]
+[tool.ty.overrides.rules]
+# Tests use monkey-patched Exception.status_code; pydantic-settings fills vault_path from env
+unresolved-attribute = "ignore"
+missing-argument = "ignore"
