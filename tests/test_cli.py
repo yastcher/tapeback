@@ -173,8 +173,8 @@ def test_status_command(runner, tmp_path, monkeypatch):
             "started_at": "2026-03-20T10:00:00",
             "pid_monitor": 12345,
             "pid_mic": 12346,
-            "monitor_path": "/tmp/meetrec/test/monitor.wav",
-            "mic_path": "/tmp/meetrec/test/mic.wav",
+            "monitor_path": "/tmp/echo-vault/test/monitor.wav",
+            "mic_path": "/tmp/echo-vault/test/mic.wav",
         }
         with patch("meetrec.recorder.Recorder.get_session_info", return_value=session_info):
             result = runner.invoke(cli, ["status"])

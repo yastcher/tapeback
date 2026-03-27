@@ -1,0 +1,21 @@
+# Maintainer: Yast <yastcher@gmail.com>
+pkgname=echo-vault-diarize
+pkgver=0.8.0
+pkgrel=1
+pkgdesc="Speaker diarization support for echo-vault (pyannote + PyTorch)"
+arch=('any')
+url="https://github.com/yastcher/echo-vault"
+license=('Apache-2.0')
+depends=('echo-vault')
+optdepends=('cuda: GPU-accelerated diarization')
+install=echo-vault-diarize.install
+
+# Meta-package: dependencies installed via .install hook into /opt/echo-vault/ venv.
+# PyTorch wheels are ~2 GB and cannot be reasonably packaged as Arch packages.
+
+package() {
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/doc/$pkgname/README" <<EOF
+echo-vault-diarize: speaker diarization support for echo-vault.
+Pip dependencies installed into /opt/echo-vault/ venv by install hook.
+EOF
+}

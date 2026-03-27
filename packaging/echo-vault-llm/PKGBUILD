@@ -1,0 +1,19 @@
+# Maintainer: Yast <yastcher@gmail.com>
+pkgname=echo-vault-llm
+pkgver=0.8.0
+pkgrel=1
+pkgdesc="LLM summarization support for echo-vault (Anthropic, OpenAI, Gemini, etc.)"
+arch=('any')
+url="https://github.com/yastcher/echo-vault"
+license=('Apache-2.0')
+depends=('echo-vault')
+install=echo-vault-llm.install
+
+# Meta-package: dependencies installed via .install hook into /opt/echo-vault/ venv.
+
+package() {
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/doc/$pkgname/README" <<EOF
+echo-vault-llm: LLM summarization support for echo-vault.
+Pip dependencies installed into /opt/echo-vault/ venv by install hook.
+EOF
+}

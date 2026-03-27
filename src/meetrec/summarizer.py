@@ -202,7 +202,12 @@ def _call_llm_once(
 ) -> str:
     """Single LLM call without retry."""
     if provider == "anthropic":
-        import anthropic
+        try:
+            import anthropic
+        except ImportError:
+            raise RuntimeError(
+                "anthropic package not installed. Install with: uv pip install echo-vault[llm]"
+            ) from None
 
         ant_client = anthropic.Anthropic(api_key=api_key)
         ant_response = ant_client.messages.create(
@@ -216,7 +221,12 @@ def _call_llm_once(
         return str(block.text)
 
     # All other providers use OpenAI-compatible Chat Completions API
-    import openai
+    try:
+        import openai
+    except ImportError:
+        raise RuntimeError(
+            "openai package not installed. Install with: uv pip install echo-vault[llm]"
+        ) from None
 
     base_url = _OPENAI_COMPATIBLE_BASE_URLS.get(provider)
     oai_client = openai.OpenAI(api_key=api_key, base_url=base_url)

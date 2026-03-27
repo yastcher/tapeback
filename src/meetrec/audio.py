@@ -156,7 +156,7 @@ def get_channel_count(audio_path: Path) -> int:
 def convert_to_mono16k(input_file: Path, output_dir: Path) -> Path:
     """Convert any audio file to 16kHz mono WAV for Whisper.
 
-    Used by `meetrec process` for pre-recorded files.
+    Used by `echo-vault process` for pre-recorded files.
     """
     _check_ffmpeg()
 

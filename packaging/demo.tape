@@ -6,7 +6,7 @@ Set Height 500
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 50ms
 
-Type "# meetrec — record and transcribe meetings locally"
+Type "# echo-vault — record and transcribe meetings locally"
 Enter
 Sleep 1s
 
@@ -14,7 +14,7 @@ Type "export MEETREC_VAULT_PATH=~/vault"
 Enter
 Sleep 500ms
 
-Type "meetrec start weekly-standup"
+Type "echo-vault start weekly-standup"
 Enter
 Sleep 2s
 

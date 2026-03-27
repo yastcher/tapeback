@@ -69,7 +69,7 @@ def test_stereo_pipeline_with_diarization(e2e_settings, e2e_output_dir):
 
 
 def test_process_command_with_real_audio(e2e_settings):
-    """meetrec process command with real stereo WAV end-to-end."""
+    """echo-vault process command with real stereo WAV end-to-end."""
     runner = CliRunner()
     result = runner.invoke(
         cli,

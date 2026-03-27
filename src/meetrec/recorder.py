@@ -22,7 +22,7 @@ class SessionData(TypedDict):
     started_at: str
 
 
-_DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "meetrec"
+_DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "echo-vault"
 
 
 def detect_devices(settings: Settings) -> tuple[str, str]:
@@ -161,12 +161,12 @@ class Recorder:
     def start(self, settings: Settings, session_name: str | None = None) -> str:
         """Start two parecord subprocesses for monitor and mic recording.
 
-        Creates temp directory /tmp/meetrec/{session_name}/ with monitor.wav and mic.wav.
+        Creates temp directory /tmp/echo-vault/{session_name}/ with monitor.wav and mic.wav.
         Saves state to session.json. Returns session_name.
         """
         if self.is_recording():
             raise RuntimeError(
-                "Recording already in progress. Run 'meetrec stop' to finish it first."
+                "Recording already in progress. Run 'echo-vault stop' to finish it first."
             )
 
         if not shutil.which("parecord"):
@@ -182,7 +182,7 @@ class Recorder:
                 "Only alphanumerics, dashes, and underscores are allowed."
             )
 
-        base_dir = Path("/tmp/meetrec")
+        base_dir = Path("/tmp/echo-vault")
         base_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         tmp_dir = base_dir / session_name
         tmp_dir.mkdir(exist_ok=True, mode=0o700)

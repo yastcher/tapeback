@@ -21,8 +21,6 @@ dependencies = [
     "faster-whisper>=1.0.0",
     "pydantic-settings>=2.0.0",
     "click>=8.0.0",
-    "anthropic>=0.40.0",
-    "openai>=1.50.0",
 ]
 
 [project.optional-dependencies]
@@ -31,9 +29,13 @@ diarize = [
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
 ]
+llm = [
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
+]
 
 [project.scripts]
-meetrec = "meetrec.cli:cli"
+echo-vault = "meetrec.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/yastcher/echo-vault"
@@ -57,6 +59,8 @@ dev = [
     "pyannote-audio>=3.1.0",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
 ]
 
 [tool.ruff]
@@ -72,7 +76,7 @@ ignore = [
     "S603",    # subprocess calls are safe (list-based, no shell)
     "S607",    # partial executable paths (ffmpeg, parecord) are intentional
     "PLR2004", # magic numbers — too noisy for audio/test code
-    "S108",    # /tmp/meetrec is intentional, secured with 0700 permissions
+    "S108",    # /tmp/echo-vault is intentional, secured with 0700 permissions
 ]
 fixable = ["ALL"]
 

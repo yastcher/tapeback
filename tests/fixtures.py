@@ -177,8 +177,8 @@ def create_session_file(session_file, **overrides):
         "pid_monitor": 99998,
         "pid_mic": 99999,
         "session_name": "test_session",
-        "monitor_path": "/tmp/meetrec/test_session/monitor.wav",
-        "mic_path": "/tmp/meetrec/test_session/mic.wav",
+        "monitor_path": "/tmp/echo-vault/test_session/monitor.wav",
+        "mic_path": "/tmp/echo-vault/test_session/mic.wav",
         "started_at": "2026-03-17T14:30:00",
         **overrides,
     }

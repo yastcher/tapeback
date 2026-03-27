@@ -1,31 +1,43 @@
 # Maintainer: Yast <yastcher@gmail.com>
 pkgname=echo-vault
-pkgver=0.7.0
+pkgver=0.8.0
 pkgrel=1
 pkgdesc="Local meeting recorder with transcription and speaker diarization for Obsidian"
 arch=('any')
 url="https://github.com/yastcher/echo-vault"
 license=('Apache-2.0')
 depends=(
-    'python>=3.13'
+    'python'
     'ffmpeg'
     'pipewire-pulse'
-    'python-pip'
 )
 optdepends=(
-    'cuda: GPU-accelerated transcription'
+    'cuda: GPU-accelerated transcription and diarization'
 )
-makedepends=('python-build' 'python-installer' 'python-hatchling')
+makedepends=('python' 'python-pip')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/yastcher/echo-vault/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {
     cd "$pkgname-$pkgver"
-    python -m build --wheel --no-isolation
+    python -m venv --system-site-packages "$srcdir/venv"
+    "$srcdir/venv/bin/pip" install --no-cache-dir .
 }
 
 package() {
+    # Install venv to /opt
+    install -d "$pkgdir/opt/$pkgname"
+    cp -a "$srcdir/venv"/* "$pkgdir/opt/$pkgname/"
+
+    # Create wrapper script
+    install -d "$pkgdir/usr/bin"
+    cat > "$pkgdir/usr/bin/echo-vault" << 'WRAPPER'
+#!/bin/sh
+exec /opt/echo-vault/bin/echo-vault "$@"
+WRAPPER
+    chmod 755 "$pkgdir/usr/bin/echo-vault"
+
+    # License
     cd "$pkgname-$pkgver"
-    python -m installer --destdir="$pkgdir" dist/*.whl
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

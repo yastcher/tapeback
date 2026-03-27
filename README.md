@@ -18,7 +18,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Stereo channel separation** — your mic (left) vs. others (right) for accurate "You" attribution
 - **Obsidian-native output** — Markdown with YAML frontmatter, wikilinks to audio files
 - **LLM summarization** — optional summaries via Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback)
-- **CLI-first** — `meetrec start`, Ctrl+C to stop, done
+- **CLI-first** — `echo-vault start`, Ctrl+C to stop, done
 
 ## Requirements
 
@@ -47,42 +47,72 @@ pipx ensurepath
 
 ### 2. Install echo-vault
 
+The base package records audio and transcribes locally. Optional extras add
+speaker diarization and LLM summaries:
+
+| Extra | What it adds | Size |
+|---|---|---|
+| *(none)* | Recording + transcription | ~150 MB |
+| `[llm]` | LLM summarization (Anthropic, OpenAI, Gemini, etc.) | +50 MB |
+| `[diarize]` | Speaker diarization (pyannote + PyTorch) | +2 GB |
+| `[llm,diarize]` | Everything | +2 GB |
+
 #### With uv (recommended)
 
 ```bash
-# Basic — recording + transcription
-uv tool install echo-vault
-
-# With speaker diarization (adds ~2 GB for PyTorch)
-uv tool install "echo-vault[diarize]"
+uv tool install echo-vault                  # basic
+uv tool install "echo-vault[llm]"           # + summaries
+uv tool install "echo-vault[diarize]"       # + speaker diarization
+uv tool install "echo-vault[llm,diarize]"   # everything
 ```
 
 #### With pipx
 
 ```bash
-pipx install echo-vault
-pipx install "echo-vault[diarize]"    # with diarization
-```
-
-#### From source
-
-```bash
-git clone https://github.com/yastcher/echo-vault
-cd echo-vault
-uv sync                # basic
-uv sync --group dev    # with diarization + dev tools
+pipx install echo-vault                     # basic
+pipx install "echo-vault[llm]"              # + summaries
+pipx install "echo-vault[diarize]"          # + speaker diarization
+pipx install "echo-vault[llm,diarize]"      # everything
 ```
 
 #### Arch Linux (AUR)
 
 ```bash
-yay -S echo-vault
+yay -S echo-vault                  # basic
+yay -S echo-vault-llm              # + summaries
+yay -S echo-vault-diarize          # + speaker diarization (~2 GB PyTorch)
 ```
 
 #### Nix
 
 ```bash
-nix run github:yastcher/echo-vault
+nix run github:yastcher/echo-vault              # basic
+nix run github:yastcher/echo-vault#llm          # + summaries
+nix run github:yastcher/echo-vault#diarize      # + speaker diarization
+nix run github:yastcher/echo-vault#full         # everything
+```
+
+#### From source (development)
+
+```bash
+git clone https://github.com/yastcher/echo-vault
+cd echo-vault
+uv sync --group dev    # all dependencies + dev tools
+```
+
+### 3. Uninstall
+
+```bash
+# Remove echo-vault
+uv tool uninstall echo-vault    # if installed with uv
+pipx uninstall echo-vault       # if installed with pipx
+
+# Remove cached ML models (~2-5 GB)
+# ⚠ Skip if you have other HuggingFace projects
+rm -rf ~/.cache/huggingface/
+
+# Arch Linux
+yay -R echo-vault echo-vault-diarize echo-vault-llm
 ```
 
 ## Quick start
@@ -101,10 +131,10 @@ echo 'MEETREC_VAULT_PATH=~/Documents/obsidian/vault' > .env
 
 ```bash
 # Start recording (blocks, Ctrl+C to stop and transcribe)
-meetrec start
+echo-vault start
 
 # Optionally give the session a name
-meetrec start "weekly-standup"
+echo-vault start "weekly-standup"
 ```
 
 ### 3. Check your vault
@@ -121,17 +151,17 @@ vault/
 
 ```bash
 # Transcribe any audio file (mp3, m4a, ogg, wav)
-meetrec process meeting.mp3
+echo-vault process meeting.mp3
 
 # With options
-meetrec process call.wav --name "client-call" --no-diarize
+echo-vault process call.wav --name "client-call" --no-diarize
 ```
 
 ### Add summary to existing transcript
 
 ```bash
-meetrec summarize vault/meetings/2026-03-23.md
-meetrec summarize transcript.md --provider gemini
+echo-vault summarize vault/meetings/2026-03-23.md
+echo-vault summarize transcript.md --provider gemini
 ```
 
 ## Configuration
@@ -178,13 +208,8 @@ cp .env.example .env
 | `MEETREC_HF_TOKEN` | *(empty)* | HuggingFace token for pyannote models |
 | `MEETREC_MAX_SPEAKERS` | *(auto)* | Maximum number of speakers |
 
-Speaker diarization requires the `diarize` extra:
-
-```bash
-uv pip install echo-vault[diarize]
-```
-
-It also requires a HuggingFace token with access to pyannote models:
+Speaker diarization requires the `diarize` extra (`uv tool install "echo-vault[diarize]"`)
+and a HuggingFace token with access to pyannote models:
 
 1. Create account at [huggingface.co](https://huggingface.co)
 2. Accept license at [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
@@ -193,9 +218,11 @@ It also requires a HuggingFace token with access to pyannote models:
 5. Create token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 6. Set `MEETREC_HF_TOKEN=hf_your_token_here`
 
-Without a token, meetrec still works — it just skips diarization.
+Without a token, echo-vault still works — it just skips diarization.
 
 ### LLM summarization
+
+Requires the `llm` extra: `uv tool install "echo-vault[llm]"`
 
 | Variable | Default | Description |
 |---|---|---|
@@ -216,26 +243,26 @@ Supported providers and their env vars:
 | `deepseek` | `DEEPSEEK_API_KEY` | deepseek-chat |
 | `qwen` | `DASHSCOPE_API_KEY` | qwen-turbo |
 
-If the primary provider fails, meetrec automatically tries the next available provider (any provider with an API key set).
+If the primary provider fails, echo-vault automatically tries the next available provider (any provider with an API key set).
 
 ## CLI reference
 
 ```
-meetrec --help                    Show help and quick start guide
-meetrec start [NAME]              Start recording (Ctrl+C to stop)
-meetrec stop                      Stop recording from another terminal
-meetrec process <FILE> [--name N] Transcribe an existing audio file
-meetrec summarize <FILE>          Add LLM summary to transcript
-meetrec status                    Show recording status and settings
+echo-vault --help                    Show help and quick start guide
+echo-vault start [NAME]              Start recording (Ctrl+C to stop)
+echo-vault stop                      Stop recording from another terminal
+echo-vault process <FILE> [--name N] Transcribe an existing audio file
+echo-vault summarize <FILE>          Add LLM summary to transcript
+echo-vault status                    Show recording status and settings
 ```
 
 ### Common options
 
 ```bash
-meetrec start --no-diarize        # Skip speaker identification
-meetrec start --no-summarize      # Skip LLM summary
-meetrec process file.mp3 --name "weekly-standup"
-meetrec summarize file.md --provider gemini --model gemini-2.5-pro
+echo-vault start --no-diarize        # Skip speaker identification
+echo-vault start --no-summarize      # Skip LLM summary
+echo-vault process file.mp3 --name "weekly-standup"
+echo-vault summarize file.md --provider gemini --model gemini-2.5-pro
 ```
 
 ## Output format

@@ -13,7 +13,7 @@ from meetrec.settings import Settings, get_settings
 
 @click.group()
 def cli() -> None:
-    """meetrec — local meeting recorder for Obsidian.
+    """echo-vault — local meeting recorder for Obsidian.
 
     Records system audio + microphone via PipeWire/PulseAudio,
     transcribes locally with Whisper, identifies speakers with pyannote,
@@ -24,8 +24,8 @@ def cli() -> None:
     \b
     Quick start:
       export MEETREC_VAULT_PATH=~/Documents/obsidian/vault
-      meetrec start          # record (Ctrl+C to stop)
-      meetrec process a.mp3  # transcribe existing file
+      echo-vault start          # record (Ctrl+C to stop)
+      echo-vault process a.mp3  # transcribe existing file
 
     \b
     Configuration:
@@ -47,7 +47,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
 
     \b
     Optionally provide a NAME for the output file:
-      meetrec start "weekly-standup"
+      echo-vault start "weekly-standup"
     """
     settings = get_settings()
 
@@ -59,7 +59,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
     click.echo(f"Recording started: {session_name}", err=True)
     click.echo(f"Monitor: {monitor}", err=True)
     click.echo(f"Mic: {mic}", err=True)
-    click.echo("Run 'meetrec stop' to finish and transcribe.", err=True)
+    click.echo("Run 'echo-vault stop' to finish and transcribe.", err=True)
     click.echo("Or press Ctrl+C to stop and transcribe now.", err=True)
 
     # Block and wait for Ctrl+C
@@ -72,14 +72,17 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
                 recorder, settings, diarize=not no_diarize, do_summarize=not no_summarize
             )
         except KeyboardInterrupt:
-            click.echo("\nAborted during processing. Audio files kept in /tmp/meetrec/", err=True)
+            click.echo(
+                "\nAborted during processing. Audio files kept in /tmp/echo-vault/",
+                err=True,
+            )
 
 
 @cli.command()
 def stop() -> None:
     """Stop recording from another terminal.
 
-    Sends stop signal to a running 'meetrec start' process,
+    Sends stop signal to a running 'echo-vault start' process,
     then transcribes and saves the recording to vault.
     """
     settings = get_settings()
@@ -144,14 +147,14 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
     and saves everything as a Markdown note in your vault.
 
     \b
-    Stereo WAV files (from meetrec start) use the dual-channel pipeline
+    Stereo WAV files (from echo-vault start) use the dual-channel pipeline
     with per-channel transcription and speaker attribution.
     All other files use mono processing.
 
     \b
     Examples:
-      meetrec process meeting.mp3
-      meetrec process call.wav --name "client-call" --no-diarize
+      echo-vault process meeting.mp3
+      echo-vault process call.wav --name "client-call" --no-diarize
     """
     settings = get_settings()
 
@@ -167,7 +170,7 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
     audio_dest = save_audio_to_vault(audio_path, settings, name)
     click.echo(f"Audio saved: {audio_dest}", err=True)
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix="meetrec_"))
+    tmp_dir = Path(tempfile.mkdtemp(prefix="echo-vault_"))
 
     # Stereo WAV → dual-channel pipeline (split channels, transcribe each)
     # Mono/other → single-channel pipeline
@@ -416,13 +419,14 @@ def summarize(file: str, provider: str | None, model: str | None) -> None:
     brief overview, action items, and key decisions.
 
     \b
-    Requires an API key — set MEETREC_LLM_API_KEY or a provider-specific
+    Requires the llm extra: uv pip install echo-vault[llm]
+    and an API key — set MEETREC_LLM_API_KEY or a provider-specific
     env var (ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.).
 
     \b
     Examples:
-      meetrec summarize vault/meetings/2026-03-26.md
-      meetrec summarize transcript.md --provider gemini
+      echo-vault summarize vault/meetings/2026-03-26.md
+      echo-vault summarize transcript.md --provider gemini
     """
     settings = get_settings()
 

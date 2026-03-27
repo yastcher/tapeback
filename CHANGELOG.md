@@ -5,12 +5,27 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] — 2026-03-26
+## [0.8.0] — 2026-03-27
+
+### Added
+- `scripts/release.sh` — version bump across pyproject.toml, PKGBUILD
+- AUR packages: `echo-vault-diarize`, `echo-vault-llm` — optional extras as separate packages
+- Version validation step in publish.yml — tag must match pyproject.toml
+- Lint + tests run before PyPI publish
 
 ### Changed
-- Speaker diarization (pyannote/torch) moved to optional dependency: `uv pip install echo-vault[diarize]`
-- Base install no longer requires PyTorch (~2 GB smaller)
+- **CLI command renamed from `meetrec` to `echo-vault`** — entry point, help texts, temp dirs, state dir
+- Speaker diarization (pyannote/torch) moved to optional dependency: `echo-vault[diarize]`
+- LLM SDKs (anthropic/openai) moved to optional dependency: `echo-vault[llm]`
+- Base install no longer requires PyTorch or LLM SDKs (~2 GB smaller)
 - Monitor channel segments default to "Other" speaker when diarization is not available
+- PKGBUILD rewritten with venv-based install (Python deps from PyPI, system deps from pacman)
+- Nix flake: extras variants (`#llm`, `#diarize`, `#full`) via `nix run`
+
+### Security
+- GitHub Actions pinned to commit SHA (prevents supply-chain tag hijacking)
+- CI workflow: explicit `permissions: contents: read`
+- Publish workflow: type check step added, awk regex dots escaped in changelog extraction
 
 ## [0.7.0] — 2026-03-26
 
@@ -43,7 +58,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `models.py` — domain objects extracted into dedicated module
 - `vault.py` — Obsidian vault I/O separated from formatting
 - Session name validation (alphanumerics, dashes, underscores only)
-- Restrictive permissions (0700) on `/tmp/meetrec` temp directories
+- Restrictive permissions (0700) on `/tmp/echo-vault` temp directories
 - mypy strict mode
 - Coverage threshold (85%) enforced in CI
 

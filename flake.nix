@@ -22,16 +22,27 @@
           ];
 
           shellHook = ''
-            echo "meetrec dev shell — run 'uv sync' to install Python deps"
+            echo "echo-vault dev shell — run 'uv sync' to install Python deps"
           '';
         };
 
-        # User shell — for running meetrec without cloning the repo
-        # Usage: nix run github:yastcher/echo-vault
-        packages.default = pkgs.writeShellScriptBin "meetrec" ''
-          export PATH="${pkgs.lib.makeBinPath [ pkgs.ffmpeg pkgs.pipewire.pulse ]}:$PATH"
-          exec ${pkgs.uv}/bin/uvx echo-vault "$@"
-        '';
+        # Convenience wrappers — run via uvx, NOT reproducible Nix packages.
+        # Require network access on first run to fetch from PyPI.
+        #   nix run github:yastcher/echo-vault            # base
+        #   nix run github:yastcher/echo-vault#llm        # + summaries
+        #   nix run github:yastcher/echo-vault#diarize    # + speaker diarization
+        #   nix run github:yastcher/echo-vault#full       # everything
+        packages = let
+          mkWrapper = extras: pkgs.writeShellScriptBin "echo-vault" ''
+            export PATH="${pkgs.lib.makeBinPath [ pkgs.ffmpeg pkgs.pipewire.pulse ]}:$PATH"
+            exec ${pkgs.uv}/bin/uvx "echo-vault${extras}" "$@"
+          '';
+        in {
+          default  = mkWrapper "";
+          llm      = mkWrapper "[llm]";
+          diarize  = mkWrapper "[diarize]";
+          full     = mkWrapper "[llm,diarize]";
+        };
       }
     );
 }
