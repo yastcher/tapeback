@@ -7,8 +7,7 @@ services or API calls needed for transcription.
 
 Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord, Slack huddles.
 
-<!-- TODO: Add demo GIF here -->
-<!-- ![tapeback demo](docs/demo.gif) -->
+![tapeback in Obsidian](docs/obsidian-screenshot.png)
 
 ## Features
 
@@ -353,8 +352,14 @@ scripts/aur-publish.sh 0.9.0      # update all 3 AUR packages
 - **Speaker profiles**: learn and remember recurring speakers across meetings
 - **Multi-language meetings**: detect and handle language switches mid-meeting
 
-<!-- QR codes for donations -->
-<!-- TODO: Insert QR codes here -->
+## Support
+
+If you find tapeback useful, consider a small donation:
+
+| USDT (TRC-20) | ADA (Cardano) |
+|:-:|:-:|
+| <img src="docs/qr-usdt.png" width="180"> | <img src="docs/qr-ada.png" width="180"> |
+| `TAECw9FebnoSN2n3H2Fk9Bv5aA8fwpCuBB` | `addr1q9tqg2g8wxpxawsrvea84lms3ampuda0ygzawuxq77sxwr48mxj2vq2rzd4nsmhpdhy6lftp30tz78tetzr29mtvkqmsskrmp7` |
 
 ## License
 
