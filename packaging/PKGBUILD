@@ -9,7 +9,7 @@ license=('Apache-2.0')
 depends=(
     'python'
     'ffmpeg'
-    'pipewire-pulse|pulseaudio'
+    'pulse-native-provider'
 )
 optdepends=(
     'cuda: GPU-accelerated transcription and diarization'
