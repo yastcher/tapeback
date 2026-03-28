@@ -17,16 +17,13 @@ def test_settings_from_env(monkeypatch, tmp_path):
     assert s.language == "ru"
 
 
-def test_settings_vault_path_required(monkeypatch, tmp_path):
-    """get_settings should exit with clear message if TAPEBACK_VAULT_PATH is not set."""
+def test_settings_vault_path_default(monkeypatch, tmp_path):
+    """vault_path should default to ~/tapeback when not set."""
     monkeypatch.delenv("TAPEBACK_VAULT_PATH", raising=False)
-    # Change to a temp dir without .env file
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(SystemExit) as exc_info:
-        get_settings()
-
-    assert "TAPEBACK_VAULT_PATH" in str(exc_info.value)
+    s = get_settings()
+    assert s.vault_path.name == "tapeback"
 
 
 def test_settings_defaults(tmp_vault):

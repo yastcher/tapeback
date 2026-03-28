@@ -119,12 +119,15 @@ yay -R tapeback tapeback-diarize tapeback-llm
 
 ### 1. Configure
 
+By default, tapeback saves recordings to `~/tapeback/`. To change it
+(e.g. to your Obsidian vault):
+
 ```bash
-# Required: set your Obsidian vault path
 export TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault
 
-# Or create a .env file in the project root:
-echo 'TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault' > .env
+# Or create a persistent config:
+mkdir -p ~/.config/tapeback
+echo 'TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault' > ~/.config/tapeback/.env
 ```
 
 ### 2. Record a meeting
@@ -177,7 +180,7 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |---|---|---|
-| `TAPEBACK_VAULT_PATH` | *(required)* | Path to Obsidian vault |
+| `TAPEBACK_VAULT_PATH` | `~/tapeback` | Path to output directory (Obsidian vault) |
 | `TAPEBACK_MEETINGS_DIR` | `meetings` | Subdirectory for meeting notes |
 | `TAPEBACK_ATTACHMENTS_DIR` | `attachments/audio` | Subdirectory for audio files |
 

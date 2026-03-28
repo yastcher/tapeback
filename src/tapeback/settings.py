@@ -19,12 +19,12 @@ DEFAULT_MODELS: dict[str, str] = {
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="TAPEBACK_",
-        env_file=".env",
+        env_file=(Path.home() / ".config" / "tapeback" / ".env", ".env"),
         env_file_encoding="utf-8",
     )
 
-    # Required — path to Obsidian vault
-    vault_path: Path
+    # Output directory (Obsidian vault or any folder)
+    vault_path: Path = Path.home() / "tapeback"
 
     # Subdirectories in vault
     meetings_dir: str = "meetings"
@@ -71,12 +71,5 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Load settings. Raises clear error if TAPEBACK_VAULT_PATH is not set."""
-    try:
-        return Settings()  # type: ignore[call-arg]
-    except Exception:
-        raise SystemExit(
-            "Error: TAPEBACK_VAULT_PATH is required.\n"
-            "Set it via environment variable or .env file:\n"
-            "  export TAPEBACK_VAULT_PATH=/path/to/obsidian/vault\n"
-        ) from None
+    """Load settings from env vars and .env files."""
+    return Settings()  # type: ignore[call-arg]
