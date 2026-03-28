@@ -6,14 +6,14 @@ from pathlib import Path
 
 import click
 
-from meetrec.models import Segment
-from meetrec.recorder import Recorder, detect_devices
-from meetrec.settings import Settings, get_settings
+from tapeback.models import Segment
+from tapeback.recorder import Recorder, detect_devices
+from tapeback.settings import Settings, get_settings
 
 
 @click.group()
 def cli() -> None:
-    """echo-vault — local meeting recorder for Obsidian.
+    """tapeback — local meeting recorder for Obsidian.
 
     Records system audio + microphone via PipeWire/PulseAudio,
     transcribes locally with Whisper, identifies speakers with pyannote,
@@ -23,14 +23,14 @@ def cli() -> None:
 
     \b
     Quick start:
-      export MEETREC_VAULT_PATH=~/Documents/obsidian/vault
-      echo-vault start          # record (Ctrl+C to stop)
-      echo-vault process a.mp3  # transcribe existing file
+      export TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault
+      tapeback start          # record (Ctrl+C to stop)
+      tapeback process a.mp3  # transcribe existing file
 
     \b
     Configuration:
-      All settings via MEETREC_* env vars or .env file.
-      See: https://github.com/yastcher/echo-vault#configuration
+      All settings via TAPEBACK_* env vars or .env file.
+      See: https://github.com/yastcher/tapeback#configuration
     """
 
 
@@ -47,7 +47,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
 
     \b
     Optionally provide a NAME for the output file:
-      echo-vault start "weekly-standup"
+      tapeback start "weekly-standup"
     """
     settings = get_settings()
 
@@ -59,7 +59,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
     click.echo(f"Recording started: {session_name}", err=True)
     click.echo(f"Monitor: {monitor}", err=True)
     click.echo(f"Mic: {mic}", err=True)
-    click.echo("Run 'echo-vault stop' to finish and transcribe.", err=True)
+    click.echo("Run 'tapeback stop' to finish and transcribe.", err=True)
     click.echo("Or press Ctrl+C to stop and transcribe now.", err=True)
 
     # Block and wait for Ctrl+C
@@ -73,7 +73,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
             )
         except KeyboardInterrupt:
             click.echo(
-                "\nAborted during processing. Audio files kept in /tmp/echo-vault/",
+                "\nAborted during processing. Audio files kept in /tmp/tapeback/",
                 err=True,
             )
 
@@ -82,7 +82,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
 def stop() -> None:
     """Stop recording from another terminal.
 
-    Sends stop signal to a running 'echo-vault start' process,
+    Sends stop signal to a running 'tapeback start' process,
     then transcribes and saves the recording to vault.
     """
     settings = get_settings()
@@ -97,9 +97,9 @@ def _stop_and_process(
     click.echo("Stopping recording...", err=True)
     monitor_path, mic_path = recorder.stop()
 
-    from meetrec.audio import merge_channels
-    from meetrec.formatter import format_markdown
-    from meetrec.vault import save_audio_to_vault, save_markdown_to_vault
+    from tapeback.audio import merge_channels
+    from tapeback.formatter import format_markdown
+    from tapeback.vault import save_audio_to_vault, save_markdown_to_vault
 
     click.echo("Merging audio channels...", err=True)
     output_dir = monitor_path.parent
@@ -127,7 +127,7 @@ def _stop_and_process(
     click.echo(f"Saved: {md_path}", err=True)
 
     if do_summarize:
-        from meetrec.summarizer import maybe_summarize
+        from tapeback.summarizer import maybe_summarize
 
         maybe_summarize(md_path, settings)
 
@@ -147,19 +147,19 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
     and saves everything as a Markdown note in your vault.
 
     \b
-    Stereo WAV files (from echo-vault start) use the dual-channel pipeline
+    Stereo WAV files (from tapeback start) use the dual-channel pipeline
     with per-channel transcription and speaker attribution.
     All other files use mono processing.
 
     \b
     Examples:
-      echo-vault process meeting.mp3
-      echo-vault process call.wav --name "client-call" --no-diarize
+      tapeback process meeting.mp3
+      tapeback process call.wav --name "client-call" --no-diarize
     """
     settings = get_settings()
 
-    from meetrec.formatter import format_markdown
-    from meetrec.vault import save_audio_to_vault, save_markdown_to_vault
+    from tapeback.formatter import format_markdown
+    from tapeback.vault import save_audio_to_vault, save_markdown_to_vault
 
     audio_path = Path(audio_file)
 
@@ -170,7 +170,7 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
     audio_dest = save_audio_to_vault(audio_path, settings, name)
     click.echo(f"Audio saved: {audio_dest}", err=True)
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix="echo-vault_"))
+    tmp_dir = Path(tempfile.mkdtemp(prefix="tapeback_"))
 
     # Stereo WAV → dual-channel pipeline (split channels, transcribe each)
     # Mono/other → single-channel pipeline
@@ -194,7 +194,7 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
     click.echo(f"Saved: {md_path}", err=True)
 
     if not no_summarize:
-        from meetrec.summarizer import maybe_summarize
+        from tapeback.summarizer import maybe_summarize
 
         maybe_summarize(md_path, settings)
 
@@ -205,7 +205,7 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
 def _is_stereo(audio_path: Path) -> bool:
     """Check if an audio file is a stereo WAV."""
     try:
-        from meetrec.audio import get_channel_count
+        from tapeback.audio import get_channel_count
 
         return get_channel_count(audio_path) == 2
     except Exception:  # noqa: S110 — non-WAV or unreadable files are expected
@@ -225,14 +225,14 @@ def _process_stereo_file(
     Splits left (mic) / right (monitor), transcribes each channel separately,
     applies silence filtering, diarizes monitor channel, merges by time.
     """
-    from meetrec.audio import split_channels_16k
-    from meetrec.diarizer import (
+    from tapeback.audio import split_channels_16k
+    from tapeback.diarizer import (
         filter_silent_segments,
         load_stereo_channels,
         merge_channel_segments,
         split_on_silence,
     )
-    from meetrec.transcriber import Transcriber
+    from tapeback.transcriber import Transcriber
 
     # Load raw stereo channels for RMS filtering (before loudnorm)
     mic_raw, monitor_raw, raw_sr = load_stereo_channels(stereo_path)
@@ -266,17 +266,17 @@ def _process_stereo_file(
     # Diarize monitor channel to separate remote speakers
     diarized = False
     if diarize and settings.diarize and settings.hf_token:
-        from meetrec.diarizer import diarization_available
+        from tapeback.diarizer import diarization_available
 
         if not diarization_available():
             click.echo(
                 "Warning: pyannote-audio not installed, skipping diarization. "
-                "Install with: uv pip install echo-vault[diarize]",
+                "Install with: uv pip install tapeback[diarize]",
                 err=True,
             )
         else:
             click.echo("Diarizing speakers...", err=True)
-            from meetrec.diarizer import Diarizer, assign_speakers, merge_similar_speakers
+            from tapeback.diarizer import Diarizer, assign_speakers, merge_similar_speakers
 
             diarizer = Diarizer(settings)
             diarization_segments = diarizer.diarize(monitor_16k)
@@ -310,8 +310,8 @@ def _process_mono_file(
     diarize: bool,
 ) -> tuple[list[Segment], dict[str, str | float]]:
     """Process a mono/non-stereo audio file through the single-channel pipeline."""
-    from meetrec.audio import convert_to_mono16k
-    from meetrec.transcriber import Transcriber
+    from tapeback.audio import convert_to_mono16k
+    from tapeback.transcriber import Transcriber
 
     click.echo("Converting audio...", err=True)
     mono_16k_path = convert_to_mono16k(audio_path, output_dir)
@@ -362,24 +362,24 @@ def _maybe_diarize(
 
     if not settings.hf_token:
         click.echo(
-            "Warning: MEETREC_HF_TOKEN not set, skipping diarization. "
+            "Warning: TAPEBACK_HF_TOKEN not set, skipping diarization. "
             "See README for setup instructions.",
             err=True,
         )
         return segments
 
-    from meetrec.diarizer import diarization_available
+    from tapeback.diarizer import diarization_available
 
     if not diarization_available():
         click.echo(
             "Warning: pyannote-audio not installed, skipping diarization. "
-            "Install with: uv pip install echo-vault[diarize]",
+            "Install with: uv pip install tapeback[diarize]",
             err=True,
         )
         return segments
 
     click.echo("Diarizing speakers...", err=True)
-    from meetrec.diarizer import Diarizer, assign_speakers, identify_user_speaker
+    from tapeback.diarizer import Diarizer, assign_speakers, identify_user_speaker
 
     diarizer = Diarizer(settings)
     diarization_segments = diarizer.diarize(mono_16k_path)
@@ -394,7 +394,7 @@ def _maybe_diarize(
 def _get_stereo_source(audio_path: Path) -> Path | None:
     """Return audio_path if it's a stereo WAV, else None."""
     try:
-        from meetrec.audio import get_channel_count
+        from tapeback.audio import get_channel_count
 
         if get_channel_count(audio_path) == 2:
             return audio_path
@@ -419,14 +419,14 @@ def summarize(file: str, provider: str | None, model: str | None) -> None:
     brief overview, action items, and key decisions.
 
     \b
-    Requires the llm extra: uv pip install echo-vault[llm]
-    and an API key — set MEETREC_LLM_API_KEY or a provider-specific
+    Requires the llm extra: uv pip install tapeback[llm]
+    and an API key — set TAPEBACK_LLM_API_KEY or a provider-specific
     env var (ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.).
 
     \b
     Examples:
-      echo-vault summarize vault/meetings/2026-03-26.md
-      echo-vault summarize transcript.md --provider gemini
+      tapeback summarize vault/meetings/2026-03-26.md
+      tapeback summarize transcript.md --provider gemini
     """
     settings = get_settings()
 
@@ -435,12 +435,12 @@ def summarize(file: str, provider: str | None, model: str | None) -> None:
     if model:
         settings.llm_model = model
 
-    from meetrec.summarizer import (
+    from tapeback.summarizer import (
         extract_transcript_from_markdown,
         format_summary_markdown,
         inject_summary_into_markdown,
     )
-    from meetrec.summarizer import summarize as do_summarize
+    from tapeback.summarizer import summarize as do_summarize
 
     path = Path(file)
     md_content = path.read_text()
@@ -467,7 +467,7 @@ def status() -> None:
     """
     settings = get_settings()
 
-    from meetrec.recorder import Recorder
+    from tapeback.recorder import Recorder
 
     recorder = Recorder()
     session = recorder.get_session_info()

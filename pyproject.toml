@@ -1,5 +1,5 @@
 [project]
-name = "echo-vault"
+name = "tapeback"
 version = "0.8.0"
 description = "Local meeting recorder with transcription and speaker diarization for Obsidian"
 readme = "README.md"
@@ -35,7 +35,7 @@ llm = [
 ]
 
 [project.scripts]
-echo-vault = "meetrec.cli:cli"
+tapeback = "tapeback.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/yastcher/echo-vault"
@@ -48,7 +48,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/meetrec"]
+packages = ["src/tapeback"]
 
 [dependency-groups]
 dev = [
@@ -76,18 +76,18 @@ ignore = [
     "S603",    # subprocess calls are safe (list-based, no shell)
     "S607",    # partial executable paths (ffmpeg, parecord) are intentional
     "PLR2004", # magic numbers — too noisy for audio/test code
-    "S108",    # /tmp/echo-vault is intentional, secured with 0700 permissions
+    "S108",    # /tmp/tapeback is intentional, secured with 0700 permissions
 ]
 fixable = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S105", "S106", "PLC0415"]  # assert, fake tokens, local imports in tests
-"src/meetrec/cli.py" = ["PLC0415"]         # lazy imports for heavy ML deps
-"src/meetrec/diarizer.py" = ["PLC0415", "PLR0912", "PLR0915"]  # lazy ML imports, complex audio algorithms
-"src/meetrec/summarizer.py" = ["PLC0415", "S101"]  # lazy imports for SDKs, assert for type narrowing
+"src/tapeback/cli.py" = ["PLC0415"]         # lazy imports for heavy ML deps
+"src/tapeback/diarizer.py" = ["PLC0415", "PLR0912", "PLR0915"]  # lazy ML imports, complex audio algorithms
+"src/tapeback/summarizer.py" = ["PLC0415", "S101"]  # lazy imports for SDKs, assert for type narrowing
 
 [tool.ruff.lint.isort]
-known-local-folder = ["meetrec", "tests"]
+known-local-folder = ["tapeback", "tests"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -95,10 +95,10 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=meetrec --cov-report=term-missing"
+addopts = "--cov=tapeback --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["src/meetrec"]
+source = ["src/tapeback"]
 
 [tool.coverage.report]
 show_missing = true
@@ -111,23 +111,23 @@ exclude_lines = [
 [tool.ty.environment]
 python-version = "3.13"
 # Project root needed for `from tests.fixtures import ...`
-# src/ needed for `from meetrec import ...`
+# src/ needed for `from tapeback import ...`
 extra-paths = [".", "src"]
 
 # pydantic-settings fills required fields from env vars at runtime;
 # pyannote Pipeline stubs have incorrect __call__ signature
 [[tool.ty.overrides]]
-include = ["src/meetrec/settings.py"]
+include = ["src/tapeback/settings.py"]
 [tool.ty.overrides.rules]
 missing-argument = "ignore"
 
 [[tool.ty.overrides]]
-include = ["src/meetrec/diarizer.py"]
+include = ["src/tapeback/diarizer.py"]
 [tool.ty.overrides.rules]
 invalid-argument-type = "ignore"
 
 [[tool.ty.overrides]]
-include = ["src/meetrec/cli.py"]
+include = ["src/tapeback/cli.py"]
 [tool.ty.overrides.rules]
 # click.Choice validates provider at runtime before assignment
 invalid-assignment = "ignore"

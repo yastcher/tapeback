@@ -1,4 +1,4 @@
-from meetrec.models import Segment
+from tapeback.models import Segment
 
 
 def _format_timecode(seconds: float) -> str:

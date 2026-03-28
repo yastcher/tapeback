@@ -8,8 +8,8 @@ from pathlib import Path
 
 import click
 
-from meetrec.models import ActionItem, Summary
-from meetrec.settings import DEFAULT_MODELS, Settings
+from tapeback.models import ActionItem, Summary
+from tapeback.settings import DEFAULT_MODELS, Settings
 
 _SYSTEM_PROMPT = """\
 You analyze meeting transcripts and extract structured information.
@@ -76,7 +76,7 @@ _FALLBACK_CHAIN: list[str] = [
 def _resolve_api_key_for_provider(provider: str, settings: Settings) -> str:
     """Resolve API key for a specific provider. Returns empty string if unavailable.
 
-    For the primary provider (settings.llm_provider), checks MEETREC_LLM_API_KEY first.
+    For the primary provider (settings.llm_provider), checks TAPEBACK_LLM_API_KEY first.
     For all providers, checks provider-specific env var.
     """
     if provider == settings.llm_provider and settings.llm_api_key:
@@ -87,7 +87,7 @@ def _resolve_api_key_for_provider(provider: str, settings: Settings) -> str:
 
 
 def _resolve_api_key(settings: Settings) -> str:
-    """Resolve API key: MEETREC_LLM_API_KEY > provider-specific env var."""
+    """Resolve API key: TAPEBACK_LLM_API_KEY > provider-specific env var."""
     key = _resolve_api_key_for_provider(settings.llm_provider, settings)
     if key:
         return key
@@ -95,7 +95,7 @@ def _resolve_api_key(settings: Settings) -> str:
     env_var = _PROVIDER_ENV_VARS.get(settings.llm_provider, "")
     raise RuntimeError(
         f"No API key for {settings.llm_provider}. "
-        f"Set MEETREC_LLM_API_KEY or {env_var} environment variable."
+        f"Set TAPEBACK_LLM_API_KEY or {env_var} environment variable."
     )
 
 
@@ -144,7 +144,7 @@ def _call_llm(system_prompt: str, user_message: str, settings: Settings) -> str:
     if not chain:
         raise RuntimeError(
             "No LLM providers available. "
-            "Set MEETREC_LLM_API_KEY or a provider-specific API key environment variable."
+            "Set TAPEBACK_LLM_API_KEY or a provider-specific API key environment variable."
         )
 
     last_exc: Exception = RuntimeError("No providers attempted")
@@ -206,7 +206,7 @@ def _call_llm_once(
             import anthropic
         except ImportError:
             raise RuntimeError(
-                "anthropic package not installed. Install with: uv pip install echo-vault[llm]"
+                "anthropic package not installed. Install with: uv pip install tapeback[llm]"
             ) from None
 
         ant_client = anthropic.Anthropic(api_key=api_key)
@@ -225,7 +225,7 @@ def _call_llm_once(
         import openai
     except ImportError:
         raise RuntimeError(
-            "openai package not installed. Install with: uv pip install echo-vault[llm]"
+            "openai package not installed. Install with: uv pip install tapeback[llm]"
         ) from None
 
     base_url = _OPENAI_COMPATIBLE_BASE_URLS.get(provider)
@@ -364,7 +364,7 @@ def maybe_summarize(md_path: Path | str | None, settings: Settings) -> None:
     if not _build_provider_chain(settings):
         click.echo(
             "Warning: No LLM API key set, skipping summarization. "
-            "Set MEETREC_LLM_API_KEY or a provider-specific API key environment variable.",
+            "Set TAPEBACK_LLM_API_KEY or a provider-specific API key environment variable.",
             err=True,
         )
         return

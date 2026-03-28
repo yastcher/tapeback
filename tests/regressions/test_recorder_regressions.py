@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from meetrec.recorder import detect_devices
+from tapeback.recorder import detect_devices
 from tests.fixtures import create_session_file
 
 
@@ -23,9 +23,9 @@ def test_detect_devices_auto_legacy_keys(settings):
     )
 
     with (
-        patch("meetrec.recorder.shutil.which", return_value="/usr/bin/pactl"),
-        patch("meetrec.recorder._probe_source", return_value=False),
-        patch("meetrec.recorder.subprocess.run") as mock_run,
+        patch("tapeback.recorder.shutil.which", return_value="/usr/bin/pactl"),
+        patch("tapeback.recorder._probe_source", return_value=False),
+        patch("tapeback.recorder.subprocess.run") as mock_run,
     ):
         mock_run.return_value = MagicMock(stdout=pactl_output, returncode=0)
 
@@ -66,7 +66,7 @@ def test_parecord_not_found(recorder, settings):
     Bug: cryptic subprocess error instead of user-friendly message.
     """
     with (
-        patch("meetrec.recorder.shutil.which", return_value=None),
+        patch("tapeback.recorder.shutil.which", return_value=None),
         pytest.raises(RuntimeError, match="parecord not found"),
     ):
         recorder.start(settings)

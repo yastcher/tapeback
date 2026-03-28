@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 import pytest
 
-from meetrec.audio import get_channel_count, merge_channels, split_channels_16k
-from meetrec.cli import _get_stereo_source, _maybe_diarize
-from meetrec.diarizer import (
+from tapeback.audio import get_channel_count, merge_channels, split_channels_16k
+from tapeback.cli import _get_stereo_source, _maybe_diarize
+from tapeback.diarizer import (
     assign_speakers,
     classify_segment_by_channel,
     filter_silent_segments,
@@ -16,9 +16,9 @@ from meetrec.diarizer import (
     load_stereo_channels,
     merge_channel_segments,
 )
-from meetrec.formatter import format_markdown
-from meetrec.models import DiarizationSegment, Segment
-from meetrec.settings import Settings
+from tapeback.formatter import format_markdown
+from tapeback.models import DiarizationSegment, Segment
+from tapeback.settings import Settings
 from tests.fixtures import create_mono_wav, create_stereo_wav, create_stereo_wav_segments
 
 
@@ -264,11 +264,11 @@ def test_diarization_unavailable_warning(tmp_vault, capsys):
     settings = Settings(vault_path=tmp_vault, diarize=True, hf_token="hf_fake")
     segments = [Segment(start=0.0, end=5.0, text="Hello.")]
 
-    with patch("meetrec.diarizer.diarization_available", return_value=False):
+    with patch("tapeback.diarizer.diarization_available", return_value=False):
         result = _maybe_diarize(
             segments, settings, mono_16k_path=tmp_vault / "fake.wav", stereo_path=None, diarize=True
         )
 
     assert result == segments
     captured = capsys.readouterr()
-    assert "uv pip install echo-vault[diarize]" in captured.err
+    assert "uv pip install tapeback[diarize]" in captured.err

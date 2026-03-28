@@ -1,5 +1,5 @@
 # Maintainer: Yast <yastcher@gmail.com>
-pkgname=echo-vault
+pkgname=tapeback
 pkgver=0.8.0
 pkgrel=1
 pkgdesc="Local meeting recorder with transcription and speaker diarization for Obsidian"
@@ -31,11 +31,11 @@ package() {
 
     # Create wrapper script
     install -d "$pkgdir/usr/bin"
-    cat > "$pkgdir/usr/bin/echo-vault" << 'WRAPPER'
+    cat > "$pkgdir/usr/bin/tapeback" << 'WRAPPER'
 #!/bin/sh
-exec /opt/echo-vault/bin/echo-vault "$@"
+exec /opt/tapeback/bin/tapeback "$@"
 WRAPPER
-    chmod 755 "$pkgdir/usr/bin/echo-vault"
+    chmod 755 "$pkgdir/usr/bin/tapeback"
 
     # License
     cd "$pkgname-$pkgver"

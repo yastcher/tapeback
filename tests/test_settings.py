@@ -1,15 +1,15 @@
 import pytest
 
-from meetrec.settings import Settings, get_settings
+from tapeback.settings import Settings, get_settings
 
 
 def test_settings_from_env(monkeypatch, tmp_path):
     """Settings should parse values from environment variables."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_WHISPER_MODEL", "tiny")
-    monkeypatch.setenv("MEETREC_LANGUAGE", "ru")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_WHISPER_MODEL", "tiny")
+    monkeypatch.setenv("TAPEBACK_LANGUAGE", "ru")
 
     s = Settings()
     assert s.vault_path == vault
@@ -18,15 +18,15 @@ def test_settings_from_env(monkeypatch, tmp_path):
 
 
 def test_settings_vault_path_required(monkeypatch, tmp_path):
-    """get_settings should exit with clear message if MEETREC_VAULT_PATH is not set."""
-    monkeypatch.delenv("MEETREC_VAULT_PATH", raising=False)
+    """get_settings should exit with clear message if TAPEBACK_VAULT_PATH is not set."""
+    monkeypatch.delenv("TAPEBACK_VAULT_PATH", raising=False)
     # Change to a temp dir without .env file
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(SystemExit) as exc_info:
         get_settings()
 
-    assert "MEETREC_VAULT_PATH" in str(exc_info.value)
+    assert "TAPEBACK_VAULT_PATH" in str(exc_info.value)
 
 
 def test_settings_defaults(tmp_vault):
@@ -51,8 +51,8 @@ def test_settings_hf_token_from_env(monkeypatch, tmp_path):
     """HF token should be parsed from environment variable."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_HF_TOKEN", "hf_test_token_123")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_HF_TOKEN", "hf_test_token_123")
 
     s = Settings()
     assert s.hf_token == "hf_test_token_123"

@@ -10,10 +10,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from meetrec.cli import _maybe_diarize, _process_stereo_file, _stop_and_process, cli
-from meetrec.models import Segment
-from meetrec.settings import Settings
-from meetrec.summarizer import _PROVIDER_ENV_VARS
+from tapeback.cli import _maybe_diarize, _process_stereo_file, _stop_and_process, cli
+from tapeback.models import Segment
+from tapeback.settings import Settings
+from tapeback.summarizer import _PROVIDER_ENV_VARS
 from tests.fixtures import (
     create_mono_wav,
     create_silent_wav,
@@ -31,8 +31,8 @@ def test_process_mono_pipeline(runner, tmp_path, monkeypatch):
     Also tests --name for custom output filename."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_DIARIZE", "false")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_DIARIZE", "false")
 
     audio = tmp_path / "2026-03-20_10-00-00.wav"
     create_silent_wav(audio, duration=2.0, sample_rate=48000)
@@ -44,7 +44,7 @@ def test_process_mono_pipeline(runner, tmp_path, monkeypatch):
         ]
     )
 
-    with patch("meetrec.transcriber.WhisperModel", return_value=mock_model):
+    with patch("tapeback.transcriber.WhisperModel", return_value=mock_model):
         result = runner.invoke(cli, ["process", str(audio), "--no-diarize"])
 
     assert result.exit_code == 0, result.output + str(result.exception or "")
@@ -65,7 +65,7 @@ def test_process_mono_pipeline(runner, tmp_path, monkeypatch):
     create_silent_wav(audio2, duration=2.0)
     mock_model2 = mock_whisper_transcribe([(0.0, 5.0, "Speech.")])
 
-    with patch("meetrec.transcriber.WhisperModel", return_value=mock_model2):
+    with patch("tapeback.transcriber.WhisperModel", return_value=mock_model2):
         result2 = runner.invoke(
             cli, ["process", str(audio2), "--name", "my-meeting", "--no-diarize"]
         )
@@ -79,8 +79,8 @@ def test_process_with_diarization(runner, tmp_path, monkeypatch):
     """process command with diarization: transcribe → diarize → speakers in markdown."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_HF_TOKEN", "hf_fake")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_HF_TOKEN", "hf_fake")
 
     audio = tmp_path / "2026-03-20_10-00-00.wav"
     create_silent_wav(audio, duration=2.0)
@@ -99,7 +99,7 @@ def test_process_with_diarization(runner, tmp_path, monkeypatch):
     )
 
     with (
-        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
+        patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
         patch("pyannote.audio.Pipeline") as mock_pipeline_cls,
     ):
         mock_pipeline = MagicMock()
@@ -122,8 +122,8 @@ def test_process_stereo_dual_channel(runner, tmp_path, monkeypatch):
     """
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_DIARIZE", "false")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_DIARIZE", "false")
 
     audio = tmp_path / "2026-03-20_10-00-00.wav"
     create_stereo_wav_segments(audio, 48000, [(1.0, 0.8, 0.003), (1.0, 0.003, 0.8)])
@@ -134,7 +134,7 @@ def test_process_stereo_dual_channel(runner, tmp_path, monkeypatch):
         ]
     )
 
-    with patch("meetrec.transcriber.WhisperModel", return_value=mock_model):
+    with patch("tapeback.transcriber.WhisperModel", return_value=mock_model):
         result = runner.invoke(cli, ["process", str(audio), "--no-diarize"])
 
     assert result.exit_code == 0, result.output + str(result.exception or "")
@@ -155,13 +155,13 @@ def test_status_command(runner, tmp_path, monkeypatch):
     """status command: shows 'Not recording' or session info."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
 
-    with patch("meetrec.cli.get_settings") as mock_settings:
+    with patch("tapeback.cli.get_settings") as mock_settings:
         mock_settings.return_value = Settings(vault_path=vault)
 
         # Not recording
-        with patch("meetrec.recorder.Recorder.get_session_info", return_value=None):
+        with patch("tapeback.recorder.Recorder.get_session_info", return_value=None):
             result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
         assert "Not recording." in result.output
@@ -173,10 +173,10 @@ def test_status_command(runner, tmp_path, monkeypatch):
             "started_at": "2026-03-20T10:00:00",
             "pid_monitor": 12345,
             "pid_mic": 12346,
-            "monitor_path": "/tmp/echo-vault/test/monitor.wav",
-            "mic_path": "/tmp/echo-vault/test/mic.wav",
+            "monitor_path": "/tmp/tapeback/test/monitor.wav",
+            "mic_path": "/tmp/tapeback/test/mic.wav",
         }
-        with patch("meetrec.recorder.Recorder.get_session_info", return_value=session_info):
+        with patch("tapeback.recorder.Recorder.get_session_info", return_value=session_info):
             result = runner.invoke(cli, ["status"])
         assert "Recording in progress: 2026-03-20_10-00-00" in result.output
 
@@ -205,7 +205,7 @@ def test_stop_and_process_pipeline(tmp_path):
     annotation = mock_pyannote_annotation([(0.0, 2.0, "SPEAKER_00")])
 
     with (
-        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
+        patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
         patch("pyannote.audio.Pipeline") as mock_pipeline_cls,
     ):
         mock_pipeline = MagicMock()
@@ -241,7 +241,7 @@ def test_stop_and_process_no_diarize(tmp_path):
     mock_model = mock_whisper_transcribe([(0.0, 5.0, "No diarize.")])
 
     with (
-        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
+        patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
         patch("pyannote.audio.Pipeline") as mock_pipeline_cls,
     ):
         _stop_and_process(mock_recorder, settings, diarize=False)
@@ -268,7 +268,7 @@ def test_process_stereo_file_function(tmp_path):
 
     mock_model = mock_whisper_transcribe([(0.0, 1.0, "Speech.")])
 
-    with patch("meetrec.transcriber.WhisperModel", return_value=mock_model):
+    with patch("tapeback.transcriber.WhisperModel", return_value=mock_model):
         segments, _info = _process_stereo_file(stereo, output_dir, settings, diarize=False)
 
     assert len(segments) > 0
@@ -331,13 +331,13 @@ def test_summarize_command_rewrites_file(runner, tmp_path, monkeypatch):
     """summarize command: mock LLM → file gets summary section."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_LLM_API_KEY", "sk-test")
 
     md_file = tmp_path / "transcript.md"
     md_file.write_text(SAMPLE_TRANSCRIPT_MD)
 
-    with patch("meetrec.summarizer._call_llm", return_value=VALID_LLM_RESPONSE):
+    with patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE):
         result = runner.invoke(cli, ["summarize", str(md_file)])
 
     assert result.exit_code == 0, result.output
@@ -351,15 +351,15 @@ def test_summarize_command_no_api_key(runner, tmp_path, monkeypatch):
     """No API key → error, file unchanged."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.delenv("MEETREC_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.delenv("TAPEBACK_LLM_API_KEY", raising=False)
     for env_var in _PROVIDER_ENV_VARS.values():
         monkeypatch.delenv(env_var, raising=False)
 
     md_file = tmp_path / "transcript.md"
     md_file.write_text(SAMPLE_TRANSCRIPT_MD)
 
-    with patch("meetrec.summarizer._build_provider_chain", return_value=[]):
+    with patch("tapeback.summarizer._build_provider_chain", return_value=[]):
         result = runner.invoke(cli, ["summarize", str(md_file)])
 
     assert result.exit_code != 0
@@ -371,9 +371,9 @@ def test_process_with_summarization(runner, tmp_path, monkeypatch):
     """Full pipeline: process → transcribe → summarize → file has summary."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_DIARIZE", "false")
-    monkeypatch.setenv("MEETREC_LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_DIARIZE", "false")
+    monkeypatch.setenv("TAPEBACK_LLM_API_KEY", "sk-test")
 
     audio = tmp_path / "2026-03-20_10-00-00.wav"
     create_silent_wav(audio, duration=2.0, sample_rate=48000)
@@ -381,8 +381,8 @@ def test_process_with_summarization(runner, tmp_path, monkeypatch):
     mock_model = mock_whisper_transcribe([(0.0, 5.0, "Hello from the meeting.")])
 
     with (
-        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
-        patch("meetrec.summarizer._call_llm", return_value=VALID_LLM_RESPONSE),
+        patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
+        patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE),
     ):
         result = runner.invoke(cli, ["process", str(audio), "--no-diarize"])
 
@@ -398,16 +398,16 @@ def test_process_no_summarize_flag(runner, tmp_path, monkeypatch):
     """--no-summarize → no LLM call."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    monkeypatch.setenv("MEETREC_VAULT_PATH", str(vault))
-    monkeypatch.setenv("MEETREC_DIARIZE", "false")
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
+    monkeypatch.setenv("TAPEBACK_DIARIZE", "false")
 
     audio = tmp_path / "2026-03-20_10-00-00.wav"
     create_silent_wav(audio, duration=2.0, sample_rate=48000)
     mock_model = mock_whisper_transcribe([(0.0, 5.0, "Speech.")])
 
     with (
-        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
-        patch("meetrec.summarizer._call_llm") as mock_llm,
+        patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
+        patch("tapeback.summarizer._call_llm") as mock_llm,
     ):
         result = runner.invoke(cli, ["process", str(audio), "--no-diarize", "--no-summarize"])
 
@@ -436,9 +436,9 @@ def test_stop_and_process_summarization_failure(tmp_path):
     mock_model = mock_whisper_transcribe([(0.0, 5.0, "Important content.")])
 
     with (
-        patch("meetrec.transcriber.WhisperModel", return_value=mock_model),
+        patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
         patch("pyannote.audio.Pipeline"),
-        patch("meetrec.summarizer._call_llm", side_effect=RuntimeError("API error")),
+        patch("tapeback.summarizer._call_llm", side_effect=RuntimeError("API error")),
     ):
         _stop_and_process(mock_recorder, settings, diarize=False, do_summarize=True)
 

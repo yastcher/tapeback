@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Default models per provider — used when MEETREC_LLM_MODEL is not set.
+# Default models per provider — used when TAPEBACK_LLM_MODEL is not set.
 # Update here when providers deprecate models.
 DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-sonnet-4-20250514",
@@ -18,7 +18,7 @@ DEFAULT_MODELS: dict[str, str] = {
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="MEETREC_",
+        env_prefix="TAPEBACK_",
         env_file=".env",
         env_file_encoding="utf-8",
     )
@@ -71,12 +71,12 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """Load settings. Raises clear error if MEETREC_VAULT_PATH is not set."""
+    """Load settings. Raises clear error if TAPEBACK_VAULT_PATH is not set."""
     try:
         return Settings()  # type: ignore[call-arg]
     except Exception:
         raise SystemExit(
-            "Error: MEETREC_VAULT_PATH is required.\n"
+            "Error: TAPEBACK_VAULT_PATH is required.\n"
             "Set it via environment variable or .env file:\n"
-            "  export MEETREC_VAULT_PATH=/path/to/obsidian/vault\n"
+            "  export TAPEBACK_VAULT_PATH=/path/to/obsidian/vault\n"
         ) from None

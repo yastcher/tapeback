@@ -1,7 +1,7 @@
-_venv=/opt/echo-vault
+_venv=/opt/tapeback
 
 post_install() {
-    echo "==> Installing LLM dependencies into echo-vault venv..."
+    echo "==> Installing LLM dependencies into tapeback venv..."
     "$_venv/bin/pip" install --no-cache-dir "anthropic>=0.40.0" "openai>=1.50.0"
     echo "==> Done. Set an API key to enable summarization:"
     echo "    ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, etc."
@@ -13,6 +13,6 @@ post_upgrade() {
 }
 
 pre_remove() {
-    echo "==> Removing LLM dependencies from echo-vault venv..."
+    echo "==> Removing LLM dependencies from tapeback venv..."
     "$_venv/bin/pip" uninstall -y anthropic openai 2>/dev/null || true
 }

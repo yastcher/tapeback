@@ -3,7 +3,7 @@
 import shutil
 from pathlib import Path
 
-from meetrec.settings import Settings
+from tapeback.settings import Settings
 
 
 def _unique_path(path: Path) -> Path:

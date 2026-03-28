@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from meetrec.models import ActionItem, Summary
-from meetrec.settings import DEFAULT_MODELS, Settings
-from meetrec.summarizer import (
+from tapeback.models import ActionItem, Summary
+from tapeback.settings import DEFAULT_MODELS, Settings
+from tapeback.summarizer import (
     _PROVIDER_ENV_VARS,
     _build_provider_chain,
     _call_llm,
@@ -186,7 +186,7 @@ def test_extract_transcript_no_summary():
 
 def test_summarize_calls_llm_with_correct_prompt(summarize_settings):
     """summarize should pass system prompt and transcript to _call_llm."""
-    with patch("meetrec.summarizer._call_llm", return_value=VALID_LLM_RESPONSE) as mock_call:
+    with patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE) as mock_call:
         summarize("Some transcript text", summarize_settings)
 
     mock_call.assert_called_once()
@@ -199,7 +199,7 @@ def test_summarize_calls_llm_with_correct_prompt(summarize_settings):
 
 def test_summarize_parses_valid_json(summarize_settings):
     """Valid JSON response → correct Summary dataclass."""
-    with patch("meetrec.summarizer._call_llm", return_value=VALID_LLM_RESPONSE):
+    with patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE):
         result = summarize("transcript", summarize_settings)
 
     assert result.brief == "Discussed the project plan and assigned tasks."
@@ -214,7 +214,7 @@ def test_summarize_parses_valid_json(summarize_settings):
 def test_summarize_strips_markdown_fences(summarize_settings):
     """JSON wrapped in ```json ... ``` → parsed correctly."""
     fenced = f"```json\n{VALID_LLM_RESPONSE}\n```"
-    with patch("meetrec.summarizer._call_llm", return_value=fenced):
+    with patch("tapeback.summarizer._call_llm", return_value=fenced):
         result = summarize("transcript", summarize_settings)
 
     assert result.brief == "Discussed the project plan and assigned tasks."
@@ -224,7 +224,7 @@ def test_summarize_strips_markdown_fences(summarize_settings):
 def test_summarize_retries_on_invalid_json(summarize_settings):
     """First call returns garbage, second returns valid JSON → success."""
     with patch(
-        "meetrec.summarizer._call_llm",
+        "tapeback.summarizer._call_llm",
         side_effect=["not json at all", VALID_LLM_RESPONSE],
     ):
         result = summarize("transcript", summarize_settings)
@@ -235,7 +235,7 @@ def test_summarize_retries_on_invalid_json(summarize_settings):
 def test_summarize_raises_on_persistent_invalid_json(summarize_settings):
     """Both calls return garbage → RuntimeError."""
     with (
-        patch("meetrec.summarizer._call_llm", return_value="still not json"),
+        patch("tapeback.summarizer._call_llm", return_value="still not json"),
         pytest.raises(RuntimeError, match="Failed to parse"),
     ):
         summarize("transcript", summarize_settings)
@@ -251,11 +251,11 @@ def test_call_llm_retries_on_429(summarize_settings):
 
     with (
         patch(
-            "meetrec.summarizer._build_provider_chain",
+            "tapeback.summarizer._build_provider_chain",
             return_value=[("anthropic", "test-key", "test-model")],
         ),
-        patch("meetrec.summarizer._call_llm_once", side_effect=[rate_limit_exc, "ok"]) as mock,
-        patch("meetrec.summarizer.time.sleep") as mock_sleep,
+        patch("tapeback.summarizer._call_llm_once", side_effect=[rate_limit_exc, "ok"]) as mock,
+        patch("tapeback.summarizer.time.sleep") as mock_sleep,
     ):
         result = _call_llm("system", "user", summarize_settings)
 
@@ -271,11 +271,11 @@ def test_call_llm_gives_up_after_max_retries(summarize_settings):
 
     with (
         patch(
-            "meetrec.summarizer._build_provider_chain",
+            "tapeback.summarizer._build_provider_chain",
             return_value=[("anthropic", "test-key", "test-model")],
         ),
-        patch("meetrec.summarizer._call_llm_once", side_effect=rate_limit_exc),
-        patch("meetrec.summarizer.time.sleep"),
+        patch("tapeback.summarizer._call_llm_once", side_effect=rate_limit_exc),
+        patch("tapeback.summarizer.time.sleep"),
         pytest.raises(Exception, match="rate limited"),
     ):
         _call_llm("system", "user", summarize_settings)
@@ -288,11 +288,11 @@ def test_call_llm_no_retry_on_non_429(summarize_settings):
 
     with (
         patch(
-            "meetrec.summarizer._build_provider_chain",
+            "tapeback.summarizer._build_provider_chain",
             return_value=[("anthropic", "test-key", "test-model")],
         ),
-        patch("meetrec.summarizer._call_llm_once", side_effect=auth_exc),
-        patch("meetrec.summarizer.time.sleep") as mock_sleep,
+        patch("tapeback.summarizer._call_llm_once", side_effect=auth_exc),
+        patch("tapeback.summarizer.time.sleep") as mock_sleep,
         pytest.raises(Exception, match="unauthorized"),
     ):
         _call_llm("system", "user", summarize_settings)
@@ -303,17 +303,17 @@ def test_call_llm_no_retry_on_non_429(summarize_settings):
 # --- API key resolution ---
 
 
-def test_api_key_resolution_meetrec_env(tmp_vault, monkeypatch):
-    """MEETREC_LLM_API_KEY takes priority over provider-specific env vars."""
+def test_api_key_resolution_tapeback_env(tmp_vault, monkeypatch):
+    """TAPEBACK_LLM_API_KEY takes priority over provider-specific env vars."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "provider-key")
-    settings = Settings(vault_path=tmp_vault, llm_api_key="meetrec-key")
+    settings = Settings(vault_path=tmp_vault, llm_api_key="tapeback-key")
 
-    assert _resolve_api_key(settings) == "meetrec-key"
+    assert _resolve_api_key(settings) == "tapeback-key"
 
 
 @pytest.mark.parametrize("provider,env_var", list(_PROVIDER_ENV_VARS.items()))
 def test_api_key_resolution_provider_env(tmp_vault, monkeypatch, provider, env_var):
-    """Falls back to provider-specific env var when MEETREC_LLM_API_KEY is empty."""
+    """Falls back to provider-specific env var when TAPEBACK_LLM_API_KEY is empty."""
     monkeypatch.setenv(env_var, "test-key")
     settings = Settings(vault_path=tmp_vault, llm_provider=provider, llm_api_key="")
 
@@ -421,9 +421,9 @@ def test_fallback_chain_tries_next_provider(summarize_settings):
     primary_exc.status_code = 500
 
     with (
-        patch("meetrec.summarizer._build_provider_chain", return_value=chain),
+        patch("tapeback.summarizer._build_provider_chain", return_value=chain),
         patch(
-            "meetrec.summarizer._call_provider_with_retry",
+            "tapeback.summarizer._call_provider_with_retry",
             side_effect=[primary_exc, "fallback response"],
         ) as mock,
     ):
@@ -448,9 +448,9 @@ def test_fallback_all_providers_fail(summarize_settings):
     exc2.status_code = 500
 
     with (
-        patch("meetrec.summarizer._build_provider_chain", return_value=chain),
+        patch("tapeback.summarizer._build_provider_chain", return_value=chain),
         patch(
-            "meetrec.summarizer._call_provider_with_retry",
+            "tapeback.summarizer._call_provider_with_retry",
             side_effect=[exc1, exc2],
         ),
         pytest.raises(Exception, match="groq failed"),
@@ -461,7 +461,7 @@ def test_fallback_all_providers_fail(summarize_settings):
 def test_fallback_empty_chain_raises(summarize_settings):
     """No providers available → RuntimeError."""
     with (
-        patch("meetrec.summarizer._build_provider_chain", return_value=[]),
+        patch("tapeback.summarizer._build_provider_chain", return_value=[]),
         pytest.raises(RuntimeError, match="No LLM providers available"),
     ):
         _call_llm("system", "user", summarize_settings)

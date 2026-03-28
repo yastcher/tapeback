@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from meetrec.diarizer import (
+from tapeback.diarizer import (
     Diarizer,
     assign_speakers,
     classify_segment_by_channel,
@@ -16,8 +16,8 @@ from meetrec.diarizer import (
     merge_similar_speakers,
     split_on_silence,
 )
-from meetrec.models import DiarizationSegment, Segment, Word
-from meetrec.settings import Settings
+from tapeback.models import DiarizationSegment, Segment, Word
+from tapeback.settings import Settings
 from tests.fixtures import create_stereo_wav, create_stereo_wav_segments, requires_pyannote
 
 # --- Diarizer init / diarize ---

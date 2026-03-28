@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from meetrec.audio import convert_to_mono16k, merge_channels, split_channels_16k
+from tapeback.audio import convert_to_mono16k, merge_channels, split_channels_16k
 from tests.fixtures import create_silent_wav, create_stereo_wav
 
 
@@ -86,7 +86,7 @@ def test_empty_file_raises(tmp_path):
     mic.write_bytes(b"")
 
     with (
-        patch("meetrec.audio.shutil.which", return_value="/usr/bin/ffmpeg"),
+        patch("tapeback.audio.shutil.which", return_value="/usr/bin/ffmpeg"),
         pytest.raises(RuntimeError, match="No audio recorded"),
     ):
         merge_channels(monitor, mic, tmp_path / "output")
@@ -101,7 +101,7 @@ def test_ffmpeg_not_found(tmp_path):
     create_silent_wav(mic)
 
     with (
-        patch("meetrec.audio.shutil.which", return_value=None),
+        patch("tapeback.audio.shutil.which", return_value=None),
         pytest.raises(RuntimeError, match="ffmpeg not found"),
     ):
         merge_channels(monitor, mic, tmp_path / "output")

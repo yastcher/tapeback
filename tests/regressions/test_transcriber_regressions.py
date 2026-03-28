@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from meetrec.transcriber import Transcriber
+from tapeback.transcriber import Transcriber
 
 
 def test_cuda_fallback_to_cpu(settings):
@@ -19,7 +19,7 @@ def test_cuda_fallback_to_cpu(settings):
             raise RuntimeError("CUDA not available")
         return MagicMock()
 
-    with patch("meetrec.transcriber.WhisperModel", side_effect=mock_init):
+    with patch("tapeback.transcriber.WhisperModel", side_effect=mock_init):
         Transcriber(settings)
 
     assert call_args == ["cuda", "cpu"]
@@ -47,7 +47,7 @@ def test_cuda_inference_fallback_to_cpu(settings, capsys):
         raise RuntimeError("Library libcublas.so.12 is not found")
         yield  # make it a generator
 
-    with patch("meetrec.transcriber.WhisperModel") as mock_model_cls:
+    with patch("tapeback.transcriber.WhisperModel") as mock_model_cls:
         cuda_model = MagicMock()
         cpu_model = MagicMock()
         mock_model_cls.side_effect = [cuda_model, cpu_model]
@@ -84,7 +84,7 @@ def test_empty_transcription(settings, capsys):
     mock_info.language_probability = 0.99
     mock_info.duration = 10.0
 
-    with patch("meetrec.transcriber.WhisperModel") as mock_model_cls:
+    with patch("tapeback.transcriber.WhisperModel") as mock_model_cls:
         instance = mock_model_cls.return_value
         instance.transcribe.return_value = (iter([]), mock_info)
 

@@ -21,9 +21,9 @@ No web servers, databases, Docker.
 
 ## Architecture
 
-- Source: `src/meetrec/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, vault.py, summarizer.py, models.py, settings.py
+- Source: `src/tapeback/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, vault.py, summarizer.py, models.py, settings.py
 - Domain models (Segment, Word, DiarizationSegment, Summary, ActionItem) live in models.py — never in infrastructure modules
-- Settings: pydantic-settings with `MEETREC_` prefix, env vars and `.env` only
+- Settings: pydantic-settings with `TAPEBACK_` prefix, env vars and `.env` only
 - No config files (TOML, YAML) besides pyproject.toml
 - Max 500 lines per file — decompose if exceeded
 
@@ -49,7 +49,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - **All fixtures** in `tests/fixtures.py` (registered via `conftest.py`) — never define fixtures in test files
 - **All imports at top of file** in tests — same rule as production code, no local imports
 - WAV helpers in `tests/fixtures.py`
-- E2E tests in `tests/test_e2e_quality.py` — run with `MEETREC_RUN_E2E=1`
+- E2E tests in `tests/test_e2e_quality.py` — run with `TAPEBACK_RUN_E2E=1`
 - Regression tests (bug-fix) in `tests/regressions/`
 - **Bug fix workflow**: every fix MUST start with a failing test that reproduces the bug.
   Write the test first, verify it fails, then apply the fix and verify the test passes.

@@ -6,8 +6,8 @@ from typing import Any
 
 import numpy as np
 
-from meetrec.models import DiarizationSegment, Segment
-from meetrec.settings import Settings
+from tapeback.models import DiarizationSegment, Segment
+from tapeback.settings import Settings
 
 
 def diarization_available() -> bool:
@@ -41,7 +41,7 @@ class Diarizer:
         if not settings.hf_token:
             raise RuntimeError(
                 "HuggingFace token required for diarization. "
-                "Set MEETREC_HF_TOKEN in your .env file."
+                "Set TAPEBACK_HF_TOKEN in your .env file."
             )
 
         from pyannote.audio import Pipeline

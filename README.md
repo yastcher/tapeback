@@ -1,4 +1,4 @@
-# echo-vault
+# tapeback
 
 Local meeting recorder for Linux. Records system audio + microphone via
 PipeWire/PulseAudio, transcribes with Whisper, identifies speakers, saves
@@ -8,7 +8,7 @@ no bots, no API calls for transcription.
 Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord, Slack huddles.
 
 <!-- TODO: Add demo GIF here -->
-<!-- ![echo-vault demo](docs/demo.gif) -->
+<!-- ![tapeback demo](docs/demo.gif) -->
 
 ## Features
 
@@ -18,7 +18,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Stereo channel separation** — your mic (left) vs. others (right) for accurate "You" attribution
 - **Obsidian-native output** — Markdown with YAML frontmatter, wikilinks to audio files
 - **LLM summarization** — optional summaries via Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback)
-- **CLI-first** — `echo-vault start`, Ctrl+C to stop, done
+- **CLI-first** — `tapeback start`, Ctrl+C to stop, done
 
 ## Requirements
 
@@ -45,7 +45,7 @@ sudo dnf install python3 pipx ffmpeg pipewire-pulseaudio
 pipx ensurepath
 ```
 
-### 2. Install echo-vault
+### 2. Install tapeback
 
 The base package records audio and transcribes locally. Optional extras add
 speaker diarization and LLM summaries:
@@ -60,27 +60,27 @@ speaker diarization and LLM summaries:
 #### With uv (recommended)
 
 ```bash
-uv tool install echo-vault                  # basic
-uv tool install "echo-vault[llm]"           # + summaries
-uv tool install "echo-vault[diarize]"       # + speaker diarization
-uv tool install "echo-vault[llm,diarize]"   # everything
+uv tool install tapeback                  # basic
+uv tool install "tapeback[llm]"           # + summaries
+uv tool install "tapeback[diarize]"       # + speaker diarization
+uv tool install "tapeback[llm,diarize]"   # everything
 ```
 
 #### With pipx
 
 ```bash
-pipx install echo-vault                     # basic
-pipx install "echo-vault[llm]"              # + summaries
-pipx install "echo-vault[diarize]"          # + speaker diarization
-pipx install "echo-vault[llm,diarize]"      # everything
+pipx install tapeback                     # basic
+pipx install "tapeback[llm]"              # + summaries
+pipx install "tapeback[diarize]"          # + speaker diarization
+pipx install "tapeback[llm,diarize]"      # everything
 ```
 
 #### Arch Linux (AUR)
 
 ```bash
-yay -S echo-vault                  # basic
-yay -S echo-vault-llm              # + summaries
-yay -S echo-vault-diarize          # + speaker diarization (~2 GB PyTorch)
+yay -S tapeback                  # basic
+yay -S tapeback-llm              # + summaries
+yay -S tapeback-diarize          # + speaker diarization (~2 GB PyTorch)
 ```
 
 #### Nix
@@ -96,23 +96,23 @@ nix run github:yastcher/echo-vault#full         # everything
 
 ```bash
 git clone https://github.com/yastcher/echo-vault
-cd echo-vault
+cd tapeback
 uv sync --group dev    # all dependencies + dev tools
 ```
 
 ### 3. Uninstall
 
 ```bash
-# Remove echo-vault
-uv tool uninstall echo-vault    # if installed with uv
-pipx uninstall echo-vault       # if installed with pipx
+# Remove tapeback
+uv tool uninstall tapeback    # if installed with uv
+pipx uninstall tapeback       # if installed with pipx
 
 # Remove cached ML models (~2-5 GB)
 # ⚠ Skip if you have other HuggingFace projects
 rm -rf ~/.cache/huggingface/
 
 # Arch Linux
-yay -R echo-vault echo-vault-diarize echo-vault-llm
+yay -R tapeback tapeback-diarize tapeback-llm
 ```
 
 ## Quick start
@@ -121,20 +121,20 @@ yay -R echo-vault echo-vault-diarize echo-vault-llm
 
 ```bash
 # Required: set your Obsidian vault path
-export MEETREC_VAULT_PATH=~/Documents/obsidian/vault
+export TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault
 
 # Or create a .env file in the project root:
-echo 'MEETREC_VAULT_PATH=~/Documents/obsidian/vault' > .env
+echo 'TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault' > .env
 ```
 
 ### 2. Record a meeting
 
 ```bash
 # Start recording (blocks, Ctrl+C to stop and transcribe)
-echo-vault start
+tapeback start
 
 # Optionally give the session a name
-echo-vault start "weekly-standup"
+tapeback start "weekly-standup"
 ```
 
 ### 3. Check your vault
@@ -151,22 +151,22 @@ vault/
 
 ```bash
 # Transcribe any audio file (mp3, m4a, ogg, wav)
-echo-vault process meeting.mp3
+tapeback process meeting.mp3
 
 # With options
-echo-vault process call.wav --name "client-call" --no-diarize
+tapeback process call.wav --name "client-call" --no-diarize
 ```
 
 ### Add summary to existing transcript
 
 ```bash
-echo-vault summarize vault/meetings/2026-03-23.md
-echo-vault summarize transcript.md --provider gemini
+tapeback summarize vault/meetings/2026-03-23.md
+tapeback summarize transcript.md --provider gemini
 ```
 
 ## Configuration
 
-All settings via environment variables (prefix `MEETREC_`) or `.env` file.
+All settings via environment variables (prefix `TAPEBACK_`) or `.env` file.
 Copy `.env.example` to `.env` and adjust:
 
 ```bash
@@ -177,38 +177,38 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEETREC_VAULT_PATH` | *(required)* | Path to Obsidian vault |
-| `MEETREC_MEETINGS_DIR` | `meetings` | Subdirectory for meeting notes |
-| `MEETREC_ATTACHMENTS_DIR` | `attachments/audio` | Subdirectory for audio files |
+| `TAPEBACK_VAULT_PATH` | *(required)* | Path to Obsidian vault |
+| `TAPEBACK_MEETINGS_DIR` | `meetings` | Subdirectory for meeting notes |
+| `TAPEBACK_ATTACHMENTS_DIR` | `attachments/audio` | Subdirectory for audio files |
 
 ### Transcription
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEETREC_WHISPER_MODEL` | `large-v3-turbo` | Whisper model (`tiny`, `base`, `small`, `medium`, `large-v3-turbo`) |
-| `MEETREC_LANGUAGE` | `en` | Transcription language code |
-| `MEETREC_DEVICE` | `cuda` | `cuda` or `cpu` |
-| `MEETREC_COMPUTE_TYPE` | `float16` | `float16`, `int8`, or `float32` |
-| `MEETREC_BEAM_SIZE` | `5` | Whisper beam search width |
-| `MEETREC_PAUSE_THRESHOLD` | `1.0` | Seconds — split segments on silence gaps >= this |
+| `TAPEBACK_WHISPER_MODEL` | `large-v3-turbo` | Whisper model (`tiny`, `base`, `small`, `medium`, `large-v3-turbo`) |
+| `TAPEBACK_LANGUAGE` | `en` | Transcription language code |
+| `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu` |
+| `TAPEBACK_COMPUTE_TYPE` | `float16` | `float16`, `int8`, or `float32` |
+| `TAPEBACK_BEAM_SIZE` | `5` | Whisper beam search width |
+| `TAPEBACK_PAUSE_THRESHOLD` | `1.0` | Seconds — split segments on silence gaps >= this |
 
 ### Audio
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEETREC_MONITOR_SOURCE` | `auto` | PulseAudio monitor source name |
-| `MEETREC_MIC_SOURCE` | `auto` | PulseAudio mic source name |
-| `MEETREC_SAMPLE_RATE` | `48000` | Recording sample rate |
+| `TAPEBACK_MONITOR_SOURCE` | `auto` | PulseAudio monitor source name |
+| `TAPEBACK_MIC_SOURCE` | `auto` | PulseAudio mic source name |
+| `TAPEBACK_SAMPLE_RATE` | `48000` | Recording sample rate |
 
 ### Speaker diarization
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEETREC_DIARIZE` | `true` | Enable speaker diarization (requires `echo-vault[diarize]`) |
-| `MEETREC_HF_TOKEN` | *(empty)* | HuggingFace token for pyannote models |
-| `MEETREC_MAX_SPEAKERS` | *(auto)* | Maximum number of speakers |
+| `TAPEBACK_DIARIZE` | `true` | Enable speaker diarization (requires `tapeback[diarize]`) |
+| `TAPEBACK_HF_TOKEN` | *(empty)* | HuggingFace token for pyannote models |
+| `TAPEBACK_MAX_SPEAKERS` | *(auto)* | Maximum number of speakers |
 
-Speaker diarization requires the `diarize` extra (`uv tool install "echo-vault[diarize]"`)
+Speaker diarization requires the `diarize` extra (`uv tool install "tapeback[diarize]"`)
 and a HuggingFace token with access to pyannote models:
 
 1. Create account at [huggingface.co](https://huggingface.co)
@@ -216,20 +216,20 @@ and a HuggingFace token with access to pyannote models:
 3. Accept license at [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
 4. Accept license at [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
 5. Create token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
-6. Set `MEETREC_HF_TOKEN=hf_your_token_here`
+6. Set `TAPEBACK_HF_TOKEN=hf_your_token_here`
 
-Without a token, echo-vault still works — it just skips diarization.
+Without a token, tapeback still works — it just skips diarization.
 
 ### LLM summarization
 
-Requires the `llm` extra: `uv tool install "echo-vault[llm]"`
+Requires the `llm` extra: `uv tool install "tapeback[llm]"`
 
 | Variable | Default | Description |
 |---|---|---|
-| `MEETREC_SUMMARIZE` | `true` | Enable LLM summarization |
-| `MEETREC_LLM_PROVIDER` | `anthropic` | Primary LLM provider |
-| `MEETREC_LLM_API_KEY` | *(empty)* | API key (or use provider-specific env var) |
-| `MEETREC_LLM_MODEL` | *(provider default)* | Override model name |
+| `TAPEBACK_SUMMARIZE` | `true` | Enable LLM summarization |
+| `TAPEBACK_LLM_PROVIDER` | `anthropic` | Primary LLM provider |
+| `TAPEBACK_LLM_API_KEY` | *(empty)* | API key (or use provider-specific env var) |
+| `TAPEBACK_LLM_MODEL` | *(provider default)* | Override model name |
 
 Supported providers and their env vars:
 
@@ -243,26 +243,26 @@ Supported providers and their env vars:
 | `deepseek` | `DEEPSEEK_API_KEY` | deepseek-chat |
 | `qwen` | `DASHSCOPE_API_KEY` | qwen-turbo |
 
-If the primary provider fails, echo-vault automatically tries the next available provider (any provider with an API key set).
+If the primary provider fails, tapeback automatically tries the next available provider (any provider with an API key set).
 
 ## CLI reference
 
 ```
-echo-vault --help                    Show help and quick start guide
-echo-vault start [NAME]              Start recording (Ctrl+C to stop)
-echo-vault stop                      Stop recording from another terminal
-echo-vault process <FILE> [--name N] Transcribe an existing audio file
-echo-vault summarize <FILE>          Add LLM summary to transcript
-echo-vault status                    Show recording status and settings
+tapeback --help                    Show help and quick start guide
+tapeback start [NAME]              Start recording (Ctrl+C to stop)
+tapeback stop                      Stop recording from another terminal
+tapeback process <FILE> [--name N] Transcribe an existing audio file
+tapeback summarize <FILE>          Add LLM summary to transcript
+tapeback status                    Show recording status and settings
 ```
 
 ### Common options
 
 ```bash
-echo-vault start --no-diarize        # Skip speaker identification
-echo-vault start --no-summarize      # Skip LLM summary
-echo-vault process file.mp3 --name "weekly-standup"
-echo-vault summarize file.md --provider gemini --model gemini-2.5-pro
+tapeback start --no-diarize        # Skip speaker identification
+tapeback start --no-summarize      # Skip LLM summary
+tapeback process file.mp3 --name "weekly-standup"
+tapeback summarize file.md --provider gemini --model gemini-2.5-pro
 ```
 
 ## Output format
@@ -307,7 +307,7 @@ Brief overview of the meeting.
 ## Architecture
 
 ```
-src/meetrec/
+src/tapeback/
   cli.py          Click CLI — start, stop, process, summarize, status
   recorder.py     PulseAudio recording via parecord
   audio.py        ffmpeg audio processing (split channels, normalize, convert)
@@ -324,7 +324,7 @@ src/meetrec/
 
 ```bash
 git clone https://github.com/yastcher/echo-vault
-cd echo-vault
+cd tapeback
 uv sync --group dev
 
 uv run ruff check       # lint

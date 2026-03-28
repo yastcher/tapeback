@@ -2,16 +2,16 @@ import json
 import signal
 from unittest.mock import MagicMock, patch
 
-from meetrec.recorder import detect_devices
-from meetrec.settings import Settings
+from tapeback.recorder import detect_devices
+from tapeback.settings import Settings
 from tests.fixtures import create_session_file
 
 
 def test_detect_devices_auto_dynamic(settings):
     """Auto-detect should use @DEFAULT_MONITOR@/@DEFAULT_SOURCE@ when supported."""
     with (
-        patch("meetrec.recorder.shutil.which", return_value="/usr/bin/pactl"),
-        patch("meetrec.recorder._probe_source", return_value=True),
+        patch("tapeback.recorder.shutil.which", return_value="/usr/bin/pactl"),
+        patch("tapeback.recorder._probe_source", return_value=True),
     ):
         monitor, mic = detect_devices(settings)
 
@@ -29,9 +29,9 @@ def test_detect_devices_auto_fallback(settings):
     )
 
     with (
-        patch("meetrec.recorder.shutil.which", return_value="/usr/bin/pactl"),
-        patch("meetrec.recorder._probe_source", return_value=False),
-        patch("meetrec.recorder.subprocess.run") as mock_run,
+        patch("tapeback.recorder.shutil.which", return_value="/usr/bin/pactl"),
+        patch("tapeback.recorder._probe_source", return_value=False),
+        patch("tapeback.recorder.subprocess.run") as mock_run,
     ):
         mock_run.return_value = MagicMock(stdout=pactl_output, returncode=0)
 
@@ -49,7 +49,7 @@ def test_detect_devices_explicit(tmp_vault):
         mic_source="my_mic",
     )
 
-    with patch("meetrec.recorder.subprocess.run") as mock_run:
+    with patch("tapeback.recorder.subprocess.run") as mock_run:
         monitor, mic = detect_devices(s)
         mock_run.assert_not_called()
 
@@ -60,9 +60,9 @@ def test_detect_devices_explicit(tmp_vault):
 def test_start_creates_session_file(recorder, settings, session_file):
     """start() should create session.json with PIDs and paths."""
     with (
-        patch("meetrec.recorder.detect_devices", return_value=("monitor_dev", "mic_dev")),
-        patch("meetrec.recorder.shutil.which", return_value="/usr/bin/parecord"),
-        patch("meetrec.recorder.subprocess.Popen") as mock_popen,
+        patch("tapeback.recorder.detect_devices", return_value=("monitor_dev", "mic_dev")),
+        patch("tapeback.recorder.shutil.which", return_value="/usr/bin/parecord"),
+        patch("tapeback.recorder.subprocess.Popen") as mock_popen,
     ):
         proc_mock = MagicMock()
         proc_mock.pid = 12345
@@ -95,7 +95,7 @@ def test_stop_sends_sigterm(recorder, session_file):
         if sig == signal.SIGTERM:
             return  # SIGTERM accepted
 
-    with patch("meetrec.recorder.os.kill", side_effect=mock_kill):
+    with patch("tapeback.recorder.os.kill", side_effect=mock_kill):
         _monitor_path, _mic_path = recorder.stop()
 
     # SIGTERM sent to both

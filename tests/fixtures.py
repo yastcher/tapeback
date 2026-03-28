@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 from click.testing import CliRunner
 
-from meetrec.recorder import Recorder
-from meetrec.settings import Settings
+from tapeback.recorder import Recorder
+from tapeback.settings import Settings
 
 
 def _pyannote_available() -> bool:
@@ -23,7 +23,7 @@ def _pyannote_available() -> bool:
 
 requires_pyannote = pytest.mark.skipif(
     not _pyannote_available(),
-    reason="pyannote-audio not installed (install echo-vault[diarize])",
+    reason="pyannote-audio not installed (install tapeback[diarize])",
 )
 
 # --- pytest fixtures ---
@@ -82,7 +82,7 @@ def e2e_settings(tmp_path):
     vault.mkdir()
     return Settings(
         vault_path=vault,
-        hf_token=os.environ.get("MEETREC_HF_TOKEN", os.environ.get("HF_TOKEN", "")),
+        hf_token=os.environ.get("TAPEBACK_HF_TOKEN", os.environ.get("HF_TOKEN", "")),
     )
 
 
@@ -177,8 +177,8 @@ def create_session_file(session_file, **overrides):
         "pid_monitor": 99998,
         "pid_mic": 99999,
         "session_name": "test_session",
-        "monitor_path": "/tmp/echo-vault/test_session/monitor.wav",
-        "mic_path": "/tmp/echo-vault/test_session/mic.wav",
+        "monitor_path": "/tmp/tapeback/test_session/monitor.wav",
+        "mic_path": "/tmp/tapeback/test_session/mic.wav",
         "started_at": "2026-03-17T14:30:00",
         **overrides,
     }

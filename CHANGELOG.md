@@ -9,14 +9,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - `scripts/release.sh` — version bump across pyproject.toml, PKGBUILD
-- AUR packages: `echo-vault-diarize`, `echo-vault-llm` — optional extras as separate packages
+- AUR packages: `tapeback-diarize`, `tapeback-llm` — optional extras as separate packages
 - Version validation step in publish.yml — tag must match pyproject.toml
 - Lint + tests run before PyPI publish
 
 ### Changed
-- **CLI command renamed from `meetrec` to `echo-vault`** — entry point, help texts, temp dirs, state dir
-- Speaker diarization (pyannote/torch) moved to optional dependency: `echo-vault[diarize]`
-- LLM SDKs (anthropic/openai) moved to optional dependency: `echo-vault[llm]`
+- **PyPI package renamed to `tapeback`**, CLI command `tapeback`, Python module renamed to `tapeback`
+- CLI command renamed from `meetrec` → `echo-vault` → `tapeback` — entry point, help texts, temp dirs, state dir
+- Speaker diarization (pyannote/torch) moved to optional dependency: `tapeback[diarize]`
+- LLM SDKs (anthropic/openai) moved to optional dependency: `tapeback[llm]`
 - Base install no longer requires PyTorch or LLM SDKs (~2 GB smaller)
 - Monitor channel segments default to "Other" speaker when diarization is not available
 - PKGBUILD rewritten with venv-based install (Python deps from PyPI, system deps from pacman)
@@ -58,7 +59,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `models.py` — domain objects extracted into dedicated module
 - `vault.py` — Obsidian vault I/O separated from formatting
 - Session name validation (alphanumerics, dashes, underscores only)
-- Restrictive permissions (0700) on `/tmp/echo-vault` temp directories
+- Restrictive permissions (0700) on `/tmp/tapeback` temp directories
 - mypy strict mode
 - Coverage threshold (85%) enforced in CI
 
@@ -124,5 +125,5 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Local transcription with faster-whisper (CUDA with CPU fallback)
 - Markdown output with YAML frontmatter and `[HH:MM:SS]` timecodes
 - Obsidian vault integration — saves audio + markdown
-- pydantic-settings configuration with `MEETREC_` prefix
+- pydantic-settings configuration with `TAPEBACK_` prefix
 - `start`, `stop`, `process`, `status` CLI commands

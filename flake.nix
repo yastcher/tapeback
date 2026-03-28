@@ -1,5 +1,5 @@
 {
-  description = "echo-vault — local meeting recorder with transcription for Obsidian";
+  description = "tapeback — local meeting recorder with transcription for Obsidian";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -22,7 +22,7 @@
           ];
 
           shellHook = ''
-            echo "echo-vault dev shell — run 'uv sync' to install Python deps"
+            echo "tapeback dev shell — run 'uv sync' to install Python deps"
           '';
         };
 
@@ -33,9 +33,9 @@
         #   nix run github:yastcher/echo-vault#diarize    # + speaker diarization
         #   nix run github:yastcher/echo-vault#full       # everything
         packages = let
-          mkWrapper = extras: pkgs.writeShellScriptBin "echo-vault" ''
+          mkWrapper = extras: pkgs.writeShellScriptBin "tapeback" ''
             export PATH="${pkgs.lib.makeBinPath [ pkgs.ffmpeg pkgs.pipewire.pulse ]}:$PATH"
-            exec ${pkgs.uv}/bin/uvx "echo-vault${extras}" "$@"
+            exec ${pkgs.uv}/bin/uvx "tapeback${extras}" "$@"
           '';
         in {
           default  = mkWrapper "";

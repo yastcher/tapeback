@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from meetrec.transcriber import Transcriber
+from tapeback.transcriber import Transcriber
 
 
 def test_transcribe_stereo_pipeline(settings):
@@ -32,7 +32,7 @@ def test_transcribe_stereo_pipeline(settings):
     mock_info.language_probability = 0.99
     mock_info.duration = 5.0
 
-    with patch("meetrec.transcriber.WhisperModel") as mock_model_cls:
+    with patch("tapeback.transcriber.WhisperModel") as mock_model_cls:
         instance = mock_model_cls.return_value
         instance.transcribe.side_effect = [
             (iter([mock_seg_mic]), mock_info),

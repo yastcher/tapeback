@@ -3,7 +3,7 @@
 These tests use real audio files and real ML models (faster-whisper, pyannote).
 They are slow (minutes) and require GPU + HF token.
 
-Run with: MEETREC_RUN_E2E=1 uv run pytest tests/test_e2e_quality.py -v
+Run with: TAPEBACK_RUN_E2E=1 uv run pytest tests/test_e2e_quality.py -v
 """
 
 import os
@@ -13,14 +13,14 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from meetrec.cli import _process_stereo_file, cli
+from tapeback.cli import _process_stereo_file, cli
 
-_RUN_E2E = os.environ.get("MEETREC_RUN_E2E", "").lower() in ("1", "true", "yes")
+_RUN_E2E = os.environ.get("TAPEBACK_RUN_E2E", "").lower() in ("1", "true", "yes")
 _TEST_DATA = Path(__file__).parent / "data"
 _STEREO_WAV = _TEST_DATA / "2026-03-24_18-31-58.wav"
 
 pytestmark = [
-    pytest.mark.skipif(not _RUN_E2E, reason="Set MEETREC_RUN_E2E=1 to run e2e tests"),
+    pytest.mark.skipif(not _RUN_E2E, reason="Set TAPEBACK_RUN_E2E=1 to run e2e tests"),
     pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg required"),
     pytest.mark.skipif(not _STEREO_WAV.exists(), reason="Test WAV not found"),
 ]
@@ -47,7 +47,7 @@ def test_stereo_pipeline_with_diarization(e2e_settings, e2e_output_dir):
     should not split it into multiple speakers.
     """
     if not e2e_settings.hf_token:
-        pytest.skip("MEETREC_HF_TOKEN required for diarization test")
+        pytest.skip("TAPEBACK_HF_TOKEN required for diarization test")
 
     segments, _info = _process_stereo_file(_STEREO_WAV, e2e_output_dir, e2e_settings, diarize=True)
 
@@ -69,7 +69,7 @@ def test_stereo_pipeline_with_diarization(e2e_settings, e2e_output_dir):
 
 
 def test_process_command_with_real_audio(e2e_settings):
-    """echo-vault process command with real stereo WAV end-to-end."""
+    """tapeback process command with real stereo WAV end-to-end."""
     runner = CliRunner()
     result = runner.invoke(
         cli,
@@ -82,8 +82,8 @@ def test_process_command_with_real_audio(e2e_settings):
             "--no-summarize",
         ],
         env={
-            "MEETREC_VAULT_PATH": str(e2e_settings.vault_path),
-            "MEETREC_DIARIZE": "false",
+            "TAPEBACK_VAULT_PATH": str(e2e_settings.vault_path),
+            "TAPEBACK_DIARIZE": "false",
         },
     )
 

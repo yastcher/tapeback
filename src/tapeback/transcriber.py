@@ -5,8 +5,8 @@ from typing import Any
 
 from faster_whisper import WhisperModel
 
-from meetrec.models import Segment, Word
-from meetrec.settings import Settings
+from tapeback.models import Segment, Word
+from tapeback.settings import Settings
 
 
 class Transcriber:
