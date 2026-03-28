@@ -18,6 +18,7 @@ No web servers, databases, Docker.
 - Never simplify architecture by removing existing features unless explicitly asked.
 - Any file with API keys, tokens or credentials is read-only.
 - When fixing linter/import issues: fix one file at a time, run tests after each change.
+- When renaming or refactoring across the project, grep for ALL old names (module, package, repo, env prefix, URLs) across the entire tree before considering the task done. Don't skip files that seem unimportant (PKGBUILD, .install, flake.nix, demo.tape, etc.).
 
 ## Architecture
 

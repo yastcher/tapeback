@@ -5,7 +5,7 @@ post_install() {
     "$_venv/bin/pip" install --no-cache-dir \
         "pyannote-audio>=3.1.0" "torch>=2.0.0" "torchaudio>=2.0.0"
     echo "==> Done. Set TAPEBACK_HF_TOKEN for pyannote model access."
-    echo "    See: https://github.com/yastcher/echo-vault#speaker-diarization"
+    echo "    See: https://github.com/yastcher/tapeback#speaker-diarization"
 }
 
 post_upgrade() {

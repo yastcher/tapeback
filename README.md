@@ -86,16 +86,16 @@ yay -S tapeback-diarize          # + speaker diarization (~2 GB PyTorch)
 #### Nix
 
 ```bash
-nix run github:yastcher/echo-vault              # basic
-nix run github:yastcher/echo-vault#llm          # + summaries
-nix run github:yastcher/echo-vault#diarize      # + speaker diarization
-nix run github:yastcher/echo-vault#full         # everything
+nix run github:yastcher/tapeback              # basic
+nix run github:yastcher/tapeback#llm          # + summaries
+nix run github:yastcher/tapeback#diarize      # + speaker diarization
+nix run github:yastcher/tapeback#full         # everything
 ```
 
 #### From source (development)
 
 ```bash
-git clone https://github.com/yastcher/echo-vault
+git clone https://github.com/yastcher/tapeback
 cd tapeback
 uv sync --group dev    # all dependencies + dev tools
 ```
@@ -323,7 +323,7 @@ src/tapeback/
 ## Development
 
 ```bash
-git clone https://github.com/yastcher/echo-vault
+git clone https://github.com/yastcher/tapeback
 cd tapeback
 uv sync --group dev
 

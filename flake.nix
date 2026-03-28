@@ -28,10 +28,10 @@
 
         # Convenience wrappers — run via uvx, NOT reproducible Nix packages.
         # Require network access on first run to fetch from PyPI.
-        #   nix run github:yastcher/echo-vault            # base
-        #   nix run github:yastcher/echo-vault#llm        # + summaries
-        #   nix run github:yastcher/echo-vault#diarize    # + speaker diarization
-        #   nix run github:yastcher/echo-vault#full       # everything
+        #   nix run github:yastcher/tapeback            # base
+        #   nix run github:yastcher/tapeback#llm        # + summaries
+        #   nix run github:yastcher/tapeback#diarize    # + speaker diarization
+        #   nix run github:yastcher/tapeback#full       # everything
         packages = let
           mkWrapper = extras: pkgs.writeShellScriptBin "tapeback" ''
             export PATH="${pkgs.lib.makeBinPath [ pkgs.ffmpeg pkgs.pipewire.pulse ]}:$PATH"

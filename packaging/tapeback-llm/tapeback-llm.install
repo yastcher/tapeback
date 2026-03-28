@@ -5,7 +5,7 @@ post_install() {
     "$_venv/bin/pip" install --no-cache-dir "anthropic>=0.40.0" "openai>=1.50.0"
     echo "==> Done. Set an API key to enable summarization:"
     echo "    ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, etc."
-    echo "    See: https://github.com/yastcher/echo-vault#llm-summarization"
+    echo "    See: https://github.com/yastcher/tapeback#llm-summarization"
 }
 
 post_upgrade() {

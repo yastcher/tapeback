@@ -4,7 +4,7 @@ pkgver=0.8.0
 pkgrel=1
 pkgdesc="Local meeting recorder with transcription and speaker diarization for Obsidian"
 arch=('any')
-url="https://github.com/yastcher/echo-vault"
+url="https://github.com/yastcher/tapeback"
 license=('Apache-2.0')
 depends=(
     'python'
@@ -15,7 +15,7 @@ optdepends=(
     'cuda: GPU-accelerated transcription and diarization'
 )
 makedepends=('python' 'python-pip')
-source=("$pkgname-$pkgver.tar.gz::https://github.com/yastcher/echo-vault/archive/v$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/yastcher/tapeback/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {

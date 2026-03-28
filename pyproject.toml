@@ -38,10 +38,10 @@ llm = [
 tapeback = "tapeback.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/yastcher/echo-vault"
-Repository = "https://github.com/yastcher/echo-vault"
-Issues = "https://github.com/yastcher/echo-vault/issues"
-Changelog = "https://github.com/yastcher/echo-vault/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/yastcher/tapeback"
+Repository = "https://github.com/yastcher/tapeback"
+Issues = "https://github.com/yastcher/tapeback/issues"
+Changelog = "https://github.com/yastcher/tapeback/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
