@@ -2,8 +2,8 @@
 
 Local meeting recorder for Linux. Records system audio + microphone via
 PipeWire/PulseAudio, transcribes with Whisper, identifies speakers, saves
-Markdown to your Obsidian vault. Everything runs on your machine — no cloud,
-no bots, no API calls for transcription.
+Markdown to your Obsidian vault. Everything runs on your machine, no cloud
+services or API calls needed for transcription.
 
 Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord, Slack huddles.
 
@@ -12,13 +12,13 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 
 ## Features
 
-- **Platform-agnostic** — captures OS-level audio, works with any app
-- **Local transcription** — faster-whisper, runs on CPU or CUDA GPU
-- **Speaker diarization** — pyannote identifies who said what
-- **Stereo channel separation** — your mic (left) vs. others (right) for accurate "You" attribution
-- **Obsidian-native output** — Markdown with YAML frontmatter, wikilinks to audio files
-- **LLM summarization** — optional summaries via Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback)
-- **CLI-first** — `tapeback start`, Ctrl+C to stop, done
+- **Platform-agnostic**: captures OS-level audio, works with any app
+- **Local transcription**: faster-whisper on CPU or CUDA GPU
+- **Speaker diarization**: pyannote identifies who said what
+- **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
+- **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
+- **LLM summarization**: optional, via Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback)
+- **CLI-first**: `tapeback start`, Ctrl+C to stop, done
 
 ## Requirements
 
@@ -190,7 +190,7 @@ cp .env.example .env
 | `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu` |
 | `TAPEBACK_COMPUTE_TYPE` | `float16` | `float16`, `int8`, or `float32` |
 | `TAPEBACK_BEAM_SIZE` | `5` | Whisper beam search width |
-| `TAPEBACK_PAUSE_THRESHOLD` | `1.0` | Seconds — split segments on silence gaps >= this |
+| `TAPEBACK_PAUSE_THRESHOLD` | `1.0` | Seconds; split segments on silence gaps >= this |
 
 ### Audio
 
@@ -218,7 +218,7 @@ and a HuggingFace token with access to pyannote models:
 5. Create token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 6. Set `TAPEBACK_HF_TOKEN=hf_your_token_here`
 
-Without a token, tapeback still works — it just skips diarization.
+Without a token, tapeback still works but skips diarization.
 
 ### LLM summarization
 
@@ -308,7 +308,7 @@ Brief overview of the meeting.
 
 ```
 src/tapeback/
-  cli.py          Click CLI — start, stop, process, summarize, status
+  cli.py          Click CLI (start, stop, process, summarize, status)
   recorder.py     PulseAudio recording via parecord
   audio.py        ffmpeg audio processing (split channels, normalize, convert)
   transcriber.py  faster-whisper transcription
@@ -335,14 +335,12 @@ uv run pytest           # test (coverage >= 85%)
 
 ## Roadmap
 
-Future development directions:
-
-- **Custom diarization model** — train a speaker embedding model optimized for meeting audio, replacing generic pyannote for better accuracy
-- **Windows client** — native Windows support via WASAPI loopback capture
-- **Real-time transcription** — live streaming transcription with partial results
-- **Web dashboard** — browser UI for reviewing and searching meeting history
-- **Speaker profiles** — learn and remember recurring speakers across meetings
-- **Multi-language meetings** — detect and handle language switches mid-meeting
+- **Custom diarization model**: train a speaker embedding model on meeting audio to replace the generic pyannote pipeline
+- **Windows client**: WASAPI loopback capture
+- **Real-time transcription**: live streaming with partial results
+- **Web dashboard**: browser UI for reviewing and searching meeting history
+- **Speaker profiles**: learn and remember recurring speakers across meetings
+- **Multi-language meetings**: detect and handle language switches mid-meeting
 
 <!-- QR codes for donations -->
 <!-- TODO: Insert QR codes here -->
