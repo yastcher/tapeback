@@ -1,5 +1,3 @@
-import pytest
-
 from tapeback.settings import Settings, get_settings
 
 
