@@ -29,7 +29,27 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 
 ## Installation
 
-### 1. System dependencies
+The base package records audio and transcribes locally. Optional extras add
+speaker diarization and LLM summaries:
+
+| Extra | What it adds | Size      |
+|---|---|-----------|
+| *(none)* | Recording + transcription | ~320 MB |
+| `[llm]` | LLM summarization (Anthropic, OpenAI, Gemini, etc.) | +50 MB    |
+| `[diarize]` | Speaker diarization (pyannote + PyTorch) | +2 GB     |
+| `[llm,diarize]` | Everything | +2 GB     |
+
+### Arch Linux (AUR)
+
+```bash
+yay -S tapeback                  # basic
+yay -S tapeback-llm              # + summaries
+yay -S tapeback-diarize          # + speaker diarization (~2 GB PyTorch)
+```
+
+### pip / uv / pipx
+
+1. Install system dependencies:
 
 ```bash
 # Arch / Manjaro
@@ -44,19 +64,7 @@ sudo dnf install python3 pipx ffmpeg pipewire-pulseaudio
 pipx ensurepath
 ```
 
-### 2. Install tapeback
-
-The base package records audio and transcribes locally. Optional extras add
-speaker diarization and LLM summaries:
-
-| Extra | What it adds | Size |
-|---|---|---|
-| *(none)* | Recording + transcription | ~150 MB |
-| `[llm]` | LLM summarization (Anthropic, OpenAI, Gemini, etc.) | +50 MB |
-| `[diarize]` | Speaker diarization (pyannote + PyTorch) | +2 GB |
-| `[llm,diarize]` | Everything | +2 GB |
-
-#### With uv (recommended)
+2. Install tapeback:
 
 ```bash
 uv tool install tapeback                  # basic
@@ -65,24 +73,14 @@ uv tool install "tapeback[diarize]"       # + speaker diarization
 uv tool install "tapeback[llm,diarize]"   # everything
 ```
 
-#### With pipx
+or with pipx:
 
 ```bash
 pipx install tapeback                     # basic
-pipx install "tapeback[llm]"              # + summaries
-pipx install "tapeback[diarize]"          # + speaker diarization
 pipx install "tapeback[llm,diarize]"      # everything
 ```
 
-#### Arch Linux (AUR)
-
-```bash
-yay -S tapeback                  # basic
-yay -S tapeback-llm              # + summaries
-yay -S tapeback-diarize          # + speaker diarization (~2 GB PyTorch)
-```
-
-#### Nix
+### Nix
 
 ```bash
 nix run github:yastcher/tapeback              # basic
@@ -91,89 +89,84 @@ nix run github:yastcher/tapeback#diarize      # + speaker diarization
 nix run github:yastcher/tapeback#full         # everything
 ```
 
-#### From source (development)
-
-```bash
-git clone https://github.com/yastcher/tapeback
-cd tapeback
-uv sync --group dev    # all dependencies + dev tools
-```
-
-### 3. Uninstall
-
-```bash
-# Remove tapeback
-uv tool uninstall tapeback    # if installed with uv
-pipx uninstall tapeback       # if installed with pipx
-
-# Remove cached ML models (~2-5 GB)
-# ⚠ Skip if you have other HuggingFace projects
-rm -rf ~/.cache/huggingface/
-
-# Arch Linux
-yay -R tapeback tapeback-diarize tapeback-llm
-```
-
 ## Quick start
 
-### 1. Configure
+```bash
+tapeback start                     # start recording, Ctrl+C to stop
+```
 
-By default, tapeback saves recordings to `~/tapeback/`. To change it
-(e.g. to your Obsidian vault):
+That's it. The transcript is saved to `~/tapeback/meetings/`.
+
+To save to your Obsidian vault instead:
 
 ```bash
-export TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault
-
-# Or create a persistent config:
 mkdir -p ~/.config/tapeback
 echo 'TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault' > ~/.config/tapeback/.env
 ```
 
-### 2. Record a meeting
+### More examples
 
 ```bash
-# Start recording (blocks, Ctrl+C to stop and transcribe)
-tapeback start
-
-# Optionally give the session a name
-tapeback start "weekly-standup"
+tapeback start "weekly-standup"    # name the session
+tapeback process meeting.mp3       # transcribe an existing file
+tapeback summarize transcript.md   # add LLM summary to a transcript
+tapeback status                    # show current settings
 ```
 
-### 3. Check your vault
+## Output format
 
-The recording is saved as a Markdown note with audio attachment:
+```markdown
+---
+date: 2026-03-23
+time: "14:30"
+duration: "01:23:45"
+language: en
+tags:
+  - meeting
+  - transcript
+---
 
+## Summary
+
+Brief overview of the meeting.
+
+### Action Items
+
+- [ ] **You:** Send the report by Friday
+- [ ] **Speaker 1:** Review the PR
+
+### Key Decisions
+
+- Use PostgreSQL instead of MongoDB
+
+---
+
+# Meeting 2026-03-23 14:30
+
+![[attachments/audio/2026-03-23_14-30-00.wav]]
+
+[00:00:01] **You:** Hello, let's start with the backend changes.
+
+[00:01:23] **Speaker 1:** Sure, I have the slides ready.
+
+[00:02:45] **Speaker 2:** Can we start with the backend changes?
 ```
-vault/
-  meetings/2026-03-23_14-30-00.md
-  attachments/audio/2026-03-23_14-30-00.wav
-```
 
-### Process an existing recording
+## Roadmap
 
-```bash
-# Transcribe any audio file (mp3, m4a, ogg, wav)
-tapeback process meeting.mp3
+- **System tray icon**: start/stop recording from the tray, no terminal needed
+- **Speaker profiles**: learn and remember recurring speakers across meetings
+- **Real-time transcription**: live streaming with partial results
+- **Multi-language meetings**: detect and handle language switches mid-meeting
+- **Windows support**: WASAPI loopback capture
 
-# With options
-tapeback process call.wav --name "client-call" --no-diarize
-```
+---
 
-### Add summary to existing transcript
+<details>
+<summary><h2>Advanced configuration</h2></summary>
 
-```bash
-tapeback summarize vault/meetings/2026-03-23.md
-tapeback summarize transcript.md --provider gemini
-```
-
-## Configuration
-
-All settings via environment variables (prefix `TAPEBACK_`) or `.env` file.
-Copy `.env.example` to `.env` and adjust:
-
-```bash
-cp .env.example .env
-```
+All settings via environment variables (prefix `TAPEBACK_`) or
+`~/.config/tapeback/.env` file.
 
 ### Core
 
@@ -247,7 +240,7 @@ Supported providers and their env vars:
 
 If the primary provider fails, tapeback automatically tries the next available provider (any provider with an API key set).
 
-## CLI reference
+### CLI reference
 
 ```
 tapeback --help                    Show help and quick start guide
@@ -258,8 +251,6 @@ tapeback summarize <FILE>          Add LLM summary to transcript
 tapeback status                    Show recording status and settings
 ```
 
-### Common options
-
 ```bash
 tapeback start --no-diarize        # Skip speaker identification
 tapeback start --no-summarize      # Skip LLM summary
@@ -267,46 +258,29 @@ tapeback process file.mp3 --name "weekly-standup"
 tapeback summarize file.md --provider gemini --model gemini-2.5-pro
 ```
 
-## Output format
+### Uninstall
 
-```markdown
----
-date: 2026-03-23
-time: "14:30"
-duration: "01:23:45"
-language: en
-tags:
-  - meeting
-  - transcript
----
+```bash
+# pip / uv
+uv tool uninstall tapeback
 
-## Summary
+# pipx
+pipx uninstall tapeback
 
-Brief overview of the meeting.
+# Arch Linux
+yay -R tapeback tapeback-diarize tapeback-llm
 
-### Action Items
-
-- [ ] **You:** Send the report by Friday
-- [ ] **Speaker 1:** Review the PR
-
-### Key Decisions
-
-- Use PostgreSQL instead of MongoDB
-
----
-
-# Meeting 2026-03-23 14:30
-
-![[attachments/audio/2026-03-23_14-30-00.wav]]
-
-[00:00:01] **You:** Hello, let's start with the backend changes.
-
-[00:01:23] **Speaker 1:** Sure, I have the slides ready.
-
-[00:02:45] **Speaker 2:** Can we start with the backend changes?
+# Remove cached ML models (~2-5 GB)
+# Skip if you have other HuggingFace projects
+rm -rf ~/.cache/huggingface/
 ```
 
-## Architecture
+</details>
+
+<details>
+<summary><h2>Development</h2></summary>
+
+### Architecture
 
 ```
 src/tapeback/
@@ -322,7 +296,7 @@ src/tapeback/
   settings.py     pydantic-settings configuration
 ```
 
-## Development
+### Setup
 
 ```bash
 git clone https://github.com/yastcher/tapeback
@@ -343,14 +317,7 @@ scripts/release.sh 0.9.0          # bump version in pyproject.toml + PKGBUILDs
 scripts/aur-publish.sh 0.9.0      # update all 3 AUR packages
 ```
 
-## Roadmap
-
-- **Custom diarization model**: train a speaker embedding model on meeting audio to replace the generic pyannote pipeline
-- **Windows client**: WASAPI loopback capture
-- **Real-time transcription**: live streaming with partial results
-- **Web dashboard**: browser UI for reviewing and searching meeting history
-- **Speaker profiles**: learn and remember recurring speakers across meetings
-- **Multi-language meetings**: detect and handle language switches mid-meeting
+</details>
 
 ## Support
 

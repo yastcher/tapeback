@@ -29,3 +29,6 @@ mongo_data
 cosmic-ray*.sqlite
 mutants/
 __pycache__/
+packaging/src
+packaging/pkg
+packaging/tapeback-0*

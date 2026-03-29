@@ -80,9 +80,6 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - Never hardcode secrets, tokens, or passwords in code
 - Never hardcode audio device names
 - Never use absolute paths in code or configs
-- Never add wav2vec2 or alternative diarization models — only pyannote
-- Never add translation — future phase
-- Never add web server, REST API
 
 ## Before finishing
 
