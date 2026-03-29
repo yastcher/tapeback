@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tapeback.settings import Settings, get_settings
+from tapeback.settings import Settings
 
 
 def test_settings_from_env(monkeypatch, tmp_path):

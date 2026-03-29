@@ -7,7 +7,6 @@ from unittest.mock import patch
 import pytest
 
 from tapeback.audio import get_channel_count, merge_channels, split_channels_16k
-from tapeback.pipeline import _get_stereo_source, _maybe_diarize_segments
 from tapeback.diarizer import (
     assign_speakers,
     classify_segment_by_channel,
@@ -18,6 +17,7 @@ from tapeback.diarizer import (
 )
 from tapeback.formatter import format_markdown
 from tapeback.models import DiarizationSegment, Segment
+from tapeback.pipeline import _get_stereo_source, _maybe_diarize_segments
 from tapeback.settings import Settings
 from tests.fixtures import create_mono_wav, create_stereo_wav, create_stereo_wav_segments
 
@@ -267,8 +267,12 @@ def test_diarization_unavailable_warning(tmp_vault):
 
     with patch("tapeback.diarizer.diarization_available", return_value=False):
         result = _maybe_diarize_segments(
-            segments, settings, mono_16k_path=tmp_vault / "fake.wav", stereo_path=None,
-            diarize=True, on_status=messages.append,
+            segments,
+            settings,
+            mono_16k_path=tmp_vault / "fake.wav",
+            stereo_path=None,
+            diarize=True,
+            on_status=messages.append,
         )
 
     assert result == segments

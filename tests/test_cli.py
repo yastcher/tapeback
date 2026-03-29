@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tapeback.cli import cli
-from tapeback.pipeline import _maybe_diarize_segments, process_stereo_file, stop_and_process
 from tapeback.models import Segment
+from tapeback.pipeline import _maybe_diarize_segments, process_stereo_file, stop_and_process
 from tapeback.settings import Settings
 from tapeback.summarizer import _PROVIDER_ENV_VARS
 from tests.fixtures import (
@@ -288,12 +288,16 @@ def test_maybe_diarize_skips_and_warns(runner, tmp_path):
 
     # Disabled
     settings_off = Settings(vault_path=vault)
-    result = _maybe_diarize_segments(segments, settings_off, tmp_path / "a.wav", None, diarize=False)
+    result = _maybe_diarize_segments(
+        segments, settings_off, tmp_path / "a.wav", None, diarize=False
+    )
     assert result is segments
 
     # No token
     settings_no_token = Settings(vault_path=vault, hf_token="", diarize=True)
-    result = _maybe_diarize_segments(segments, settings_no_token, tmp_path / "a.wav", None, diarize=True)
+    result = _maybe_diarize_segments(
+        segments, settings_no_token, tmp_path / "a.wav", None, diarize=True
+    )
     assert result is segments
 
 
