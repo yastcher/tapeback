@@ -83,6 +83,7 @@ fixable = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S105", "S106", "PLC0415"]  # assert, fake tokens, local imports in tests
 "src/tapeback/cli.py" = ["PLC0415"]         # lazy imports for heavy ML deps
+"src/tapeback/pipeline.py" = ["PLC0415", "PLR0913"]  # lazy imports for heavy ML deps, pipeline functions take many params
 "src/tapeback/diarizer.py" = ["PLC0415", "PLR0912", "PLR0915"]  # lazy ML imports, complex audio algorithms
 "src/tapeback/summarizer.py" = ["PLC0415", "S101"]  # lazy imports for SDKs, assert for type narrowing
 

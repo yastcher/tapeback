@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from tapeback.audio import get_channel_count, merge_channels, split_channels_16k
-from tapeback.cli import _get_stereo_source, _maybe_diarize
+from tapeback.pipeline import _get_stereo_source, _maybe_diarize_segments
 from tapeback.diarizer import (
     assign_speakers,
     classify_segment_by_channel,
@@ -259,16 +259,17 @@ def test_get_stereo_source_detection(tmp_path):
 # --- Optional diarization ---
 
 
-def test_diarization_unavailable_warning(tmp_vault, capsys):
-    """CLI should warn when diarize=True but pyannote not installed."""
+def test_diarization_unavailable_warning(tmp_vault):
+    """Pipeline should warn when diarize=True but pyannote not installed."""
     settings = Settings(vault_path=tmp_vault, diarize=True, hf_token="hf_fake")
     segments = [Segment(start=0.0, end=5.0, text="Hello.")]
+    messages: list[str] = []
 
     with patch("tapeback.diarizer.diarization_available", return_value=False):
-        result = _maybe_diarize(
-            segments, settings, mono_16k_path=tmp_vault / "fake.wav", stereo_path=None, diarize=True
+        result = _maybe_diarize_segments(
+            segments, settings, mono_16k_path=tmp_vault / "fake.wav", stereo_path=None,
+            diarize=True, on_status=messages.append,
         )
 
     assert result == segments
-    captured = capsys.readouterr()
-    assert "uv pip install tapeback[diarize]" in captured.err
+    assert any("uv pip install tapeback[diarize]" in m for m in messages)

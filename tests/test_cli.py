@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tapeback.cli import _maybe_diarize, _process_stereo_file, _stop_and_process, cli
+from tapeback.cli import cli
+from tapeback.pipeline import _maybe_diarize_segments, process_stereo_file, stop_and_process
 from tapeback.models import Segment
 from tapeback.settings import Settings
 from tapeback.summarizer import _PROVIDER_ENV_VARS
@@ -211,7 +212,7 @@ def test_stop_and_process_pipeline(tmp_path):
         mock_pipeline = MagicMock()
         mock_pipeline_cls.from_pretrained.return_value = mock_pipeline
         mock_pipeline.return_value = annotation
-        _stop_and_process(mock_recorder, settings, diarize=True)
+        stop_and_process(mock_recorder, settings, diarize=True)
 
     md_path = vault / "meetings" / "2026-03-20_10-00-00.md"
     assert md_path.exists()
@@ -244,7 +245,7 @@ def test_stop_and_process_no_diarize(tmp_path):
         patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
         patch("pyannote.audio.Pipeline") as mock_pipeline_cls,
     ):
-        _stop_and_process(mock_recorder, settings, diarize=False)
+        stop_and_process(mock_recorder, settings, diarize=False)
         mock_pipeline_cls.from_pretrained.assert_not_called()
 
     assert (vault / "meetings" / "2026-03-20_11-00-00.md").exists()
@@ -269,7 +270,7 @@ def test_process_stereo_file_function(tmp_path):
     mock_model = mock_whisper_transcribe([(0.0, 1.0, "Speech.")])
 
     with patch("tapeback.transcriber.WhisperModel", return_value=mock_model):
-        segments, _info = _process_stereo_file(stereo, output_dir, settings, diarize=False)
+        segments, _info = process_stereo_file(stereo, output_dir, settings, diarize=False)
 
     assert len(segments) > 0
     # Mic segments get "You" from transcribe_stereo
@@ -287,12 +288,12 @@ def test_maybe_diarize_skips_and_warns(runner, tmp_path):
 
     # Disabled
     settings_off = Settings(vault_path=vault)
-    result = _maybe_diarize(segments, settings_off, tmp_path / "a.wav", None, diarize=False)
+    result = _maybe_diarize_segments(segments, settings_off, tmp_path / "a.wav", None, diarize=False)
     assert result is segments
 
     # No token
     settings_no_token = Settings(vault_path=vault, hf_token="", diarize=True)
-    result = _maybe_diarize(segments, settings_no_token, tmp_path / "a.wav", None, diarize=True)
+    result = _maybe_diarize_segments(segments, settings_no_token, tmp_path / "a.wav", None, diarize=True)
     assert result is segments
 
 
@@ -440,7 +441,7 @@ def test_stop_and_process_summarization_failure(tmp_path):
         patch("pyannote.audio.Pipeline"),
         patch("tapeback.summarizer._call_llm", side_effect=RuntimeError("API error")),
     ):
-        _stop_and_process(mock_recorder, settings, diarize=False, do_summarize=True)
+        stop_and_process(mock_recorder, settings, diarize=False, do_summarize=True)
 
     # Transcript still saved despite summarization failure
     md_path = vault / "meetings" / "2026-03-20_12-00-00.md"

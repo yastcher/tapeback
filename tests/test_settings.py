@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from tapeback.settings import Settings, get_settings
 
 
@@ -18,10 +20,11 @@ def test_settings_from_env(monkeypatch, tmp_path):
 def test_settings_vault_path_default(monkeypatch, tmp_path):
     """vault_path should default to ~/tapeback when not set."""
     monkeypatch.delenv("TAPEBACK_VAULT_PATH", raising=False)
+    # Use empty dir so no .env is found
     monkeypatch.chdir(tmp_path)
 
-    s = get_settings()
-    assert s.vault_path.name == "tapeback"
+    s = Settings(_env_file=str(tmp_path / "nonexistent.env"))  # type: ignore[call-arg]
+    assert s.vault_path == Path.home() / "tapeback"
 
 
 def test_settings_defaults(tmp_vault):
