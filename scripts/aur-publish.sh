@@ -61,6 +61,15 @@ cp "$REPO_ROOT/packaging/tapeback-diarize/tapeback-diarize.install" "$AUR_DIR/ta
 (cd "$AUR_DIR/tapeback-diarize" && makepkg --printsrcinfo > .SRCINFO)
 (cd "$AUR_DIR/tapeback-diarize" && git add PKGBUILD .SRCINFO tapeback-diarize.install && git commit -m "Update to $VERSION" && git push)
 
+# --- tapeback-tray ---
+echo ""
+echo "==> Updating tapeback-tray..."
+git clone ssh://aur@aur.archlinux.org/tapeback-tray.git "$AUR_DIR/tapeback-tray"
+cp "$REPO_ROOT/packaging/tapeback-tray/PKGBUILD" "$AUR_DIR/tapeback-tray/PKGBUILD"
+cp "$REPO_ROOT/packaging/tapeback-tray/tapeback-tray.install" "$AUR_DIR/tapeback-tray/"
+(cd "$AUR_DIR/tapeback-tray" && makepkg --printsrcinfo > .SRCINFO)
+(cd "$AUR_DIR/tapeback-tray" && git add PKGBUILD .SRCINFO tapeback-tray.install && git commit -m "Update to $VERSION" && git push)
+
 # Cleanup
 rm -rf "$AUR_DIR"
 
