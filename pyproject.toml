@@ -1,6 +1,6 @@
 [project]
 name = "tapeback"
-version = "0.8.5"
+version = "0.8.6"
 description = "Local meeting recorder with transcription and speaker diarization for Obsidian"
 readme = "README.md"
 authors = [{ name = "Yast", email = "yastcher@gmail.com" }]

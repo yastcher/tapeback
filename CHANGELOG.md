@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] — 2026-04-01
+
+### Fixed
+- PyAV `UnicodeDecodeError` crash on non-English locales (e.g. Russian): set `LC_MESSAGES=C` to force ASCII error messages from `strerror_r()`
+
+## [0.8.5] — 2026-03-31
+
+### Added
+- AUR package `tapeback-tray`: system tray icon as separate meta-package
+- `scripts/aur-publish.sh` now publishes all 4 AUR packages (added tapeback-tray)
+
+### Changed
+- Consolidated unit tests into integration flow tests, moved shared fixtures to `tests/fixtures.py`
+
 ## [0.8.4] — 2026-03-30
 
 ### Added

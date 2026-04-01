@@ -44,6 +44,7 @@ speaker diarization and LLM summaries:
 
 ```bash
 yay -S tapeback                  # basic
+yay -S tapeback-tray             # + system tray icon
 yay -S tapeback-llm              # + summaries
 yay -S tapeback-diarize          # + speaker diarization (~2 GB PyTorch)
 ```
@@ -279,7 +280,7 @@ uv tool uninstall tapeback
 pipx uninstall tapeback
 
 # Arch Linux
-yay -R tapeback tapeback-diarize tapeback-llm
+yay -R tapeback tapeback-tray tapeback-diarize tapeback-llm
 
 # Remove cached ML models (~2-5 GB)
 # Skip if you have other HuggingFace projects
@@ -302,6 +303,7 @@ src/tapeback/
   diarizer.py     pyannote speaker diarization + spectral speaker merging
   formatter.py    Markdown generation (pure formatting, no I/O)
   vault.py        Obsidian vault file I/O
+  tray.py         System tray icon (pystray, optional)
   summarizer.py   LLM summarization with multi-provider fallback
   models.py       Domain objects (Segment, Word, DiarizationSegment, Summary)
   settings.py     pydantic-settings configuration
@@ -325,7 +327,7 @@ uv run pytest           # test (coverage >= 85%)
 ```bash
 scripts/release.sh 0.9.0          # bump version in pyproject.toml + PKGBUILDs
 # commit, tag, push → CI publishes to PyPI
-scripts/aur-publish.sh 0.9.0      # update all 3 AUR packages
+scripts/aur-publish.sh 0.9.0      # update all 4 AUR packages
 ```
 
 </details>
