@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] — 2026-04-02
+
+### Added
+- Auto VRAM detection: `TAPEBACK_COMPUTE_TYPE=auto` (new default) picks `int8` when free GPU memory < 4 GiB, avoiding CUDA OOM with fallback to slow CPU
+- `TAPEBACK_SPECTRAL_MERGE_THRESHOLD` setting (default `0.96`) for speaker merging sensitivity
+
 ## [0.8.7] — 2026-04-01
 
 ### Fixed

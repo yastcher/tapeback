@@ -483,11 +483,15 @@ def merge_similar_speakers(
     multiple speakers.  Uses power-spectrum cosine similarity in the 100-4000 Hz
     voice frequency range.
 
-    Threshold 0.95 is conservative enough to avoid false merges of genuinely
-    different speakers (e.g. two male voices from YouTube with cosine ~0.92)
-    while still catching pyannote over-segmentation (same speaker split into
-    pseudo-speakers typically has cosine > 0.98).
+    Default threshold 0.96 is a compromise: merges only near-identical profiles
+    (over-segmented single speaker, cosine ~0.98-0.99) while preserving distinct
+    voices from the same channel (cosine ~0.92-0.95).  Power-spectrum similarity
+    is a weak signal for voice identity — the channel frequency response dominates.
+    Set to 0 to disable, or raise to 0.98+ for stricter merging.
     """
+    if similarity_threshold <= 0:
+        return diarization_segments
+
     speakers = sorted({seg.speaker for seg in diarization_segments})
     if len(speakers) <= 1:
         return diarization_segments

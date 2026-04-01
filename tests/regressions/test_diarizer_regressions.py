@@ -175,13 +175,13 @@ MULTI_SPEAKER_WAV = Path(__file__).parent.parent / "data" / "2026-04-01_18-41-14
 
 
 @pytest.mark.skipif(not MULTI_SPEAKER_WAV.exists(), reason="test WAV not available")
-def test_spectral_merge_does_not_collapse_different_speakers(tmp_path):
-    """merge_similar_speakers must not merge genuinely different speakers.
+def test_spectral_merge_default_preserves_different_speakers(tmp_path):
+    """Default threshold (0.96) must preserve distinct speakers from same channel.
 
-    Bug: Two different male voices from YouTube (Claude 4 narrator + Charles
-    Hoskinson) had cosine similarity 0.9246 and were incorrectly merged with
-    the 0.92 threshold.  pyannote correctly identified 3 speakers, but spectral
-    merging collapsed SPEAKER_00 and SPEAKER_02 into one.
+    Bug: Power-spectrum cosine similarity is dominated by channel frequency
+    response, not voice identity.  Two male YouTube voices had cosine ~0.92.
+    Default threshold 0.96 is above this, so they stay separate.
+    Low thresholds (0.92) incorrectly merge them.
     """
     _, monitor_16k = split_channels_16k(MULTI_SPEAKER_WAV, tmp_path)
 
@@ -189,19 +189,61 @@ def test_spectral_merge_does_not_collapse_different_speakers(tmp_path):
         sr = wf.getframerate()
         raw = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32)
 
-    # Segments as identified by pyannote (3 distinct speakers)
     segments = [
         DiarizationSegment(speaker="SPEAKER_00", start=16.03, end=22.73),
         DiarizationSegment(speaker="SPEAKER_02", start=30.47, end=37.07),
         DiarizationSegment(speaker="SPEAKER_00", start=45.49, end=56.48),
     ]
 
-    merged = merge_similar_speakers(segments, raw, sr)
-    speakers = {s.speaker for s in merged}
-    assert len(speakers) >= 2, (
-        f"Different speakers collapsed into one: {speakers}. "
-        "Spectral merging threshold is too aggressive."
-    )
+    # Default threshold (0.96) preserves both speakers (cosine ~0.92)
+    result = merge_similar_speakers(segments, raw, sr, similarity_threshold=0.96)
+    assert {s.speaker for s in result} == {"SPEAKER_00", "SPEAKER_02"}
+
+    # Low threshold merges them — documents the risk of aggressive thresholds
+    merged = merge_similar_speakers(segments, raw, sr, similarity_threshold=0.92)
+    assert len({s.speaker for s in merged}) == 1
+
+
+MULTI_SPEAKER_WAV_2 = Path(__file__).parent.parent / "data" / "2026-04-01_23-15-26.wav"
+
+
+@pytest.mark.skipif(not MULTI_SPEAKER_WAV_2.exists(), reason="test WAV not available")
+def test_spectral_merge_096_preserves_three_speakers(tmp_path):
+    """Default threshold (0.96) must preserve 3 distinct speakers (cosines 0.94-0.95).
+
+    Bug: At threshold=0.95, SPEAKER_01 vs SPEAKER_02 (cosine=0.9504) get merged.
+    Default 0.96 is safely above all observed different-speaker cosines.
+    """
+    _, monitor_16k = split_channels_16k(MULTI_SPEAKER_WAV_2, tmp_path)
+
+    with wave.open(str(monitor_16k), "rb") as wf:
+        sr = wf.getframerate()
+        raw = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32)
+
+    # Real pyannote segments from 2026-04-01_23-15-26.wav
+    segments = [
+        DiarizationSegment(speaker="SPEAKER_01", start=13.77, end=13.97),
+        DiarizationSegment(speaker="SPEAKER_02", start=13.97, end=25.02),
+        DiarizationSegment(speaker="SPEAKER_01", start=25.02, end=25.78),
+        DiarizationSegment(speaker="SPEAKER_02", start=25.78, end=25.82),
+        DiarizationSegment(speaker="SPEAKER_01", start=40.82, end=41.04),
+        DiarizationSegment(speaker="SPEAKER_00", start=41.04, end=41.75),
+        DiarizationSegment(speaker="SPEAKER_01", start=41.75, end=42.02),
+        DiarizationSegment(speaker="SPEAKER_00", start=42.02, end=44.48),
+        DiarizationSegment(speaker="SPEAKER_00", start=45.26, end=49.47),
+        DiarizationSegment(speaker="SPEAKER_00", start=51.04, end=52.29),
+        DiarizationSegment(speaker="SPEAKER_01", start=52.29, end=52.33),
+        DiarizationSegment(speaker="SPEAKER_01", start=59.58, end=62.97),
+        DiarizationSegment(speaker="SPEAKER_02", start=62.97, end=65.98),
+    ]
+
+    # Default threshold (0.96) preserves all 3 speakers
+    result = merge_similar_speakers(segments, raw, sr, similarity_threshold=0.96)
+    assert {s.speaker for s in result} == {"SPEAKER_00", "SPEAKER_01", "SPEAKER_02"}
+
+    # threshold=0.95 loses SPEAKER_02 (cosine 0.9504 with SPEAKER_01)
+    merged_095 = merge_similar_speakers(segments, raw, sr, similarity_threshold=0.95)
+    assert len({s.speaker for s in merged_095}) < 3
 
 
 TEST_WAV = Path(__file__).parent.parent / "data" / "2026-03-19_02-45-24.wav"

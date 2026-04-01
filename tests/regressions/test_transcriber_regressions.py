@@ -3,14 +3,16 @@
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
+from tapeback.settings import Settings
 from tapeback.transcriber import Transcriber
 
 
-def test_cuda_fallback_to_cpu(settings):
+def test_cuda_fallback_to_cpu(tmp_vault):
     """Should fall back to CPU when CUDA is not available at model load time.
 
     Bug: Transcriber crashed on machines without CUDA support.
     """
+    s = Settings(vault_path=tmp_vault, compute_type="float16")
     call_args = []
 
     def mock_init(model_name, device="cuda", compute_type="float16"):
@@ -20,17 +22,19 @@ def test_cuda_fallback_to_cpu(settings):
         return MagicMock()
 
     with patch("tapeback.transcriber.WhisperModel", side_effect=mock_init):
-        Transcriber(settings)
+        Transcriber(s)
 
     assert call_args == ["cuda", "cpu"]
 
 
-def test_cuda_inference_fallback_to_cpu(settings, capsys):
+def test_cuda_inference_fallback_to_cpu(tmp_vault, capsys):
     """Model loads on CUDA but fails during inference (e.g. missing libcublas).
 
     Bug: Model loaded fine on CUDA, but crashed during transcription
     when libcublas.so.12 was missing. No recovery, lost recording.
     """
+    s = Settings(vault_path=tmp_vault, compute_type="float16")
+
     mock_segment = MagicMock()
     mock_segment.start = 0.0
     mock_segment.end = 5.0
@@ -55,15 +59,15 @@ def test_cuda_inference_fallback_to_cpu(settings, capsys):
         cuda_model.transcribe.return_value = (failing_iter(), mock_info)
         cpu_model.transcribe.return_value = (iter([mock_segment]), mock_info)
 
-        transcriber = Transcriber(settings)
+        transcriber = Transcriber(s)
         segments, info = transcriber.transcribe(Path("/fake/audio.wav"))
 
     assert mock_model_cls.call_count == 2
     assert mock_model_cls.call_args_list[0] == call(
-        settings.whisper_model, device="cuda", compute_type="float16"
+        s.whisper_model, device="cuda", compute_type="float16"
     )
     assert mock_model_cls.call_args_list[1] == call(
-        settings.whisper_model, device="cpu", compute_type="int8"
+        s.whisper_model, device="cpu", compute_type="int8"
     )
 
     assert len(segments) == 1

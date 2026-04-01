@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     whisper_model: str = "large-v3-turbo"
     language: str = "en"
     device: str = "cuda"
-    compute_type: str = "float16"
+    compute_type: str = "auto"  # "int8"/"float16"
     beam_size: int = 5
     vad_filter: bool = True
     condition_on_previous_text: bool = False
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     diarize: bool = True
     max_speakers: int | None = None
     clustering_threshold: float | None = None
-    spectral_merge_threshold: float = 0.95
+    spectral_merge_threshold: float = 0.96  # merge only near-identical spectral profiles
 
     # Post-processing
     pause_threshold: float = 1.0  # seconds — split segments on word gaps >= this

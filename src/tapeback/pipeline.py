@@ -182,12 +182,13 @@ def process_stereo_file(
             on_status("Diarizing speakers...")
             diarizer = Diarizer(settings)
             diarization_segments = diarizer.diarize(monitor_16k)
-            diarization_segments = merge_similar_speakers(
-                diarization_segments,
-                monitor_raw,
-                raw_sr,
-                similarity_threshold=settings.spectral_merge_threshold,
-            )
+            if settings.spectral_merge_threshold > 0:
+                diarization_segments = merge_similar_speakers(
+                    diarization_segments,
+                    monitor_raw,
+                    raw_sr,
+                    similarity_threshold=settings.spectral_merge_threshold,
+                )
             monitor_segments = assign_speakers(monitor_segments, diarization_segments)
             diarized = True
 

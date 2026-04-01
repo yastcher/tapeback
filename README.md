@@ -242,7 +242,7 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 | `TAPEBACK_WHISPER_MODEL` | `large-v3-turbo` | Whisper model (`tiny`, `base`, `small`, `medium`, `large-v3-turbo`) |
 | `TAPEBACK_LANGUAGE` | `en` | Transcription language code |
 | `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu` |
-| `TAPEBACK_COMPUTE_TYPE` | `float16` | `float16`, `int8`, or `float32` |
+| `TAPEBACK_COMPUTE_TYPE` | `auto` | `auto`, `float16`, `int8`, or `float32` (`auto` picks `int8` when free VRAM < 4 GiB) |
 | `TAPEBACK_BEAM_SIZE` | `5` | Whisper beam search width |
 | `TAPEBACK_PAUSE_THRESHOLD` | `1.0` | Seconds; split segments on silence gaps >= this |
 
@@ -261,7 +261,7 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 | `TAPEBACK_DIARIZE` | `true` | Enable speaker diarization |
 | `TAPEBACK_HF_TOKEN` | *(empty)* | HuggingFace token ([setup](#speaker-diarization)) |
 | `TAPEBACK_MAX_SPEAKERS` | *(auto)* | Maximum number of speakers |
-| `TAPEBACK_SPECTRAL_MERGE_THRESHOLD` | `0.95` | Cosine similarity for merging over-segmented speakers (lower = more aggressive) |
+| `TAPEBACK_SPECTRAL_MERGE_THRESHOLD` | `0.96` | Spectral speaker merging (0 = off; lower merges more aggressively) |
 
 ### LLM summarization
 

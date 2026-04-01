@@ -1,5 +1,6 @@
 import locale
 import os
+import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -19,6 +20,52 @@ from tapeback.settings import Settings
 os.environ["LC_MESSAGES"] = "C"
 locale.setlocale(locale.LC_MESSAGES, "C")
 
+# Free VRAM below this threshold triggers int8 quantization instead of float16.
+# 4 GiB leaves no headroom for inference allocations with large-v3-turbo in float16.
+VRAM_INT8_THRESHOLD_MIB = 4096
+
+
+def _get_free_vram_mib() -> int | None:
+    """Get free GPU VRAM in MiB via nvidia-smi. Returns None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return int(result.stdout.strip().split("\n")[0])
+    except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _resolve_compute_type(compute_type: str, device: str) -> str:
+    """Resolve 'auto' compute type based on available VRAM.
+
+    - auto + cuda: float16 if enough VRAM, otherwise int8
+    - auto + cpu: int8
+    - explicit value: pass through as-is
+    """
+    if compute_type != "auto":
+        return compute_type
+    if device != "cuda":
+        return "int8"
+
+    free_vram = _get_free_vram_mib()
+    if free_vram is None:
+        return "float16"
+
+    if free_vram < VRAM_INT8_THRESHOLD_MIB:
+        print(
+            f"Auto compute type: int8 (free VRAM {free_vram} MiB < {VRAM_INT8_THRESHOLD_MIB} MiB)",
+            file=sys.stderr,
+        )
+        return "int8"
+
+    return "float16"
+
 
 class Transcriber:
     def __init__(self, settings: Settings) -> None:
@@ -29,7 +76,8 @@ class Transcriber:
         """
         self._settings = settings
         self._device = settings.device
-        self._model = self._load_model(settings.device, settings.compute_type)
+        compute_type = _resolve_compute_type(settings.compute_type, settings.device)
+        self._model = self._load_model(settings.device, compute_type)
 
     def _load_model(self, device: str, compute_type: str) -> WhisperModel:
         """Load WhisperModel, falling back to CPU on CUDA errors."""
