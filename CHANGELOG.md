@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.10] — 2026-04-03
+
+### Fixed
+- Speaker misattribution: words from one monitor speaker assigned to another; switched from whole-segment majority vote to word-level diarization split
+- Interleaved single-word segments during simultaneous speech; consecutive same-speaker segments now consolidated
+
+### Changed
+- `TAPEBACK_CHUNK_LENGTH` default lowered from `15` to `2` for finer VAD granularity
+
 ## [0.8.9] — 2026-04-02
 
 ### Fixed

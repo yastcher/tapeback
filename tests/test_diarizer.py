@@ -8,8 +8,10 @@ import pytest
 
 from tapeback.diarizer import (
     Diarizer,
+    _resegment_by_words,
     assign_speakers,
     classify_segment_by_channel,
+    consolidate_segments,
     identify_user_speaker,
     load_stereo_channels,
     merge_channel_segments,
@@ -283,6 +285,127 @@ def test_assign_speakers_with_words_and_gaps():
     assert result2[1].speaker == "Speaker 2"
 
 
+# --- _resegment_by_words ---
+
+
+def test_resegment_splits_at_speaker_boundary():
+    """Segment with words from two speakers should be split into two sub-segments."""
+    seg = Segment(
+        start=10.0,
+        end=20.0,
+        text="hello world foo bar",
+        words=[
+            Word(start=10.0, end=11.0, word=" hello", probability=0.9),
+            Word(start=11.0, end=12.0, word=" world", probability=0.9),
+            Word(start=15.0, end=16.0, word=" foo", probability=0.9),
+            Word(start=16.0, end=17.0, word=" bar", probability=0.9),
+        ],
+    )
+    dsegs = [
+        DiarizationSegment(speaker="SPEAKER_00", start=10.0, end=13.0),
+        DiarizationSegment(speaker="SPEAKER_01", start=14.0, end=18.0),
+    ]
+
+    result = _resegment_by_words(seg, dsegs)
+    assert len(result) == 2
+    assert result[0][1] == "SPEAKER_00"
+    assert result[0][0].text == "hello world"
+    assert result[1][1] == "SPEAKER_01"
+    assert result[1][0].text == "foo bar"
+
+
+def test_resegment_single_speaker_no_split():
+    """Segment with all words from one speaker should not be split."""
+    seg = Segment(
+        start=0.0,
+        end=5.0,
+        text="hello world",
+        words=[
+            Word(start=0.0, end=1.0, word=" hello", probability=0.9),
+            Word(start=1.0, end=2.0, word=" world", probability=0.9),
+        ],
+    )
+    dsegs = [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=5.0)]
+
+    result = _resegment_by_words(seg, dsegs)
+    assert len(result) == 1
+    assert result[0][1] == "SPEAKER_00"
+
+
+def test_resegment_no_words_fallback():
+    """Segment without words uses whole-segment speaker lookup."""
+    seg = Segment(start=0.0, end=5.0, text="hello")
+    dsegs = [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=5.0)]
+
+    result = _resegment_by_words(seg, dsegs)
+    assert len(result) == 1
+    assert result[0][1] == "SPEAKER_00"
+
+
+# --- consolidate_segments ---
+
+
+def test_consolidate_merges_same_speaker():
+    """Consecutive same-speaker segments should merge into one."""
+    segments = [
+        Segment(start=0.0, end=2.0, text="hello", speaker="You"),
+        Segment(start=2.5, end=4.0, text="world", speaker="You"),
+        Segment(start=5.0, end=6.0, text="foo", speaker="Speaker 1"),
+    ]
+    result = consolidate_segments(segments)
+    assert len(result) == 2
+    assert result[0].text == "hello world"
+    assert result[0].start == 0.0
+    assert result[0].end == 4.0
+    assert result[0].speaker == "You"
+    assert result[1].speaker == "Speaker 1"
+
+
+def test_consolidate_different_speakers_kept():
+    """Alternating speakers should not be merged."""
+    segments = [
+        Segment(start=0.0, end=2.0, text="A", speaker="You"),
+        Segment(start=2.0, end=4.0, text="B", speaker="Speaker 1"),
+        Segment(start=4.0, end=6.0, text="C", speaker="You"),
+    ]
+    result = consolidate_segments(segments)
+    assert len(result) == 3
+
+
+def test_consolidate_empty():
+    """Empty list should return empty."""
+    assert consolidate_segments([]) == []
+
+
+# --- assign_speakers word-level split ---
+
+
+def test_assign_speakers_splits_multi_speaker_segment():
+    """assign_speakers should split a segment that spans two pyannote speakers."""
+    seg = Segment(
+        start=10.0,
+        end=20.0,
+        text="hello world foo bar",
+        words=[
+            Word(start=10.0, end=11.0, word=" hello", probability=0.9),
+            Word(start=11.0, end=12.0, word=" world", probability=0.9),
+            Word(start=15.0, end=16.0, word=" foo", probability=0.9),
+            Word(start=16.0, end=17.0, word=" bar", probability=0.9),
+        ],
+    )
+    dsegs = [
+        DiarizationSegment(speaker="SPEAKER_00", start=10.0, end=13.0),
+        DiarizationSegment(speaker="SPEAKER_01", start=14.0, end=18.0),
+    ]
+
+    result = assign_speakers([seg], dsegs)
+    assert len(result) == 2
+    assert result[0].speaker == "Speaker 1"
+    assert result[0].text == "hello world"
+    assert result[1].speaker == "Speaker 2"
+    assert result[1].text == "foo bar"
+
+
 # --- merge_channel_segments ---
 
 
@@ -313,6 +436,20 @@ def test_merge_channel_segments(mic_segs, mon_segs, expected_starts):
     """Segments from both channels merged and sorted by start time."""
     result = merge_channel_segments(mic_segs, mon_segs)
     assert [s.start for s in result] == expected_starts
+
+
+def test_merge_channel_segments_consolidates_same_speaker():
+    """Adjacent same-speaker segments should be consolidated after merge."""
+    mic = [
+        Segment(start=0.0, end=2.0, text="A", speaker="You"),
+        Segment(start=3.0, end=5.0, text="B", speaker="You"),
+    ]
+    mon = [Segment(start=6.0, end=8.0, text="C", speaker="Speaker 1")]
+    result = merge_channel_segments(mic, mon)
+    assert len(result) == 2
+    assert result[0].text == "A B"
+    assert result[0].speaker == "You"
+    assert result[1].speaker == "Speaker 1"
 
 
 # --- split_on_silence ---

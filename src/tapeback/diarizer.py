@@ -312,9 +312,44 @@ def merge_channel_segments(
 ) -> list[Segment]:
     """Merge segments from both channels, sorted by start time.
 
-    Overlapping segments (simultaneous speech) are kept as-is.
+    After sorting, consecutive segments from the same speaker are consolidated
+    into a single segment.  Overlapping segments from different speakers are
+    kept separate.
     """
-    return sorted(mic_segments + monitor_segments, key=lambda s: s.start)
+    merged = sorted(mic_segments + monitor_segments, key=lambda s: s.start)
+    return consolidate_segments(merged)
+
+
+def consolidate_segments(segments: list[Segment]) -> list[Segment]:
+    """Merge consecutive segments from the same speaker into one.
+
+    Handles both adjacent and overlapping segments.  Preserves word lists
+    by concatenation.
+    """
+    if not segments:
+        return []
+
+    result: list[Segment] = [segments[0]]
+    for seg in segments[1:]:
+        prev = result[-1]
+        if prev.speaker and prev.speaker == seg.speaker:
+            # Merge: extend previous segment
+            words = None
+            if prev.words and seg.words:
+                words = prev.words + seg.words
+            elif prev.words or seg.words:
+                words = prev.words or seg.words
+            result[-1] = Segment(
+                start=prev.start,
+                end=max(prev.end, seg.end),
+                text=prev.text + " " + seg.text,
+                words=words,
+                speaker=prev.speaker,
+            )
+        else:
+            result.append(seg)
+
+    return result
 
 
 def load_stereo_channels(stereo_wav: Path) -> tuple[np.ndarray, np.ndarray, int]:
@@ -538,6 +573,83 @@ def merge_similar_speakers(
     ]
 
 
+def _find_speaker_for_time(
+    start: float,
+    end: float,
+    diarization_segments: list[DiarizationSegment],
+) -> str | None:
+    """Find the pyannote speaker with most overlap for a time range."""
+    best_speaker = None
+    best_overlap = 0.0
+
+    for dseg in diarization_segments:
+        overlap = max(0.0, min(end, dseg.end) - max(start, dseg.start))
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_speaker = dseg.speaker
+
+    # No overlap — find nearest segment
+    if best_speaker is None:
+        mid = (start + end) / 2
+        min_dist = float("inf")
+        for dseg in diarization_segments:
+            dist = min(abs(mid - dseg.start), abs(mid - dseg.end))
+            if dist < min_dist:
+                min_dist = dist
+                best_speaker = dseg.speaker
+
+    return best_speaker
+
+
+def _resegment_by_words(
+    segment: Segment,
+    diarization_segments: list[DiarizationSegment],
+) -> list[tuple[Segment, str | None]]:
+    """Split a segment into sub-segments at diarization speaker boundaries.
+
+    Each word is assigned to its pyannote speaker.  Consecutive words from the
+    same speaker are grouped into one sub-segment.  Returns list of
+    (sub_segment, pyannote_speaker) tuples.
+    """
+    if not segment.words:
+        speaker = _find_speaker_for_time(segment.start, segment.end, diarization_segments)
+        return [(segment, speaker)]
+
+    # Assign each word to a pyannote speaker
+    word_speakers: list[tuple[str | None, int]] = []
+    for i, word in enumerate(segment.words):
+        speaker = _find_speaker_for_time(word.start, word.end, diarization_segments)
+        word_speakers.append((speaker, i))
+
+    # Group consecutive same-speaker words into sub-segments
+    result: list[tuple[Segment, str | None]] = []
+    group_start = 0
+
+    for i in range(1, len(word_speakers) + 1):
+        if i < len(word_speakers) and word_speakers[i][0] == word_speakers[group_start][0]:
+            continue
+
+        # Flush group [group_start, i)
+        group_words = segment.words[group_start:i]
+        speaker = word_speakers[group_start][0]
+        text = "".join(w.word for w in group_words).strip()
+        if text:
+            result.append(
+                (
+                    Segment(
+                        start=group_words[0].start,
+                        end=group_words[-1].end,
+                        text=text,
+                        words=group_words,
+                    ),
+                    speaker,
+                )
+            )
+        group_start = i
+
+    return result if result else [(segment, None)]
+
+
 def assign_speakers(
     segments: list[Segment],
     diarization_segments: list[DiarizationSegment],
@@ -545,6 +657,9 @@ def assign_speakers(
     stereo_wav: Path | None = None,
 ) -> list[Segment]:
     """Assign speaker labels to each Segment based on channel energy + pyannote.
+
+    For segments with word timestamps, splits at diarization speaker boundaries
+    so that words from different speakers become separate segments.
 
     When stereo_wav is provided, per-segment channel energy determines
     "You" (mic-dominant) vs "Others" (monitor-dominant). Ambiguous segments
@@ -584,70 +699,38 @@ def assign_speakers(
             idx = len(non_user) + 1
         return f"Speaker {idx}"
 
-    def find_speaker_for_time(start: float, end: float) -> str | None:
-        best_speaker = None
-        best_overlap = 0.0
-
-        for dseg in diarization_segments:
-            overlap = max(0.0, min(end, dseg.end) - max(start, dseg.start))
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_speaker = dseg.speaker
-
-        # No overlap — find nearest segment
-        if best_speaker is None:
-            mid = (start + end) / 2
-            min_dist = float("inf")
-            for dseg in diarization_segments:
-                dist = min(abs(mid - dseg.start), abs(mid - dseg.end))
-                if dist < min_dist:
-                    min_dist = dist
-                    best_speaker = dseg.speaker
-
-        return best_speaker
-
     result = []
     for seg in segments:
-        # Step 1: determine pyannote speaker
-        if seg.words:
-            speaker_votes: dict[str, int] = {}
-            for word in seg.words:
-                speaker = find_speaker_for_time(word.start, word.end)
-                if speaker:
-                    speaker_votes[speaker] = speaker_votes.get(speaker, 0) + 1
+        # Split segment at diarization boundaries (word-level)
+        sub_segments = _resegment_by_words(seg, diarization_segments)
 
-            pyannote_speaker = (
-                max(speaker_votes, key=lambda s: speaker_votes[s]) if speaker_votes else None
+        for sub_seg, pyannote_speaker in sub_segments:
+            if pyannote_speaker and pyannote_speaker not in speaker_order:
+                speaker_order.append(pyannote_speaker)
+
+            # Channel-based override if stereo data available
+            channel = None
+            if stereo_data is not None:
+                mic, monitor, sr = stereo_data
+                channel = classify_segment_by_channel(sub_seg.start, sub_seg.end, mic, monitor, sr)
+
+            if pyannote_speaker:
+                label = get_label(pyannote_speaker, channel_verdict=channel)
+            elif channel == "mic":
+                label = "You"
+            elif channel == "monitor":
+                label = "Speaker 1"
+            else:
+                label = None
+
+            result.append(
+                Segment(
+                    start=sub_seg.start,
+                    end=sub_seg.end,
+                    text=sub_seg.text,
+                    words=sub_seg.words,
+                    speaker=label,
+                )
             )
-        else:
-            pyannote_speaker = find_speaker_for_time(seg.start, seg.end)
-
-        if pyannote_speaker and pyannote_speaker not in speaker_order:
-            speaker_order.append(pyannote_speaker)
-
-        # Step 2: channel-based override if stereo data available
-        channel = None
-        if stereo_data is not None:
-            mic, monitor, sr = stereo_data
-            channel = classify_segment_by_channel(seg.start, seg.end, mic, monitor, sr)
-
-        if pyannote_speaker:
-            label = get_label(pyannote_speaker, channel_verdict=channel)
-        elif channel == "mic":
-            label = "You"
-        elif channel == "monitor":
-            label = "Speaker 1"
-        else:
-            label = None
-
-        result.append(
-            Segment(
-                start=seg.start,
-                end=seg.end,
-                text=seg.text,
-                words=seg.words,
-                speaker=label,
-            )
-        )
 
     return result
