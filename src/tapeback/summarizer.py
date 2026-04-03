@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 
+from tapeback import const
 from tapeback.models import ActionItem, Summary
 from tapeback.settings import DEFAULT_MODELS, Settings
 
@@ -55,11 +56,11 @@ _PROVIDER_ENV_VARS: dict[str, str] = {
 }
 
 _OPENAI_COMPATIBLE_BASE_URLS: dict[str, str] = {
-    "groq": "https://api.groq.com/openai/v1",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
-    "openrouter": "https://openrouter.ai/api/v1",
-    "deepseek": "https://api.deepseek.com",
-    "qwen": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "groq": const.API_BASE_GROQ,
+    "gemini": const.API_BASE_GEMINI,
+    "openrouter": const.API_BASE_OPENROUTER,
+    "deepseek": const.API_BASE_DEEPSEEK,
+    "qwen": const.API_BASE_QWEN,
 }
 
 _FALLBACK_CHAIN: list[str] = [

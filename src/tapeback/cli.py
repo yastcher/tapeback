@@ -5,6 +5,7 @@ from pathlib import Path
 
 import click
 
+from tapeback import const
 from tapeback.recorder import Recorder, detect_devices
 from tapeback.settings import get_settings
 
@@ -80,7 +81,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool) -> None:
             )
         except KeyboardInterrupt:
             click.echo(
-                "\nAborted during processing. Audio files kept in /tmp/tapeback/",
+                f"\nAborted during processing. Audio files kept in {const.TEMP_DIR}/",
                 err=True,
             )
 

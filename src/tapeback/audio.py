@@ -4,6 +4,8 @@ import sys
 import wave
 from pathlib import Path
 
+from tapeback import const
+
 
 def _check_ffmpeg() -> None:
     """Raise RuntimeError if ffmpeg is not found."""
@@ -54,7 +56,7 @@ def merge_channels(monitor_wav: Path, mic_wav: Path, output_dir: Path) -> tuple[
 
     if monitor_dur is not None and mic_dur is not None:
         diff = abs(monitor_dur - mic_dur)
-        if diff > 2.0:
+        if diff > const.CHANNEL_DURATION_DIFF_WARN:
             print(
                 f"Warning: audio channels differ by {diff:.1f}s, trimming to shorter",
                 file=sys.stderr,
@@ -62,8 +64,8 @@ def merge_channels(monitor_wav: Path, mic_wav: Path, output_dir: Path) -> tuple[
         trim_duration = min(monitor_dur, mic_dur)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    stereo_path = output_dir / "stereo.wav"
-    mono_16k_path = output_dir / "mono_16k.wav"
+    stereo_path = output_dir / const.FILE_STEREO
+    mono_16k_path = output_dir / const.FILE_MONO_16K
 
     # Merge to stereo (left=mic, right=monitor)
     merge_cmd = [
@@ -95,13 +97,13 @@ def merge_channels(monitor_wav: Path, mic_wav: Path, output_dir: Path) -> tuple[
             str(stereo_path),
             "-filter_complex",
             "channelsplit=channel_layout=stereo[mic][monitor];"
-            "[mic]loudnorm=I=-16:TP=-1.5:LRA=11[mic_n];"
-            "[monitor]loudnorm=I=-16:TP=-1.5:LRA=11[mon_n];"
+            f"[mic]loudnorm={const.LOUDNORM_PARAMS}[mic_n];"
+            f"[monitor]loudnorm={const.LOUDNORM_PARAMS}[mon_n];"
             "[mic_n][mon_n]amix=inputs=2:duration=longest[mix]",
             "-map",
             "[mix]",
             "-ar",
-            "16000",
+            str(const.SAMPLE_RATE_16K),
             str(mono_16k_path),
         ],
         capture_output=True,
@@ -120,8 +122,8 @@ def split_channels_16k(stereo_wav: Path, output_dir: Path) -> tuple[Path, Path]:
     _check_ffmpeg()
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    mic_16k_path = output_dir / "mic_16k.wav"
-    monitor_16k_path = output_dir / "monitor_16k.wav"
+    mic_16k_path = output_dir / const.FILE_MIC_16K
+    monitor_16k_path = output_dir / const.FILE_MONITOR_16K
 
     subprocess.run(
         [
@@ -131,8 +133,8 @@ def split_channels_16k(stereo_wav: Path, output_dir: Path) -> tuple[Path, Path]:
             str(stereo_wav),
             "-filter_complex",
             "channelsplit=channel_layout=stereo[left][right];"
-            "[left]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=16000[mic];"
-            "[right]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=16000[mon]",
+            f"[left]loudnorm={const.LOUDNORM_PARAMS},aresample={const.SAMPLE_RATE_16K}[mic];"
+            f"[right]loudnorm={const.LOUDNORM_PARAMS},aresample={const.SAMPLE_RATE_16K}[mon]",
             "-map",
             "[mic]",
             str(mic_16k_path),
@@ -166,7 +168,7 @@ def convert_to_mono16k(input_file: Path, output_dir: Path) -> Path:
         raise RuntimeError("No audio recorded. Check your audio devices.")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "mono_16k.wav"
+    output_path = output_dir / const.FILE_MONO_16K
 
     subprocess.run(
         [
@@ -177,7 +179,7 @@ def convert_to_mono16k(input_file: Path, output_dir: Path) -> Path:
             "-ac",
             "1",
             "-ar",
-            "16000",
+            str(const.SAMPLE_RATE_16K),
             str(output_path),
         ],
         capture_output=True,

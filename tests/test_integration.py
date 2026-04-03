@@ -7,12 +7,14 @@ from unittest.mock import patch
 import pytest
 
 from tapeback.audio import get_channel_count, merge_channels, split_channels_16k
-from tapeback.diarizer import (
-    assign_speakers,
+from tapeback.channel import (
     classify_segment_by_channel,
     filter_silent_segments,
     identify_user_speaker,
     load_stereo_channels,
+)
+from tapeback.diarizer import (
+    assign_speakers,
     merge_channel_segments,
 )
 from tapeback.formatter import format_markdown

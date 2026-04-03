@@ -1,3 +1,4 @@
+from tapeback import const
 from tapeback.models import Segment
 
 
@@ -112,7 +113,8 @@ def format_markdown(
     ]
 
     # Merge consecutive segments from the same speaker
-    merged = _merge_consecutive_speakers([s for s in segments if s.end - s.start >= 1.0])
+    long_enough = [s for s in segments if s.end - s.start >= const.MIN_SEGMENT_DURATION]
+    merged = _merge_consecutive_speakers(long_enough)
 
     for start_time, speaker, text in merged:
         timecode = _format_timecode(start_time)

@@ -6,17 +6,19 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from tapeback.channel import (
+    classify_segment_by_channel,
+    identify_user_speaker,
+    load_stereo_channels,
+    split_on_silence,
+)
 from tapeback.diarizer import (
     Diarizer,
     _resegment_by_words,
     assign_speakers,
-    classify_segment_by_channel,
     consolidate_segments,
-    identify_user_speaker,
-    load_stereo_channels,
     merge_channel_segments,
     merge_similar_speakers,
-    split_on_silence,
 )
 from tapeback.models import DiarizationSegment, Segment, Word
 from tapeback.settings import Settings

@@ -22,7 +22,8 @@ No web servers, databases, Docker.
 
 ## Architecture
 
-- Source: `src/tapeback/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, formatter.py, vault.py, summarizer.py, models.py, settings.py
+- Source: `src/tapeback/` — cli.py, recorder.py, audio.py, transcriber.py, diarizer.py, channel.py, formatter.py, vault.py, summarizer.py, models.py, settings.py, const.py, tray.py, pipeline.py
+- Constants: `src/tapeback/const.py` — import as `from tapeback import const`, use as `const.SPEAKER_YOU`
 - Domain models (Segment, Word, DiarizationSegment, Summary, ActionItem) live in models.py — never in infrastructure modules
 - Settings: pydantic-settings with `TAPEBACK_` prefix, env vars and `.env` only
 - No config files (TOML, YAML) besides pyproject.toml
@@ -37,7 +38,8 @@ No web servers, databases, Docker.
 
 ## Code quality
 
-- No magic numbers in logic. Thresholds, limits, sizes, ratios — all go into `settings.py` as named settings with `TAPEBACK_` env vars, or as module-level constants with a descriptive name. Function parameter defaults are not a substitute for proper settings.
+- No magic numbers in logic. Thresholds, limits, sizes, ratios — all go into `settings.py` as named settings with `TAPEBACK_` env vars, or into `const.py` as module-level constants. Function parameter defaults are not a substitute for proper settings.
+- Values used in multiple modules go into `const.py`. Values used only in one module stay as module-level constants in that module. Configurable values go into `settings.py`.
 - No local imports inside functions. All imports at the top of the file.
   Local imports are only acceptable when explicitly required by documentation (e.g. circular dependency workarounds).
 
@@ -55,6 +57,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - WAV helpers in `tests/fixtures.py`
 - E2E tests in `tests/test_e2e_quality.py` — run with `TAPEBACK_RUN_E2E=1`
 - Regression tests (bug-fix) in `tests/regressions/`
+- **Hardcode expected values in tests**: don't reuse the same constant in test and production code. If `const.SPEAKER_YOU = "You"`, the test should assert `== "You"`, not `== const.SPEAKER_YOU`.
 - **Bug fix workflow**: every fix MUST start with a failing test that reproduces the bug.
   Write the test first, verify it fails, then apply the fix and verify the test passes.
   This prevents regressions and documents the exact failure scenario.

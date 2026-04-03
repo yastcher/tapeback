@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import TypedDict
 
+from tapeback import const
 from tapeback.settings import Settings
 
 
@@ -50,14 +51,14 @@ def detect_devices(settings: Settings) -> tuple[str, str]:
         # They follow the current default device, so recording survives
         # hot-switching between speakers, headphones, etc.
         if monitor == "auto":
-            if _probe_source("@DEFAULT_MONITOR@"):
-                monitor = "@DEFAULT_MONITOR@"
+            if _probe_source(const.PA_DEFAULT_MONITOR):
+                monitor = const.PA_DEFAULT_MONITOR
             else:
                 monitor = _resolve_monitor_via_pactl()
 
         if mic == "auto":
-            if _probe_source("@DEFAULT_SOURCE@"):
-                mic = "@DEFAULT_SOURCE@"
+            if _probe_source(const.PA_DEFAULT_SOURCE):
+                mic = const.PA_DEFAULT_SOURCE
             else:
                 mic = _resolve_source_via_pactl()
 
@@ -104,7 +105,7 @@ def _resolve_monitor_via_pactl() -> str:
         raise RuntimeError(
             "No default sink found. Run 'pactl list sources short' to check devices."
         )
-    return f"{default_sink}.monitor"
+    return f"{default_sink}{const.PA_MONITOR_SUFFIX}"
 
 
 def _resolve_source_via_pactl() -> str:
@@ -152,7 +153,7 @@ def _wait_and_kill(pids: list[int], timeout: float = 5.0) -> None:
 class Recorder:
     def __init__(self, state_dir: Path | None = None) -> None:
         self._state_dir = state_dir or _DEFAULT_STATE_DIR
-        self._session_file = self._state_dir / "session.json"
+        self._session_file = self._state_dir / const.FILE_SESSION
 
     @property
     def session_file(self) -> Path:
@@ -182,13 +183,13 @@ class Recorder:
                 "Only alphanumerics, dashes, and underscores are allowed."
             )
 
-        base_dir = Path("/tmp/tapeback")
+        base_dir = Path(const.TEMP_DIR)
         base_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         tmp_dir = base_dir / session_name
         tmp_dir.mkdir(exist_ok=True, mode=0o700)
 
-        monitor_path = tmp_dir / "monitor.wav"
-        mic_path = tmp_dir / "mic.wav"
+        monitor_path = tmp_dir / const.FILE_MONITOR
+        mic_path = tmp_dir / const.FILE_MIC
 
         base_cmd = [
             "parecord",

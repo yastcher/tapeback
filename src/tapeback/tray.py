@@ -7,6 +7,7 @@ from enum import Enum, auto
 import pystray
 from PIL import Image, ImageDraw
 
+from tapeback import const
 from tapeback.pipeline import stop_and_process
 from tapeback.recorder import Recorder, detect_devices
 from tapeback.settings import Settings, get_settings
@@ -180,7 +181,7 @@ class TrayApp:
             if self._state == TrayState.RECORDING:
                 try:
                     self._recorder.stop()
-                    self._notify("Recording stopped. Audio files saved in /tmp/tapeback/")
+                    self._notify(f"Recording stopped. Audio files saved in {const.TEMP_DIR}/")
                     logger.info("Recording stopped on quit, files preserved")
                 except Exception:
                     logger.exception("Error stopping recording on quit")

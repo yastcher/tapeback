@@ -8,13 +8,15 @@ import numpy as np
 import pytest
 
 from tapeback.audio import split_channels_16k
+from tapeback.channel import (
+    filter_silent_segments,
+    load_stereo_channels,
+    split_on_silence,
+)
 from tapeback.diarizer import (
     Diarizer,
     assign_speakers,
-    filter_silent_segments,
-    load_stereo_channels,
     merge_similar_speakers,
-    split_on_silence,
 )
 from tapeback.models import DiarizationSegment, Segment, Word
 from tapeback.settings import Settings

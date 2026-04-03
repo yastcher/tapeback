@@ -6,17 +6,20 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from tapeback import const
 from tapeback.audio import convert_to_mono16k, get_channel_count, merge_channels, split_channels_16k
+from tapeback.channel import (
+    filter_silent_segments,
+    identify_user_speaker,
+    load_stereo_channels,
+    split_on_silence,
+)
 from tapeback.diarizer import (
     Diarizer,
     assign_speakers,
     diarization_available,
-    filter_silent_segments,
-    identify_user_speaker,
-    load_stereo_channels,
     merge_channel_segments,
     merge_similar_speakers,
-    split_on_silence,
 )
 from tapeback.formatter import format_markdown
 from tapeback.models import Segment
@@ -199,7 +202,7 @@ def process_stereo_file(
                 end=s.end,
                 text=s.text,
                 words=s.words,
-                speaker="Other",
+                speaker=const.SPEAKER_OTHER,
             )
             for s in monitor_segments
         ]

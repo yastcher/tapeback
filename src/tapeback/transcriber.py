@@ -8,6 +8,7 @@ from typing import Any
 
 from faster_whisper import WhisperModel
 
+from tapeback import const
 from tapeback.models import Segment, Word
 from tapeback.settings import Settings
 
@@ -182,7 +183,7 @@ class Transcriber:
                 end=s.end,
                 text=s.text,
                 words=s.words,
-                speaker="You",
+                speaker=const.SPEAKER_YOU,
             )
             for s in mic_segments
         ]
