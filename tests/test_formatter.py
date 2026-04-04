@@ -1,7 +1,7 @@
 """Formatter tests — markdown generation and vault I/O pipelines."""
 
-from tapeback.formatter import format_markdown
-from tapeback.models import Segment
+from tapeback.formatter import _mark_low_confidence_words, format_markdown
+from tapeback.models import Segment, Word
 from tapeback.vault import save_to_vault
 
 
@@ -168,3 +168,74 @@ def test_save_to_vault_pipeline(settings, tmp_vault, tmp_path):
     md_path_2 = save_to_vault("# Second", stereo_wav, settings, "2026-03-17_14-30-00")
     assert md_path_2.name == "2026-03-17_14-30-00_1.md"
     assert md_path_2.read_text() == "# Second"
+
+
+def test_mark_low_confidence_words_mixed():
+    """Low-confidence words (probability < 0.5) should be wrapped in italics."""
+    segment = Segment(
+        start=0.0,
+        end=5.0,
+        text="Sorry could you repeat passive note",
+        speaker="You",
+        words=[
+            Word(start=0.0, end=0.3, word="Sorry", probability=0.13),
+            Word(start=0.3, end=0.5, word="could", probability=0.25),
+            Word(start=0.5, end=0.7, word="you", probability=0.37),
+            Word(start=0.7, end=1.0, word="repeat", probability=0.85),
+            Word(start=1.0, end=1.3, word="passive", probability=0.30),
+            Word(start=1.3, end=1.6, word="note", probability=0.92),
+        ],
+    )
+
+    result = _mark_low_confidence_words(segment)
+
+    # Consecutive low-confidence words grouped into single italic span
+    assert result.text == "*Sorry could you* repeat *passive* note"
+    assert result.speaker == "You"
+    assert result.start == 0.0
+    assert result.end == 5.0
+    # Original words preserved
+    assert result.words == segment.words
+
+
+def test_mark_low_confidence_words_all_confident():
+    """All words above threshold — text unchanged."""
+    segment = Segment(
+        start=0.0,
+        end=2.0,
+        text="Hello world",
+        speaker="You",
+        words=[
+            Word(start=0.0, end=0.5, word="Hello", probability=0.95),
+            Word(start=0.5, end=1.0, word="world", probability=0.88),
+        ],
+    )
+
+    result = _mark_low_confidence_words(segment)
+    assert result.text == "Hello world"
+
+
+def test_mark_low_confidence_words_all_low():
+    """All words below threshold — entire text in single italic span."""
+    segment = Segment(
+        start=0.0,
+        end=2.0,
+        text="uh um ah",
+        speaker="You",
+        words=[
+            Word(start=0.0, end=0.3, word="uh", probability=0.10),
+            Word(start=0.3, end=0.6, word="um", probability=0.15),
+            Word(start=0.6, end=0.9, word="ah", probability=0.20),
+        ],
+    )
+
+    result = _mark_low_confidence_words(segment)
+    assert result.text == "*uh um ah*"
+
+
+def test_mark_low_confidence_words_no_words():
+    """Segment without word-level data — returned as-is."""
+    segment = Segment(start=0.0, end=2.0, text="No words here.", speaker="You")
+
+    result = _mark_low_confidence_words(segment)
+    assert result.text == "No words here."

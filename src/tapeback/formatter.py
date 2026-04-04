@@ -1,6 +1,9 @@
 from tapeback import const
 from tapeback.models import Segment
 
+# Words with probability below this are marked as uncertain (italic in markdown)
+WORD_LOW_CONFIDENCE = 0.5
+
 
 def _format_timecode(seconds: float) -> str:
     """Format seconds as [HH:MM:SS]."""
@@ -70,9 +73,52 @@ def _merge_consecutive_speakers(
     return merged
 
 
+def _mark_low_confidence_words(segment: Segment) -> Segment:
+    """Create a new Segment with low-confidence words marked in italic.
+
+    Consecutive low-confidence words are grouped into a single italic span:
+    ``*Sorry could you* repeat`` instead of ``*Sorry* *could* *you* repeat``.
+    """
+    if not segment.words:
+        return segment
+
+    parts: list[str] = []
+    low_group: list[str] = []
+
+    for word in segment.words:
+        text = word.word.strip()
+        if not text:
+            continue
+        if word.probability < WORD_LOW_CONFIDENCE:
+            low_group.append(text)
+        else:
+            if low_group:
+                parts.append(f"*{' '.join(low_group)}*")
+                low_group = []
+            parts.append(text)
+
+    if low_group:
+        parts.append(f"*{' '.join(low_group)}*")
+
+    if not parts:
+        return segment
+
+    return Segment(
+        start=segment.start,
+        end=segment.end,
+        text=" ".join(parts),
+        words=segment.words,
+        speaker=segment.speaker,
+    )
+
+
 def _format_segments_block(segments: list[Segment]) -> list[str]:
-    """Format a list of segments into timecoded markdown lines."""
+    """Format a list of segments into timecoded markdown lines.
+
+    Low-confidence words (probability < 0.5) are marked with *italics*.
+    """
     long_enough = [s for s in segments if s.end - s.start >= const.MIN_SEGMENT_DURATION]
+    long_enough = [_mark_low_confidence_words(s) for s in long_enough]
     merged = _merge_consecutive_speakers(long_enough)
 
     lines: list[str] = []
