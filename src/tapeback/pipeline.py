@@ -9,6 +9,7 @@ from pathlib import Path
 from tapeback import const
 from tapeback.audio import convert_to_mono16k, get_channel_count, merge_channels, split_channels_16k
 from tapeback.channel import (
+    classify_segment_by_channel,
     filter_silent_segments,
     identify_user_speaker,
     load_stereo_channels,
@@ -176,6 +177,13 @@ def process_stereo_file(
 
     mic_segments = filter_silent_segments(mic_segments, mic_raw, raw_sr)
     monitor_segments = filter_silent_segments(monitor_segments, monitor_raw, raw_sr)
+
+    # Drop mic segments where monitor is louder (headphone bleed, not real speech)
+    mic_segments = [
+        s
+        for s in mic_segments
+        if classify_segment_by_channel(s.start, s.end, mic_raw, monitor_raw, raw_sr) != "monitor"
+    ]
 
     # Raw transcript: basic channel attribution only (You vs Other)
     raw_monitor = [

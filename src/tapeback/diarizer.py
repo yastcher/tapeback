@@ -1,4 +1,5 @@
 import contextlib
+import subprocess
 import sys
 import wave
 from pathlib import Path
@@ -10,6 +11,31 @@ from tapeback import const
 from tapeback.channel import classify_segment_by_channel, load_stereo_channels
 from tapeback.models import DiarizationSegment, Segment
 from tapeback.settings import Settings
+
+# pyannote segmentation + embedding models need ~1-1.5 GB VRAM during inference
+DIARIZATION_VRAM_MIN_MIB = 1500
+
+# Minor speaker absorption: speakers with very little speech are likely
+# echo/crosstalk artifacts.  Use a lower merge threshold for them.
+MINOR_SPEAKER_MAX_SEC = 15.0  # absolute: speaker with < 15s is potentially minor
+MINOR_SPEAKER_RATIO = 0.2  # relative: must have < 20% of the dominant speaker's speech
+MINOR_SPEAKER_MERGE_THRESHOLD = 0.92  # lower cosine for absorbing minor speakers
+
+
+def _get_free_vram_mib() -> int | None:
+    """Get free GPU VRAM in MiB via nvidia-smi. Returns None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return int(result.stdout.strip().split("\n")[0])
+    except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def diarization_available() -> bool:
@@ -63,15 +89,23 @@ class Diarizer:
             self._pipeline.instantiate(params)
 
         if settings.device == "cuda":
-            try:
-                import torch
-
-                self._pipeline.to(torch.device("cuda"))
-            except RuntimeError:
+            free_mib = _get_free_vram_mib()
+            if free_mib is not None and free_mib < DIARIZATION_VRAM_MIN_MIB:
                 print(
-                    "Warning: CUDA not available for diarization, using CPU",
+                    f"Warning: Not enough VRAM for diarization "
+                    f"({free_mib} MiB free < {DIARIZATION_VRAM_MIN_MIB} MiB), using CPU",
                     file=sys.stderr,
                 )
+            else:
+                try:
+                    import torch
+
+                    self._pipeline.to(torch.device("cuda"))
+                except RuntimeError:
+                    print(
+                        "Warning: CUDA not available for diarization, using CPU",
+                        file=sys.stderr,
+                    )
 
     def _run_pipeline(self, audio_path: Path) -> Any:
         """Run pyannote pipeline with optional max_speakers."""
@@ -221,11 +255,16 @@ def merge_similar_speakers(
     multiple speakers.  Uses power-spectrum cosine similarity in the 100-4000 Hz
     voice frequency range.
 
-    Default threshold 0.96 is a compromise: merges only near-identical profiles
-    (over-segmented single speaker, cosine ~0.98-0.99) while preserving distinct
-    voices from the same channel (cosine ~0.92-0.95).  Power-spectrum similarity
-    is a weak signal for voice identity — the channel frequency response dominates.
-    Set to 0 to disable, or raise to 0.98+ for stricter merging.
+    Two-tier thresholds:
+    - Standard merge (similarity_threshold, default 0.96): merges near-identical
+      profiles (over-segmented single speaker, cosine ~0.98-0.99).
+    - Minor speaker absorption (MINOR_SPEAKER_MERGE_THRESHOLD = 0.92): when one
+      speaker has very little speech (< 15s and < 20% of dominant), they are likely
+      echo/crosstalk artifacts with unreliable spectral profiles. A lower threshold
+      absorbs them into the dominant speaker.
+
+    Power-spectrum similarity is a weak signal for voice identity — the channel
+    frequency response dominates. Set to 0 to disable.
     """
     if similarity_threshold <= 0:
         return diarization_segments
@@ -233,6 +272,13 @@ def merge_similar_speakers(
     speakers = sorted({seg.speaker for seg in diarization_segments})
     if len(speakers) <= 1:
         return diarization_segments
+
+    # Total speech per speaker (for minor speaker detection)
+    total_speech: dict[str, float] = {}
+    for speaker in speakers:
+        total_speech[speaker] = sum(
+            s.end - s.start for s in diarization_segments if s.speaker == speaker
+        )
 
     profiles: dict[str, np.ndarray] = {}
     for speaker in speakers:
@@ -256,7 +302,20 @@ def merge_similar_speakers(
                 continue
 
             similarity = float(np.dot(a_profile, b_profile) / (norm_a * norm_b))
-            if similarity >= similarity_threshold:
+
+            # Use lower threshold when one speaker is a minor artifact
+            # (little speech both absolutely and relative to the dominant speaker)
+            threshold = similarity_threshold
+            minor_total = min(total_speech[sp_a], total_speech[sp_b])
+            major_total = max(total_speech[sp_a], total_speech[sp_b])
+            if (
+                minor_total < MINOR_SPEAKER_MAX_SEC
+                and major_total > 0
+                and minor_total / major_total < MINOR_SPEAKER_RATIO
+            ):
+                threshold = MINOR_SPEAKER_MERGE_THRESHOLD
+
+            if similarity >= threshold:
                 target = merge_map[sp_b]
                 canonical = merge_map[sp_a]
                 for s in speakers:

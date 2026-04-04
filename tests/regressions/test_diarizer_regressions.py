@@ -248,6 +248,55 @@ def test_spectral_merge_096_preserves_three_speakers(tmp_path):
     assert len({s.speaker for s in merged_095}) < 3
 
 
+ECHO_WAV = Path(__file__).parent.parent / "data" / "2026-04-03_15-22-38.wav"
+
+
+@pytest.mark.skipif(not ECHO_WAV.exists(), reason="test WAV not available")
+def test_minor_speaker_absorbed_into_dominant():
+    """Minor speaker (echo/crosstalk) must be absorbed into the dominant speaker.
+
+    Bug: pyannote split one remote speaker into SPEAKER_00 (80.5s) and SPEAKER_01
+    (8.6s). Cosine similarity = 0.9466 — below 0.96 threshold, so merge didn't
+    trigger. SPEAKER_01 was headphone echo bleeding into the mic channel.
+
+    Fix: speakers with very little speech (< 15s and < 20% of dominant) use
+    a lower merge threshold (0.92) because their spectral profiles are unreliable.
+    """
+    # Use raw stereo channel (same as pipeline does), not 16kHz processed version
+    _, raw, sr = load_stereo_channels(ECHO_WAV)
+
+    # Real pyannote segments from this recording
+    segments = [
+        DiarizationSegment(speaker="SPEAKER_00", start=1.40, end=9.26),
+        DiarizationSegment(speaker="SPEAKER_00", start=15.93, end=21.56),
+        DiarizationSegment(speaker="SPEAKER_00", start=25.01, end=25.68),
+        DiarizationSegment(speaker="SPEAKER_01", start=59.04, end=60.70),
+        DiarizationSegment(speaker="SPEAKER_00", start=73.03, end=73.61),
+        DiarizationSegment(speaker="SPEAKER_01", start=73.61, end=73.86),
+        DiarizationSegment(speaker="SPEAKER_00", start=74.50, end=82.47),
+        DiarizationSegment(speaker="SPEAKER_01", start=102.19, end=104.03),
+        DiarizationSegment(speaker="SPEAKER_00", start=105.25, end=112.18),
+        DiarizationSegment(speaker="SPEAKER_01", start=128.28, end=129.02),
+        DiarizationSegment(speaker="SPEAKER_00", start=129.02, end=140.60),
+        DiarizationSegment(speaker="SPEAKER_01", start=197.92, end=199.02),
+        DiarizationSegment(speaker="SPEAKER_00", start=236.58, end=255.70),
+        DiarizationSegment(speaker="SPEAKER_00", start=423.49, end=441.99),
+        DiarizationSegment(speaker="SPEAKER_01", start=456.48, end=456.80),
+        DiarizationSegment(speaker="SPEAKER_01", start=463.05, end=464.26),
+        DiarizationSegment(speaker="SPEAKER_00", start=466.76, end=473.66),
+    ]
+
+    # SPEAKER_00: ~80s, SPEAKER_01: ~8.6s, cosine = 0.9466
+    # Without minor logic, 0.96 threshold keeps both speakers
+    # With minor logic, SPEAKER_01 is absorbed (< 15s, < 20% of dominant, cosine > 0.92)
+    result = merge_similar_speakers(segments, raw, sr, similarity_threshold=0.96)
+    speakers = {s.speaker for s in result}
+
+    assert len(speakers) == 1, (
+        f"Expected 1 speaker after minor absorption, got {len(speakers)}: {speakers}"
+    )
+
+
 TEST_WAV = Path(__file__).parent.parent / "data" / "2026-03-19_02-45-24.wav"
 
 
