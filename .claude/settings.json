@@ -25,6 +25,7 @@
       "Bash(head*)",
       "Bash(git * diff *)",
       "Bash(git * status *)",
+      "Bash(git status:*)",
       "Bash(git * log *)",
       "Bash(git * ls-files *)",
       "Bash(git * show *)",

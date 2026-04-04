@@ -89,6 +89,7 @@ fixable = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S105", "S106"]  # assert, fake tokens in tests
 "src/tapeback/cli.py" = ["PLC0415"]         # lazy imports for heavy ML deps
+"src/tapeback/formatter.py" = ["PLR0913"]  # format_markdown takes many formatting params
 "src/tapeback/pipeline.py" = ["PLR0913"]  # pipeline functions take many params
 "src/tapeback/channel.py" = ["PLR0912", "PLR0915"]  # complex audio analysis algorithms
 "src/tapeback/diarizer.py" = ["PLC0415", "PLR0912", "PLR0915"]  # lazy ML imports, complex audio algorithms

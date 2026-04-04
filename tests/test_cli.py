@@ -271,7 +271,7 @@ def test_process_stereo_file_function(tmp_path):
     mock_model = mock_whisper_transcribe([(0.0, 1.0, "Speech.")])
 
     with patch("tapeback.transcriber.WhisperModel", return_value=mock_model):
-        segments, _info = process_stereo_file(stereo, output_dir, settings, diarize=False)
+        segments, _info, _raw = process_stereo_file(stereo, output_dir, settings, diarize=False)
 
     assert len(segments) > 0
     # Mic segments get "You" from transcribe_stereo

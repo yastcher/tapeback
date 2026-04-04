@@ -70,17 +70,40 @@ def _merge_consecutive_speakers(
     return merged
 
 
+def _format_segments_block(segments: list[Segment]) -> list[str]:
+    """Format a list of segments into timecoded markdown lines."""
+    long_enough = [s for s in segments if s.end - s.start >= const.MIN_SEGMENT_DURATION]
+    merged = _merge_consecutive_speakers(long_enough)
+
+    lines: list[str] = []
+    for start_time, speaker, text in merged:
+        timecode = _format_timecode(start_time)
+
+        if speaker:
+            lines.append(f"{timecode} **{speaker}:** {text}")
+        else:
+            lines.append(f"{timecode} {text}")
+        lines.append("")
+
+    return lines
+
+
 def format_markdown(
     segments: list[Segment],
     session_name: str,
     audio_rel_path: str,
     duration_seconds: float,
     language: str,
+    raw_segments: list[Segment] | None = None,
 ) -> str:
     """Generate markdown with YAML front matter.
 
     Segments shorter than 1 second are filtered out (VAD artifacts).
     Each segment starts with [HH:MM:SS] timecode.
+
+    When raw_segments is provided, outputs two sections:
+    - "## Transcript" with raw (pre-diarization) segments
+    - "## Diarized Transcript" with diarized segments
     """
     # Parse date and time from session name (format: YYYY-MM-DD_HH-MM-SS)
     parts = session_name.split("_")
@@ -112,17 +135,16 @@ def format_markdown(
         "",
     ]
 
-    # Merge consecutive segments from the same speaker
-    long_enough = [s for s in segments if s.end - s.start >= const.MIN_SEGMENT_DURATION]
-    merged = _merge_consecutive_speakers(long_enough)
-
-    for start_time, speaker, text in merged:
-        timecode = _format_timecode(start_time)
-
-        if speaker:
-            lines.append(f"{timecode} **{speaker}:** {text}")
-        else:
-            lines.append(f"{timecode} {text}")
+    if raw_segments is not None:
+        lines.append("## Transcript")
         lines.append("")
+        lines.extend(_format_segments_block(raw_segments))
+        lines.append("---")
+        lines.append("")
+        lines.append("## Diarized Transcript")
+        lines.append("")
+        lines.extend(_format_segments_block(segments))
+    else:
+        lines.extend(_format_segments_block(segments))
 
     return "\n".join(lines)

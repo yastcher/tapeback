@@ -29,7 +29,9 @@ pytestmark = [
 
 def test_stereo_pipeline_produces_segments(e2e_settings, e2e_output_dir):
     """Full stereo pipeline: transcribe + merge. No diarization."""
-    segments, info = process_stereo_file(_STEREO_WAV, e2e_output_dir, e2e_settings, diarize=False)
+    segments, info, _raw = process_stereo_file(
+        _STEREO_WAV, e2e_output_dir, e2e_settings, diarize=False
+    )
 
     assert len(segments) > 0, "Pipeline must produce at least one segment"
     assert float(info.get("duration", 0)) > 0, "Duration must be positive"
@@ -50,7 +52,9 @@ def test_stereo_pipeline_with_diarization(e2e_settings, e2e_output_dir):
     if not e2e_settings.hf_token:
         pytest.skip("TAPEBACK_HF_TOKEN required for diarization test")
 
-    segments, _info = process_stereo_file(_STEREO_WAV, e2e_output_dir, e2e_settings, diarize=True)
+    segments, _info, _raw = process_stereo_file(
+        _STEREO_WAV, e2e_output_dir, e2e_settings, diarize=True
+    )
 
     assert len(segments) > 0
 
