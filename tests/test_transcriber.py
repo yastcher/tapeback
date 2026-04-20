@@ -5,45 +5,33 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tapeback.transcriber import VRAM_INT8_THRESHOLD_MIB, Transcriber, _resolve_compute_type
 
 
-def test_resolve_compute_type_explicit_passthrough():
-    """Explicit compute_type values pass through unchanged."""
-    assert _resolve_compute_type("float16", "cuda") == "float16"
-    assert _resolve_compute_type("int8", "cuda") == "int8"
-    assert _resolve_compute_type("float32", "cpu") == "float32"
-
-
-def test_resolve_compute_type_auto_cpu():
-    """Auto on CPU always resolves to int8."""
-    assert _resolve_compute_type("auto", "cpu") == "int8"
-
-
-def test_resolve_compute_type_auto_cuda_low_vram():
-    """Auto on CUDA with low VRAM resolves to int8."""
-    with patch("tapeback.transcriber._get_free_vram_mib", return_value=3600):
-        assert _resolve_compute_type("auto", "cuda") == "int8"
-
-
-def test_resolve_compute_type_auto_cuda_high_vram():
-    """Auto on CUDA with enough VRAM resolves to float16."""
-    with patch("tapeback.transcriber._get_free_vram_mib", return_value=8000):
-        assert _resolve_compute_type("auto", "cuda") == "float16"
-
-
-def test_resolve_compute_type_auto_cuda_no_nvidia_smi():
-    """Auto on CUDA without nvidia-smi falls back to float16."""
-    with patch("tapeback.transcriber._get_free_vram_mib", return_value=None):
-        assert _resolve_compute_type("auto", "cuda") == "float16"
-
-
-def test_resolve_compute_type_auto_cuda_boundary():
-    """VRAM exactly at threshold gets float16, below gets int8."""
-    with patch("tapeback.transcriber._get_free_vram_mib", return_value=VRAM_INT8_THRESHOLD_MIB):
-        assert _resolve_compute_type("auto", "cuda") == "float16"
-    with patch("tapeback.transcriber._get_free_vram_mib", return_value=VRAM_INT8_THRESHOLD_MIB - 1):
-        assert _resolve_compute_type("auto", "cuda") == "int8"
+@pytest.mark.parametrize(
+    "requested,device,vram_mib,expected",
+    [
+        # Explicit values pass through unchanged
+        pytest.param("float16", "cuda", None, "float16", id="explicit_float16"),
+        pytest.param("int8", "cuda", None, "int8", id="explicit_int8"),
+        pytest.param("float32", "cpu", None, "float32", id="explicit_float32"),
+        # Auto + CPU → int8
+        pytest.param("auto", "cpu", None, "int8", id="auto_cpu"),
+        # Auto + CUDA + VRAM signal
+        pytest.param("auto", "cuda", 3600, "int8", id="auto_cuda_low_vram"),
+        pytest.param("auto", "cuda", 8000, "float16", id="auto_cuda_high_vram"),
+        pytest.param("auto", "cuda", None, "float16", id="auto_cuda_no_nvidia_smi"),
+        # Threshold boundary
+        pytest.param("auto", "cuda", VRAM_INT8_THRESHOLD_MIB, "float16", id="boundary_at"),
+        pytest.param("auto", "cuda", VRAM_INT8_THRESHOLD_MIB - 1, "int8", id="boundary_below"),
+    ],
+)
+def test_resolve_compute_type(requested, device, vram_mib, expected):
+    """Pure compute-type resolution: explicit passthrough, auto + device/VRAM branching."""
+    with patch("tapeback.transcriber._get_free_vram_mib", return_value=vram_mib):
+        assert _resolve_compute_type(requested, device) == expected
 
 
 def test_lc_messages_set_for_pyav_locale_workaround():

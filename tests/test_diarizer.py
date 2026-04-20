@@ -570,20 +570,18 @@ def test_merge_similar_speakers_different_voices():
     assert len(speakers) == 2
 
 
-def test_merge_similar_speakers_single_speaker():
-    """Single speaker should pass through unchanged."""
+@pytest.mark.parametrize(
+    "segments",
+    [
+        pytest.param([], id="empty"),
+        pytest.param(
+            [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=3.0)],
+            id="single_speaker",
+        ),
+    ],
+)
+def test_merge_similar_speakers_early_return(segments):
+    """Empty input or single speaker pass through unchanged (no merging to do)."""
     sr = 16000
     audio = np.zeros(int(3.0 * sr), dtype=np.float32)
-
-    segments = [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=3.0)]
-
-    merged = merge_similar_speakers(segments, audio, sr)
-    assert len(merged) == 1
-    assert merged[0].speaker == "SPEAKER_00"
-
-
-def test_merge_similar_speakers_empty():
-    """Empty input returns empty output."""
-    sr = 16000
-    audio = np.zeros(sr, dtype=np.float32)
-    assert merge_similar_speakers([], audio, sr) == []
+    assert merge_similar_speakers(segments, audio, sr) == segments

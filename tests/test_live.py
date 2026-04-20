@@ -180,11 +180,9 @@ def test_deduplicate_overlap_zero_overlap():
 # --- LiveTranscriber ---
 
 
-def test_live_transcriber_start_stop_lifecycle(tmp_path):
+def test_live_transcriber_start_stop_lifecycle(tmp_path, tmp_vault):
     """LiveTranscriber should start a thread, process final chunk on stop, and clean up."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    settings = Settings(vault_path=vault, live_interval=1, live_min_chunk=0.01)
+    settings = Settings(vault_path=tmp_vault, live_interval=1, live_min_chunk=0.01)
 
     mic_path = tmp_path / "mic.wav"
     monitor_path = tmp_path / "monitor.wav"
@@ -201,15 +199,13 @@ def test_live_transcriber_start_stop_lifecycle(tmp_path):
         lt.stop()
 
     # Live markdown should have been written
-    live_md = vault / "meetings" / "2026-04-18_10-00-00_live.md"
+    live_md = tmp_vault / "meetings" / "2026-04-18_10-00-00_live.md"
     assert live_md.exists()
 
 
-def test_live_transcriber_no_crash_on_empty_audio(tmp_path):
+def test_live_transcriber_no_crash_on_empty_audio(tmp_path, tmp_vault):
     """LiveTranscriber should not crash when WAV files don't exist yet."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    settings = Settings(vault_path=vault, live_interval=1, live_min_chunk=0.01)
+    settings = Settings(vault_path=tmp_vault, live_interval=1, live_min_chunk=0.01)
 
     mic_path = tmp_path / "mic.wav"
     monitor_path = tmp_path / "monitor.wav"
@@ -221,16 +217,14 @@ def test_live_transcriber_no_crash_on_empty_audio(tmp_path):
     lt.stop()
 
     # Should still write the "waiting" markdown
-    live_md = vault / "meetings" / "test-session_live.md"
+    live_md = tmp_vault / "meetings" / "test-session_live.md"
     assert live_md.exists()
     assert "Waiting for first transcription cycle" in live_md.read_text()
 
 
-def test_live_transcriber_no_crash_on_transcription_error(tmp_path):
+def test_live_transcriber_no_crash_on_transcription_error(tmp_path, tmp_vault):
     """LiveTranscriber should catch transcription errors and continue."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    settings = Settings(vault_path=vault, live_interval=1, live_min_chunk=0.01)
+    settings = Settings(vault_path=tmp_vault, live_interval=1, live_min_chunk=0.01)
 
     mic_path = tmp_path / "mic.wav"
     monitor_path = tmp_path / "monitor.wav"
@@ -247,16 +241,14 @@ def test_live_transcriber_no_crash_on_transcription_error(tmp_path):
         lt.stop()
 
     # Should not crash — live markdown still written (empty segments)
-    live_md = vault / "meetings" / "error-session_live.md"
+    live_md = tmp_vault / "meetings" / "error-session_live.md"
     assert live_md.exists()
 
 
-def test_live_transcriber_process_chunk_accumulates_segments(tmp_path):
+def test_live_transcriber_process_chunk_accumulates_segments(tmp_path, tmp_vault):
     """_process_chunk should accumulate segments from transcription."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
     settings = Settings(
-        vault_path=vault,
+        vault_path=tmp_vault,
         live_interval=60,
         live_min_chunk=0.01,
         live_overlap=0.0,
@@ -281,11 +273,9 @@ def test_live_transcriber_process_chunk_accumulates_segments(tmp_path):
     assert "Other" in speakers
 
 
-def test_live_markdown_written_atomically(tmp_path):
+def test_live_markdown_written_atomically(tmp_path, tmp_vault):
     """Live markdown should be written via atomic temp+rename pattern."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    settings = Settings(vault_path=vault, live_interval=60)
+    settings = Settings(vault_path=tmp_vault, live_interval=60)
 
     mic_path = tmp_path / "mic.wav"
     monitor_path = tmp_path / "monitor.wav"
@@ -293,7 +283,7 @@ def test_live_markdown_written_atomically(tmp_path):
     lt = LiveTranscriber(settings, "atomic-test", mic_path, monitor_path)
     lt._write_live_markdown()
 
-    live_md = vault / "meetings" / "atomic-test_live.md"
+    live_md = tmp_vault / "meetings" / "atomic-test_live.md"
     assert live_md.exists()
     # No leftover .tmp file
     assert not live_md.with_suffix(".md.tmp").exists()

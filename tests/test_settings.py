@@ -3,16 +3,13 @@ from pathlib import Path
 from tapeback.settings import Settings
 
 
-def test_settings_from_env(monkeypatch, tmp_path):
+def test_settings_from_env(monkeypatch, vault_env):
     """Settings should parse values from environment variables."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
     monkeypatch.setenv("TAPEBACK_WHISPER_MODEL", "tiny")
     monkeypatch.setenv("TAPEBACK_LANGUAGE", "ru")
 
     s = Settings()
-    assert s.vault_path == vault
+    assert s.vault_path == vault_env
     assert s.whisper_model == "tiny"
     assert s.language == "ru"
 
@@ -45,11 +42,8 @@ def test_settings_defaults(tmp_vault):
     assert s.max_speakers is None
 
 
-def test_settings_hf_token_from_env(monkeypatch, tmp_path):
+def test_settings_hf_token_from_env(monkeypatch, vault_env):
     """HF token should be parsed from environment variable."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
     monkeypatch.setenv("TAPEBACK_HF_TOKEN", "hf_test_token_123")
 
     s = Settings()
@@ -65,11 +59,8 @@ def test_settings_live_defaults(tmp_vault):
     assert s.live_min_chunk == 5.0
 
 
-def test_settings_live_from_env(monkeypatch, tmp_path):
+def test_settings_live_from_env(monkeypatch, vault_env):
     """Live settings should be configurable via environment variables."""
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(vault))
     monkeypatch.setenv("TAPEBACK_LIVE", "false")
     monkeypatch.setenv("TAPEBACK_LIVE_INTERVAL", "30")
     monkeypatch.setenv("TAPEBACK_LIVE_OVERLAP", "3.0")

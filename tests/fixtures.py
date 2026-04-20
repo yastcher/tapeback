@@ -54,9 +54,35 @@ def tmp_vault(tmp_path):
 
 
 @pytest.fixture
+def vault_env(tmp_vault, monkeypatch):
+    """tmp_vault + TAPEBACK_VAULT_PATH env var — for CLI tests that call get_settings()."""
+    monkeypatch.setenv("TAPEBACK_VAULT_PATH", str(tmp_vault))
+    return tmp_vault
+
+
+@pytest.fixture
 def settings(tmp_vault):
     """Settings with temporary vault."""
     return Settings(vault_path=tmp_vault)
+
+
+@pytest.fixture
+def session_wavs(tmp_path):
+    """Factory: create session_dir with mic.wav + monitor.wav sine WAVs.
+
+    Returns callable(session_name, duration=2.0) -> (session_dir, monitor_wav, mic_wav).
+    """
+
+    def _create(session_name: str, duration: float = 2.0) -> tuple[Path, Path, Path]:
+        session_dir = tmp_path / session_name
+        session_dir.mkdir()
+        monitor_wav = session_dir / "monitor.wav"
+        mic_wav = session_dir / "mic.wav"
+        create_mono_wav(monitor_wav, duration=duration, sample_rate=48000, amplitude=0.5)
+        create_mono_wav(mic_wav, duration=duration, sample_rate=48000, amplitude=0.5)
+        return session_dir, monitor_wav, mic_wav
+
+    return _create
 
 
 @pytest.fixture
