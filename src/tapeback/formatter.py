@@ -1,8 +1,10 @@
 from tapeback import const
 from tapeback.models import Segment
 
-# Words with probability below this are marked as uncertain (italic in markdown)
-WORD_LOW_CONFIDENCE = 0.5
+# Words with probability below this are marked as uncertain (italic in markdown).
+# 0.35 is tuned for multilingual speech: English loanwords inside Russian sentences
+# (code-switching) often come back with 0.3-0.5 probability even when correct.
+WORD_LOW_CONFIDENCE = 0.35
 
 
 def _format_timecode(seconds: float) -> str:

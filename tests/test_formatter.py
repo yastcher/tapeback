@@ -171,7 +171,7 @@ def test_save_to_vault_pipeline(settings, tmp_vault, tmp_path):
 
 
 def test_mark_low_confidence_words_mixed():
-    """Low-confidence words (probability < 0.5) should be wrapped in italics."""
+    """Low-confidence words should be wrapped in italics; consecutive ones grouped."""
     segment = Segment(
         start=0.0,
         end=5.0,
@@ -180,9 +180,9 @@ def test_mark_low_confidence_words_mixed():
         words=[
             Word(start=0.0, end=0.3, word="Sorry", probability=0.13),
             Word(start=0.3, end=0.5, word="could", probability=0.25),
-            Word(start=0.5, end=0.7, word="you", probability=0.37),
+            Word(start=0.5, end=0.7, word="you", probability=0.20),
             Word(start=0.7, end=1.0, word="repeat", probability=0.85),
-            Word(start=1.0, end=1.3, word="passive", probability=0.30),
+            Word(start=1.0, end=1.3, word="passive", probability=0.15),
             Word(start=1.3, end=1.6, word="note", probability=0.92),
         ],
     )

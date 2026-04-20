@@ -47,8 +47,11 @@ class Settings(BaseSettings):
     compute_type: str = "auto"  # "int8"/"float16"
     beam_size: int = 5
     vad_filter: bool = True
-    chunk_length: int = 2  # seconds — max VAD chunk before splitting for Whisper
+    chunk_length: int = 7  # seconds — max VAD chunk before splitting for Whisper
     condition_on_previous_text: bool = False
+    # Lower = more aggressive silence rejection (helps suppress Whisper training-data
+    # hallucinations like "Субтитры DimaTorzok" on long pauses). Default in Whisper is 0.6.
+    no_speech_threshold: float = 0.4
 
     # Audio
     monitor_source: str = "auto"

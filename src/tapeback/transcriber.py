@@ -132,6 +132,7 @@ class Transcriber:
             chunk_length=self._settings.chunk_length,
             word_timestamps=True,
             condition_on_previous_text=self._settings.condition_on_previous_text,
+            no_speech_threshold=self._settings.no_speech_threshold,
         )
 
         segments: list[Segment] = []
@@ -148,6 +149,7 @@ class Transcriber:
                     chunk_length=self._settings.chunk_length,
                     word_timestamps=True,
                     condition_on_previous_text=self._settings.condition_on_previous_text,
+                    no_speech_threshold=self._settings.no_speech_threshold,
                 )
                 segments = self._collect_segments(segments_iter)
             else:

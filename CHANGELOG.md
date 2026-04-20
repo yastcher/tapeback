@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0] — 2026-04-18
+## [0.9.0] — 2026-04-19
 
 ### Added
 - Live transcription: Whisper transcribes audio in real-time during recording, writing a live markdown file to the vault that can be opened mid-meeting
@@ -15,12 +15,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TAPEBACK_LIVE_OVERLAP` setting (default `2.0`) — seconds of overlap between chunks for seamless transitions
 - `TAPEBACK_LIVE_MIN_CHUNK` setting (default `5.0`) — minimum new audio (seconds) before triggering a transcription cycle
 
+### Added
+- `TAPEBACK_NO_SPEECH_THRESHOLD` setting (default `0.4`) — Whisper silence-rejection threshold; lower values suppress training-data hallucinations like "Субтитры DimaTorzok" on long pauses
+
 ### Fixed
 - CPU fallback lost auto language detection: passed `"auto"` string to Whisper instead of `None`, causing errors on non-English transcripts
+- Duplicate "## Diarized Transcript" section when diarization was skipped (via `--no-diarize` or missing HF token) — both sections were identical; now only "## Transcript" is rendered
+- Whisper hallucinations on long pauses (e.g. "Субтитры DimaTorzok", "Продолжение следует") — `no_speech_threshold` now set to `0.4` (stricter than Whisper's default `0.6`)
 
 ### Changed
 - Default language changed from `en` to `auto` — Whisper now auto-detects the spoken language
 - `tapeback start` now detects when recording stops (e.g. via `tapeback stop`) using a polling loop instead of `signal.pause()`
+- `TAPEBACK_CHUNK_LENGTH` default raised from `2` to `7`: 2-second chunks fragment Whisper's context and cause hallucinations and broken sentences on non-English speech; `7` balances context against hallucination risk on long pauses
+- Low-confidence word threshold (italic marker) lowered from `0.5` to `0.35`: fewer false positives on English loanwords inside Russian/mixed-language speech
 
 ## [0.8.10] — 2026-04-04
 

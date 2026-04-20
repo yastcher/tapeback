@@ -167,7 +167,7 @@ def process_stereo_file(
     *,
     diarize: bool,
     on_status: StatusCallback = _noop_status,
-) -> tuple[list[Segment], dict[str, str | float], list[Segment]]:
+) -> tuple[list[Segment], dict[str, str | float], list[Segment] | None]:
     """Process a stereo WAV through the dual-channel pipeline.
 
     Returns (diarized_segments, info, raw_segments).
@@ -246,7 +246,8 @@ def process_stereo_file(
         ]
 
     segments = merge_channel_segments(mic_segments, monitor_segments)
-    return segments, info, raw_segments
+    # Without diarization, raw_segments == segments — skip the duplicate section.
+    return segments, info, raw_segments if diarized else None
 
 
 def process_mono_file(
@@ -256,7 +257,7 @@ def process_mono_file(
     *,
     diarize: bool,
     on_status: StatusCallback = _noop_status,
-) -> tuple[list[Segment], dict[str, str | float], list[Segment]]:
+) -> tuple[list[Segment], dict[str, str | float], list[Segment] | None]:
     """Process a mono/non-stereo audio file through the single-channel pipeline.
 
     Returns (diarized_segments, info, raw_segments).
@@ -277,6 +278,7 @@ def process_mono_file(
     free_gpu_memory()
 
     stereo_for_attribution = _get_stereo_source(audio_path)
+    segments_before = segments
     segments = _maybe_diarize_segments(
         segments,
         settings,
@@ -286,7 +288,10 @@ def process_mono_file(
         on_status=on_status,
     )
 
-    return segments, info, raw_segments
+    # _maybe_diarize_segments returns the same list reference when it skips
+    # diarization — use identity to tell whether the raw section is a duplicate.
+    diarized = segments is not segments_before
+    return segments, info, raw_segments if diarized else None
 
 
 def free_gpu_memory() -> None:
