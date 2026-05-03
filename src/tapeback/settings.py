@@ -72,8 +72,10 @@ class Settings(BaseSettings):
     # Post-processing
     pause_threshold: float = Field(default=1.0, ge=0.0)  # split on word gaps >= this
 
-    # Live transcription
-    live: bool = True  # enable live transcription during recording
+    # Live transcription — opt-in. Off by default because mid-recording GPU
+    # contention with the post-recording pipeline causes long stalls on small
+    # cards (4 GiB).  Enable with TAPEBACK_LIVE=true when VRAM is plentiful.
+    live: bool = False
     live_interval: int = Field(default=60, gt=0)  # seconds between transcription cycles
     live_overlap: float = Field(default=2.0, ge=0.0)  # seconds of overlap between chunks
     live_min_chunk: float = Field(default=5.0, gt=0.0)  # min new audio to trigger transcription

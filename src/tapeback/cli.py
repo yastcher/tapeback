@@ -41,7 +41,9 @@ def cli() -> None:
 @click.argument("name", required=False)
 @click.option("--no-diarize", is_flag=True, help="Skip speaker diarization")
 @click.option("--no-summarize", is_flag=True, help="Skip LLM summarization")
-@click.option("--no-live", is_flag=True, help="Disable live transcription during recording")
+@click.option(
+    "--no-live", is_flag=True, help="Disable live transcription (overrides TAPEBACK_LIVE)"
+)
 def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool) -> None:
     """Start recording monitor source + microphone.
 
@@ -50,9 +52,10 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
     transcribe, and save to vault.
 
     \b
-    By default, live transcription runs in the background — you can open
-    the live markdown file during recording to see what's been said.
-    Use --no-live to disable this and transcribe only after stopping.
+    Transcription runs after recording stops. Set TAPEBACK_LIVE=true to also
+    transcribe in the background during recording (mid-meeting markdown).
+    Live mode is off by default because it competes with the post-recording
+    pipeline for GPU memory on small cards.
 
     \b
     Optionally provide a NAME for the output file:

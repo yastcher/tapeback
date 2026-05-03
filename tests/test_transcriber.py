@@ -7,31 +7,24 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tapeback.transcriber import VRAM_INT8_THRESHOLD_MIB, Transcriber, _resolve_compute_type
+from tapeback.transcriber import Transcriber, _resolve_compute_type
 
 
 @pytest.mark.parametrize(
-    "requested,device,vram_mib,expected",
+    "requested,device,expected",
     [
         # Explicit values pass through unchanged
-        pytest.param("float16", "cuda", None, "float16", id="explicit_float16"),
-        pytest.param("int8", "cuda", None, "int8", id="explicit_int8"),
-        pytest.param("float32", "cpu", None, "float32", id="explicit_float32"),
-        # Auto + CPU → int8
-        pytest.param("auto", "cpu", None, "int8", id="auto_cpu"),
-        # Auto + CUDA + VRAM signal
-        pytest.param("auto", "cuda", 3600, "int8", id="auto_cuda_low_vram"),
-        pytest.param("auto", "cuda", 8000, "float16", id="auto_cuda_high_vram"),
-        pytest.param("auto", "cuda", None, "float16", id="auto_cuda_no_nvidia_smi"),
-        # Threshold boundary
-        pytest.param("auto", "cuda", VRAM_INT8_THRESHOLD_MIB, "float16", id="boundary_at"),
-        pytest.param("auto", "cuda", VRAM_INT8_THRESHOLD_MIB - 1, "int8", id="boundary_below"),
+        pytest.param("float16", "cuda", "float16", id="explicit_float16"),
+        pytest.param("int8", "cuda", "int8", id="explicit_int8"),
+        pytest.param("float32", "cpu", "float32", id="explicit_float32"),
+        # Auto: device-driven only — no VRAM probing
+        pytest.param("auto", "cpu", "int8", id="auto_cpu"),
+        pytest.param("auto", "cuda", "float16", id="auto_cuda"),
     ],
 )
-def test_resolve_compute_type(requested, device, vram_mib, expected):
-    """Pure compute-type resolution: explicit passthrough, auto + device/VRAM branching."""
-    with patch("tapeback.transcriber._get_free_vram_mib", return_value=vram_mib):
-        assert _resolve_compute_type(requested, device) == expected
+def test_resolve_compute_type(requested, device, expected):
+    """Pure compute-type resolution: explicit passthrough, auto + device branching."""
+    assert _resolve_compute_type(requested, device) == expected
 
 
 def test_lc_messages_set_for_pyav_locale_workaround():

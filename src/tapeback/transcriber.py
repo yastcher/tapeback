@@ -1,6 +1,5 @@
 import locale
 import os
-import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -21,51 +20,21 @@ from tapeback.settings import Settings
 os.environ["LC_MESSAGES"] = "C"
 locale.setlocale(locale.LC_MESSAGES, "C")
 
-# Free VRAM below this threshold triggers int8 quantization instead of float16.
-# 4 GiB leaves no headroom for inference allocations with large-v3-turbo in float16.
-VRAM_INT8_THRESHOLD_MIB = 4096
-
-
-def _get_free_vram_mib() -> int | None:
-    """Get free GPU VRAM in MiB via nvidia-smi. Returns None if unavailable."""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return int(result.stdout.strip().split("\n")[0])
-    except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
-        pass
-    return None
-
 
 def _resolve_compute_type(compute_type: str, device: str) -> str:
-    """Resolve 'auto' compute type based on available VRAM.
+    """Resolve 'auto' compute type based on device.
 
-    - auto + cuda: float16 if enough VRAM, otherwise int8
-    - auto + cpu: int8
-    - explicit value: pass through as-is
+    - auto + cuda → float16 (works on 4 GB cards; large-v3-turbo fits in ~1.5 GiB)
+    - auto + cpu  → int8
+    - explicit value passes through.
+
+    Users on memory-tight GPUs can pin TAPEBACK_COMPUTE_TYPE=int8 explicitly.
     """
     if compute_type != "auto":
         return compute_type
-    if device != "cuda":
-        return "int8"
-
-    free_vram = _get_free_vram_mib()
-    if free_vram is None:
+    if device == "cuda":
         return "float16"
-
-    if free_vram < VRAM_INT8_THRESHOLD_MIB:
-        print(
-            f"Auto compute type: int8 (free VRAM {free_vram} MiB < {VRAM_INT8_THRESHOLD_MIB} MiB)",
-            file=sys.stderr,
-        )
-        return "int8"
-
-    return "float16"
+    return "int8"
 
 
 class Transcriber:

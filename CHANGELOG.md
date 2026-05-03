@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] — 2026-05-04
+
+### Fixed
+- `TAPEBACK_COMPUTE_TYPE=auto` always picked `int8` on 4 GiB cards: the 4096 MiB threshold could never be reached because the card's total VRAM is right at that limit.
+`large-v3-turbo` actually needs ~1.5 GiB in float16, so the auto-quantize was spurious.
+Auto now resolves purely from device (`cuda` → `float16`, `cpu` → `int8`); pin `TAPEBACK_COMPUTE_TYPE=int8` explicitly if your GPU is genuinely memory-tight.
+
+### Changed
+- Live transcription is now opt-in (`TAPEBACK_LIVE` defaults to `false`). Mid-recording transcription competes with the post-recording pipeline for GPU memory on small cards (4 GiB), causing long stalls. Set `TAPEBACK_LIVE=true` to re-enable; `--no-live` still works as a one-shot override.
+
 ## [0.9.1] — 2026-05-03
 
 ### Fixed

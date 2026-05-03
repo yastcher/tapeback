@@ -11,7 +11,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 
 ## Features
 
-- **Live transcription**: read the transcript while the meeting is still going — Whisper transcribes in the background every 60 seconds
+- **Live transcription** (opt-in): read the transcript while the meeting is still going — Whisper transcribes in the background every 60 seconds (set `TAPEBACK_LIVE=true`)
 - **Platform-agnostic**: captures OS-level audio, works with any app
 - **Local transcription**: faster-whisper on CPU or CUDA GPU
 - **Speaker diarization**: pyannote identifies who said what
@@ -177,7 +177,7 @@ tapeback status                    Show recording status and settings
 ```
 
 ```bash
-tapeback start --no-live           # disable live transcription (old mode)
+tapeback start --no-live           # one-shot override: skip live transcription even if TAPEBACK_LIVE=true
 tapeback start --no-diarize        # skip speaker identification
 tapeback start --no-summarize      # skip LLM summary
 tapeback process meeting.mp3 --name "weekly-standup"
@@ -262,7 +262,7 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 | `TAPEBACK_WHISPER_MODEL` | `large-v3-turbo` | Whisper model (`tiny`, `base`, `small`, `medium`, `large-v3-turbo`) |
 | `TAPEBACK_LANGUAGE` | `auto` | Language code (`auto` for auto-detection, or `en`, `ru`, `fr`, etc.) |
 | `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu` |
-| `TAPEBACK_COMPUTE_TYPE` | `auto` | `auto`, `float16`, `int8`, or `float32` (`auto` picks `int8` when free VRAM < 4 GiB) |
+| `TAPEBACK_COMPUTE_TYPE` | `auto` | `auto`, `float16`, `int8`, or `float32` (`auto` → `float16` on CUDA, `int8` on CPU; pin `int8` if your GPU is memory-tight) |
 | `TAPEBACK_BEAM_SIZE` | `5` | Whisper beam search width |
 | `TAPEBACK_CHUNK_LENGTH` | `7` | Max VAD chunk (seconds) before splitting for Whisper; prevents lost speech after long pauses |
 | `TAPEBACK_NO_SPEECH_THRESHOLD` | `0.4` | Whisper silence-rejection threshold (lower = more aggressive; suppresses training-data hallucinations on pauses) |
@@ -272,7 +272,7 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 
 | Variable | Default | Description |
 |---|---|---|
-| `TAPEBACK_LIVE` | `true` | Enable live transcription during recording |
+| `TAPEBACK_LIVE` | `false` | Enable live transcription during recording (opt-in; competes with the post-recording pipeline for GPU memory on small cards) |
 | `TAPEBACK_LIVE_INTERVAL` | `60` | Seconds between transcription cycles |
 | `TAPEBACK_LIVE_OVERLAP` | `2.0` | Seconds of overlap between chunks |
 | `TAPEBACK_LIVE_MIN_CHUNK` | `5.0` | Minimum new audio (seconds) to trigger transcription |
