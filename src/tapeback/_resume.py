@@ -30,7 +30,8 @@ from tapeback.settings import Settings
 # Settings that change what Whisper produces. A cached channel is only reusable when
 # every one of these matches, so adding a knob that affects output means adding it here.
 OUTPUT_AFFECTING_SETTINGS = (
-    "whisper_model",
+    "stt_backend",
+    "stt_model",
     "device",
     "compute_type",
     "language",

@@ -93,6 +93,12 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
     except KeyboardInterrupt:
         pass
 
+    # `tapeback stop` from another terminal owns the pipeline and clears the
+    # session; do not call stop_and_process again or start crashes with
+    # "No recording in progress."
+    if not recorder.is_recording():
+        return
+
     click.echo("\nStopping...", err=True)
     try:
         from tapeback.pipeline import stop_and_process
@@ -257,8 +263,10 @@ def status() -> None:
         click.echo("Not recording.")
 
     click.echo(f"\nVault: {settings.vault_path}")
-    click.echo(f"Whisper model: {settings.whisper_model}")
-    click.echo(f"Device: {settings.device}")
+    click.echo(f"STT backend: {settings.stt_backend}")
+    click.echo(f"STT model: {settings.stt_model}")
+    if settings.stt_backend == "local":
+        click.echo(f"Device: {settings.device}")
     click.echo(f"Language: {settings.language}")
 
     if shutil.which("pactl"):

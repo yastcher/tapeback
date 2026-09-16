@@ -24,7 +24,8 @@ from typing import Any
 # Settings the worker needs. An explicit list, not the whole model: credentials have no
 # business crossing into a process that only transcribes audio.
 WORKER_SETTINGS = (
-    "whisper_model",
+    "stt_backend",
+    "stt_model",
     "language",
     "device",
     "compute_type",

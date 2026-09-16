@@ -268,6 +268,32 @@ def test_maybe_diarize_skips_and_warns(tmp_path, tmp_vault):
     assert result is segments
 
 
+def test_maybe_diarize_skips_for_remote_text_model(tmp_path, tmp_vault):
+    """gpt-transcribe has no timestamps — local pyannote is skipped."""
+    segments = [Segment(start=0.0, end=5.0, text="Hello")]
+    settings = Settings(
+        vault_path=tmp_vault,
+        stt_backend="openai",
+        stt_model="gpt-transcribe",
+        diarize=True,
+        hf_token=SecretStr("hf-test"),
+    )
+    status: list[str] = []
+    result = _maybe_diarize_segments(
+        segments,
+        settings,
+        tmp_path / "a.wav",
+        None,
+        diarize=True,
+        on_status=status.append,
+    )
+    assert result is segments
+    assert status == [
+        "Skipping local diarization — remote STT model "
+        "'gpt-transcribe' provides text only or remote speakers."
+    ]
+
+
 # --- summarize command ---
 
 

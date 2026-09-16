@@ -17,7 +17,7 @@ def test_settings_ignore_user_env_file():
     """
     assert Settings.model_config["env_file"] == ()
     assert Settings().chunk_length == 30
-    assert get_settings().whisper_model == "large-v3-turbo"
+    assert get_settings().stt_model == "large-v3-turbo"
 
 
 def test_ambient_tapeback_env_vars_are_cleared():

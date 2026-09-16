@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] — 2026-09-16
+
+### Added
+- Optional remote speech-to-text backends (`TAPEBACK_STT_BACKEND`; default stays `local` / faster-whisper). OpenAI is the first remote backend (`openai`). New settings: `TAPEBACK_STT_MODEL` (local default `large-v3-turbo`, OpenAI default `whisper-1`; `TAPEBACK_WHISPER_MODEL` is deprecated), `TAPEBACK_STT_API_KEY` (preferred over `OPENAI_API_KEY` for STT), and `TAPEBACK_STT_CONCURRENCY`. Remote STT requires `tapeback[stt]` (openai SDK; `tapeback[llm]` also installs it) and uploads meeting audio off the machine — PII masking cannot apply there. For the OpenAI backend, model capabilities are derived automatically: `whisper-1` keeps timestamps + local pyannote; `gpt-transcribe` skips local diarization (≤1500s per upload); `gpt-4o-transcribe-diarize` returns remote speaker labels (≤1400s per upload). Long meetings are sliced under both the 25 MiB size cap and the per-model duration cap.
+
+### Fixed
+- `tapeback start` no longer crashes with `No recording in progress` when `tapeback stop` already finished the session from another terminal.
 ## [0.9.8] — 2026-08-05
 
 ### Added

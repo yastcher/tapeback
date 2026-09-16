@@ -298,7 +298,7 @@ def test_describe_reports_resolved_device_and_compute_type(settings):
         update={
             "device": "cpu",
             "compute_type": "auto",
-            "whisper_model": "large-v3",
+            "stt_model": "large-v3",
             "batch_size": 0,
         }
     )
@@ -311,7 +311,7 @@ def test_describe_reports_resolved_device_and_compute_type(settings):
 def test_describe_mentions_batch_size_when_batching_enabled(settings):
     """Batched mode changes which parameters faster-whisper honours — make it visible."""
     s = settings.model_copy(
-        update={"device": "cpu", "compute_type": "int8", "whisper_model": "tiny", "batch_size": 8}
+        update={"device": "cpu", "compute_type": "int8", "stt_model": "tiny", "batch_size": 8}
     )
     with (
         patch("tapeback.transcriber.WhisperModel"),

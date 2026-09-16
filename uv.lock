@@ -2545,7 +2545,7 @@ wheels = [
 
 [[package]]
 name = "tapeback"
-version = "0.9.8"
+version = "0.9.9"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -2558,6 +2558,9 @@ diarize = [
     { name = "pyannote-audio" },
     { name = "torch" },
     { name = "torchaudio" },
+]
+stt = [
+    { name = "openai" },
 ]
 llm = [
     { name = "anthropic" },
@@ -2588,6 +2591,7 @@ requires-dist = [
     { name = "dbus-next", marker = "extra == 'tray'", specifier = ">=0.2.3,<1" },
     { name = "faster-whisper", specifier = ">=1.0.0,<2" },
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.50.0,<3" },
+    { name = "openai", marker = "extra == 'stt'", specifier = ">=1.50.0,<3" },
     { name = "pyannote-audio", marker = "extra == 'diarize'", specifier = ">=3.1.0,<5" },
     { name = "pydantic-settings", specifier = ">=2.0.0,<3" },
     { name = "torch", marker = "extra == 'diarize'", specifier = ">=2.0.0,<3" },

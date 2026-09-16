@@ -109,7 +109,7 @@ def run_one(
     except Exception as exc:
         return Result(
             recording=audio.name,
-            model=settings.whisper_model,
+            model=settings.stt_model,
             compute_type=settings.compute_type,
             hotwords=hotwords_mode,
             duration_seconds=0.0,
@@ -140,7 +140,7 @@ def run_one(
 
     return Result(
         recording=audio.name,
-        model=settings.whisper_model,
+        model=settings.stt_model,
         compute_type=settings.compute_type,
         hotwords=hotwords_mode,
         duration_seconds=duration,
@@ -263,7 +263,7 @@ def main() -> int:
                             report=lambda m: print(f"  {m}", flush=True),
                         )
                     settings = Settings(
-                        whisper_model=model,
+                        stt_model=model,
                         compute_type=compute,
                         device=args.device,
                         language=args.language,

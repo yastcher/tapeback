@@ -227,11 +227,10 @@ class Transcriber:
         if self._isolated:
             # The child resolves the real device and reports it as a status event once
             # it has one; there is nothing truthful to say about it from here yet.
-            return f"Whisper: {self._settings.whisper_model} in an isolated worker"
+            return f"Whisper: {self._settings.stt_model} in an isolated worker"
         batched = f", batch_size={self._settings.batch_size}" if self._batched else ""
         return (
-            f"Whisper: {self._settings.whisper_model} on "
-            f"{self._device}/{self._compute_type}{batched}"
+            f"Whisper: {self._settings.stt_model} on {self._device}/{self._compute_type}{batched}"
         )
 
     def _wrap_batched(self, model: WhisperModel) -> BatchedInferencePipeline | None:
@@ -249,14 +248,14 @@ class Transcriber:
         """
         try:
             return WhisperModel(
-                self._settings.whisper_model,
+                self._settings.stt_model,
                 device=device,
                 compute_type=compute_type,
                 local_files_only=True,
             )
         except LocalEntryNotFoundError:
             return WhisperModel(
-                self._settings.whisper_model,
+                self._settings.stt_model,
                 device=device,
                 compute_type=compute_type,
                 local_files_only=False,
