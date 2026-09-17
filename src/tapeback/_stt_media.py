@@ -26,6 +26,19 @@ class _UploadJob(NamedTuple):
     language: str | None
     stage: str
     chunk_label: str | None
+    chunk_index: int
+    # Full channel WAV used for per-chunk resume keys (not the temp slice).
+    source_audio: Path
+
+
+class _ChunkPlan(NamedTuple):
+    """Inputs for slicing a long channel into upload jobs."""
+
+    duration: float
+    chunk_limit: float
+    language: str | None
+    stage: str
+    ffmpeg_timeout: float
 
 
 def _wav_duration(path: Path) -> float:
@@ -39,10 +52,28 @@ def _check_ffmpeg() -> None:
         raise RuntimeError("ffmpeg not found. Install: sudo apt install ffmpeg")
 
 
-def _encode_mp3(wav_path: Path, mp3_path: Path) -> None:
-    """Encode a mono WAV to MP3 for upload size."""
+def _run_ffmpeg(args: list[str], *, timeout: float, what: str) -> None:
+    """Run ffmpeg with a wall-clock timeout; raise a clear error on failure."""
     _check_ffmpeg()
-    result = subprocess.run(
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"ffmpeg timed out after {timeout:.0f}s while {what} for remote STT upload"
+        ) from exc
+    if result.returncode != 0:
+        err = result.stderr.decode(errors="replace")[-_FFMPEG_ERROR_TAIL:]
+        raise RuntimeError(f"ffmpeg failed while {what} for remote STT upload:\n{err}")
+
+
+def _encode_mp3(wav_path: Path, mp3_path: Path, *, timeout: float) -> None:
+    """Encode a mono WAV to MP3 for upload size."""
+    _run_ffmpeg(
         [
             "ffmpeg",
             "-y",
@@ -54,12 +85,9 @@ def _encode_mp3(wav_path: Path, mp3_path: Path) -> None:
             f"{_BITRATE_K}k",
             str(mp3_path),
         ],
-        capture_output=True,
-        check=False,
+        timeout=timeout,
+        what="encoding MP3",
     )
-    if result.returncode != 0:
-        err = result.stderr.decode(errors="replace")[-_FFMPEG_ERROR_TAIL:]
-        raise RuntimeError(f"ffmpeg failed to encode MP3 for remote STT upload:\n{err}")
 
 
 def _max_chunk_seconds() -> float:
@@ -68,10 +96,9 @@ def _max_chunk_seconds() -> float:
     return (_MAX_UPLOAD / bytes_per_sec) * _UPLOAD_MARGIN
 
 
-def _slice_wav(src: Path, dest: Path, start: float, duration: float) -> None:
+def _slice_wav(src: Path, dest: Path, start: float, duration: float, *, timeout: float) -> None:
     """Write a time slice of src WAV to dest via ffmpeg."""
-    _check_ffmpeg()
-    result = subprocess.run(
+    _run_ffmpeg(
         [
             "ffmpeg",
             "-y",
@@ -85,9 +112,6 @@ def _slice_wav(src: Path, dest: Path, start: float, duration: float) -> None:
             "copy",
             str(dest),
         ],
-        capture_output=True,
-        check=False,
+        timeout=timeout,
+        what="slicing WAV",
     )
-    if result.returncode != 0:
-        err = result.stderr.decode(errors="replace")[-_FFMPEG_ERROR_TAIL:]
-        raise RuntimeError(f"ffmpeg failed to slice WAV for remote STT upload:\n{err}")

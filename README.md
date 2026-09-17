@@ -14,7 +14,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Live transcription** (opt-in): read the transcript while the meeting is still going — Whisper transcribes in the background every 60 seconds (set `TAPEBACK_LIVE=true`)
 - **Platform-agnostic**: captures OS-level audio, works with any app
 - **Local transcription**: faster-whisper on CPU or CUDA GPU (default)
-- **Optional remote STT**: set `TAPEBACK_STT_BACKEND=openai` to use a remote transcription backend instead of local Whisper. OpenAI is the only remote backend today (requires `tapeback[stt]` + `TAPEBACK_STT_API_KEY`; meeting audio leaves the machine)
+- **Optional remote STT**: set `TAPEBACK_STT_BACKEND=openai` to use a remote transcription backend instead of local Whisper. OpenAI is the only remote backend today (requires `tapeback[stt]` + `TAPEBACK_STT_API_KEY`; meeting audio leaves the machine). Uploads retry on timeouts/transient errors with status heartbeats; finished chunks are cached so `tapeback process` on the same WAV only re-uploads what is missing.
 - **Speaker diarization**: pyannote identifies who said what
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
@@ -370,9 +370,14 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 | Variable | Default | Description |
 |---|---|---|
 | `TAPEBACK_STT_BACKEND` | `local` | `local` (faster-whisper on this machine) or a remote backend id. Today: `openai` (OpenAI Audio Transcriptions API). Remote STT requires `tapeback[stt]` (or `tapeback[llm]`, which also installs the openai SDK) and `TAPEBACK_STT_API_KEY` (falls back to `OPENAI_API_KEY`, or `TAPEBACK_LLM_API_KEY` with `TAPEBACK_LLM_PROVIDER=openai`); meeting audio then leaves the machine |
-| `TAPEBACK_STT_MODEL` | *(backend default)* | Model for the active STT backend. **Local** default `large-v3-turbo` (`tiny`/`base`/`small`/`medium`/`large-v3-turbo`). **OpenAI** default `whisper-1` (timestamps + local pyannote; size-limited chunks only). Also: `gpt-transcribe` (modern text quality; local diarize skipped; ≤1500s per upload), `gpt-4o-transcribe-diarize` (remote speakers; local diarize skipped; ≤1400s per upload). Long meetings are sliced under both the 25 MiB size cap and the model duration cap. Deprecated alias: `TAPEBACK_WHISPER_MODEL` |
+| `TAPEBACK_STT_MODEL` | *(backend default)* | Model for the active STT backend. **Local** default `large-v3-turbo` (`tiny`/`base`/`small`/`medium`/`large-v3-turbo`). **OpenAI** default `whisper-1` (timestamps + local pyannote; size-limited chunks only). Also: `gpt-transcribe` (modern text quality; local diarize skipped; soft target ≤600s per upload, hard API cap 1500s), `gpt-4o-transcribe-diarize` (remote speakers; local diarize skipped; soft target ≤600s, hard API cap 1400s). Long meetings are sliced under the 25 MiB size cap, the soft target, and the hard API duration cap. Deprecated alias: `TAPEBACK_WHISPER_MODEL` |
 | `TAPEBACK_STT_API_KEY` | *(empty)* | API key for remote STT. Falls back to `OPENAI_API_KEY` then the LLM OpenAI key |
 | `TAPEBACK_STT_CONCURRENCY` | `4` | Max parallel uploads when a long recording is sliced (not used for the diarize model, which uploads slices sequentially) |
+| `TAPEBACK_STT_TIMEOUT` | `900` | Read/write timeout (seconds) for each remote STT HTTP request. Connect timeout is fixed at 10s. Needs to be long enough for diarize slices (~10 min of audio often needs several minutes of server time). App-level retries are separate from the OpenAI SDK (SDK retries are disabled). |
+| `TAPEBACK_STT_MAX_RETRIES` | `5` | App-level retries per chunk after a timeout, connection error, or HTTP 408/429/5xx/529 |
+| `TAPEBACK_STT_RETRY_BASE_DELAY` | `5` | Exponential backoff base between remote STT retries (capped at 60s) |
+| `TAPEBACK_STT_HEARTBEAT_SECONDS` | `15` | While an upload is in flight, emit a status line this often so a long API wait does not look hung |
+| `TAPEBACK_STT_FFMPEG_TIMEOUT` | `120` | Wall-clock timeout for ffmpeg encode/slice used to prepare remote uploads |
 | `TAPEBACK_LANGUAGE` | `auto` | Language code (`auto` for auto-detection, or `en`, `ru`, `fr`, etc.) |
 | `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu`. Local backend only |
 | `TAPEBACK_GPU_TELEMETRY` | `true` | Sample GPU clocks/temperature during transcription and print a one-line summary per stage. Observation only — tapeback never changes clock or power caps. No-op without `nvidia-smi` or on `cpu` |

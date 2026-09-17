@@ -5,13 +5,16 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.9] — 2026-09-16
+## [0.9.9] — 2026-09-18
 
 ### Added
-- Optional remote speech-to-text backends (`TAPEBACK_STT_BACKEND`; default stays `local` / faster-whisper). OpenAI is the first remote backend (`openai`). New settings: `TAPEBACK_STT_MODEL` (local default `large-v3-turbo`, OpenAI default `whisper-1`; `TAPEBACK_WHISPER_MODEL` is deprecated), `TAPEBACK_STT_API_KEY` (preferred over `OPENAI_API_KEY` for STT), and `TAPEBACK_STT_CONCURRENCY`. Remote STT requires `tapeback[stt]` (openai SDK; `tapeback[llm]` also installs it) and uploads meeting audio off the machine — PII masking cannot apply there. For the OpenAI backend, model capabilities are derived automatically: `whisper-1` keeps timestamps + local pyannote; `gpt-transcribe` skips local diarization (≤1500s per upload); `gpt-4o-transcribe-diarize` returns remote speaker labels (≤1400s per upload). Long meetings are sliced under both the 25 MiB size cap and the per-model duration cap.
+- Optional remote speech-to-text backends (`TAPEBACK_STT_BACKEND`; default stays `local` / faster-whisper). OpenAI is the first remote backend (`openai`). New settings: `TAPEBACK_STT_MODEL` (local default `large-v3-turbo`, OpenAI default `whisper-1`; `TAPEBACK_WHISPER_MODEL` is deprecated), `TAPEBACK_STT_API_KEY` (preferred over `OPENAI_API_KEY` for STT), and `TAPEBACK_STT_CONCURRENCY`. Remote STT requires `tapeback[stt]` (openai SDK; `tapeback[llm]` also installs it) and uploads meeting audio off the machine — PII masking cannot apply there. For the OpenAI backend, model capabilities are derived automatically: `whisper-1` keeps timestamps + local pyannote; `gpt-transcribe` skips local diarization (soft target ≤600s per upload, hard cap 1500s); `gpt-4o-transcribe-diarize` returns remote speaker labels (soft target ≤600s, hard cap 1400s). Long meetings are sliced under the 25 MiB size cap, the soft target, and the per-model hard duration cap.
+- Remote STT resilience knobs: `TAPEBACK_STT_TIMEOUT` (default 900s — diarize slices need minutes of server time), `TAPEBACK_STT_MAX_RETRIES`, `TAPEBACK_STT_RETRY_BASE_DELAY`, `TAPEBACK_STT_HEARTBEAT_SECONDS`, `TAPEBACK_STT_FFMPEG_TIMEOUT`. Uploads use an app-owned OpenAI client (SDK retries off), retry timeouts/transient HTTP errors with backoff and in-flight heartbeats, and cache finished chunks so `tapeback process` on the same WAV only re-uploads what is missing.
 
 ### Fixed
 - `tapeback start` no longer crashes with `No recording in progress` when `tapeback stop` already finished the session from another terminal.
+- Remote OpenAI STT no longer dies silently after a long SDK default timeout (~30 minutes with no status): owned timeouts, retries, heartbeats, and shorter default slice targets keep near-max diarize uploads visible and recoverable instead of failing with nothing saved.
+
 ## [0.9.8] — 2026-08-05
 
 ### Added

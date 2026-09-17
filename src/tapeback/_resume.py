@@ -1,18 +1,20 @@
-"""Reuse a channel that was already transcribed, so a re-run does not start from zero.
+"""Reuse completed transcription work so a re-run does not start from zero.
 
-An interrupted stereo run used to redo everything. The monitor channel of a 31-minute
-recording takes minutes even after the speed work, and repeating it because the *other*
-channel was interrupted is pure waste.
+Local Whisper caches a **whole channel** (see below). Remote OpenAI STT also
+caches **per upload chunk** via ``chunk_resume_key`` so a timeout mid-meeting
+does not discard slices that already succeeded.
 
-**Granularity is a whole channel, deliberately.** Resuming part-way through one would
-mean handing faster-whisper the remaining span via `clip_timestamps`, and its own
-documentation says "vad_filter will be ignored if clip_timestamps is used". VAD is load
-bearing here — it is half of why hallucinations on silence went away — so trading it for
-a faster resume is a bad deal. That leaves the honest limitation: an interrupt during the
-first channel has nothing to reuse, while one during the second saves the first.
+**Local granularity is a whole channel, deliberately.** Resuming part-way through
+one Whisper pass would mean handing faster-whisper the remaining span via
+`clip_timestamps`, and its own documentation says "vad_filter will be ignored if
+clip_timestamps is used". VAD is load bearing here — it is half of why
+hallucinations on silence went away — so trading it for a faster resume is a bad
+deal. That leaves the honest limitation for local: an interrupt during the first
+channel has nothing to reuse, while one during the second saves the first.
 
-A cached entry is only valid for the exact audio and the exact settings that produced it,
-so the key covers both. Anything that changes what Whisper outputs invalidates it.
+A cached entry is only valid for the exact audio and the exact settings that
+produced it, so the key covers both. Anything that changes what the model outputs
+invalidates it.
 """
 
 from __future__ import annotations
@@ -27,8 +29,9 @@ from typing import Any
 from tapeback.models import Segment, Word
 from tapeback.settings import Settings
 
-# Settings that change what Whisper produces. A cached channel is only reusable when
-# every one of these matches, so adding a knob that affects output means adding it here.
+# Settings that change what Whisper / remote STT produces. A cached channel is only
+# reusable when every one of these matches, so adding a knob that affects output
+# means adding it here.
 OUTPUT_AFFECTING_SETTINGS = (
     "stt_backend",
     "stt_model",
@@ -48,8 +51,9 @@ OUTPUT_AFFECTING_SETTINGS = (
     "hallucination_silence_threshold",
 )
 
-# Keep the directory bounded; entries are cheap but not free.
-MAX_RESUME_ENTRIES = 50
+# Keep the directory bounded; remote chunk resume creates more entries than
+# whole-channel cache alone.
+MAX_RESUME_ENTRIES = 200
 
 
 def default_resume_dir() -> Path:
@@ -82,6 +86,28 @@ def resume_key(audio_path: Path, settings: Settings, stage: str) -> ResumeKey | 
         return None
     parts = [str(audio_path.resolve()), str(stat.st_size), str(stat.st_mtime_ns), stage]
     parts += [f"{name}={getattr(settings, name)!r}" for name in OUTPUT_AFFECTING_SETTINGS]
+    return ResumeKey(hashlib.sha256("\x00".join(parts).encode()).hexdigest()[:32])
+
+
+def chunk_resume_key(
+    audio_path: Path,
+    settings: Settings,
+    stage: str,
+    *,
+    chunk_index: int,
+    time_offset: float,
+    piece_duration: float,
+) -> ResumeKey | None:
+    """Fingerprint one remote STT upload slice of a channel."""
+    base = resume_key(audio_path, settings, stage)
+    if base is None:
+        return None
+    parts = [
+        base.digest,
+        f"chunk={chunk_index}",
+        f"offset={time_offset:.3f}",
+        f"dur={piece_duration:.3f}",
+    ]
     return ResumeKey(hashlib.sha256("\x00".join(parts).encode()).hexdigest()[:32])
 
 

@@ -43,6 +43,11 @@ def test_settings_defaults(tmp_vault):
     assert s.stt_backend == "local"
     assert s.stt_model == "large-v3-turbo"
     assert s.stt_concurrency == 4
+    assert s.stt_timeout == 900.0
+    assert s.stt_max_retries == 5
+    assert s.stt_retry_base_delay == 5.0
+    assert s.stt_heartbeat_seconds == 15.0
+    assert s.stt_ffmpeg_timeout == 120.0
     assert s.language == "auto"
     assert s.device == "cuda"
     assert s.compute_type == "auto"

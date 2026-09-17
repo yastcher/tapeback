@@ -1,6 +1,7 @@
 """Remote STT ffmpeg upload helpers."""
 
 import shutil
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -41,12 +42,12 @@ def test_encode_mp3_and_slice(tmp_path):
     src = tmp_path / "src.wav"
     create_silent_wav(src, duration=1.0, sample_rate=16000)
     mp3 = tmp_path / "out.mp3"
-    _encode_mp3(src, mp3)
+    _encode_mp3(src, mp3, timeout=30.0)
     assert mp3.exists()
     assert mp3.stat().st_size > 0
 
     sliced = tmp_path / "slice.wav"
-    _slice_wav(src, sliced, start=0.0, duration=0.5)
+    _slice_wav(src, sliced, start=0.0, duration=0.5, timeout=30.0)
     # stream-copy can snap to container frames; existence + non-empty proves the path.
     assert sliced.exists()
     assert sliced.stat().st_size > 0
@@ -60,6 +61,21 @@ def test_encode_mp3_failure_raises(tmp_path):
     with (
         patch("tapeback._stt_media._check_ffmpeg"),
         patch("tapeback._stt_media.subprocess.run", return_value=failed),
-        pytest.raises(RuntimeError, match="ffmpeg failed to encode MP3"),
+        pytest.raises(RuntimeError, match="ffmpeg failed while encoding MP3"),
     ):
-        _encode_mp3(src, mp3)
+        _encode_mp3(src, mp3, timeout=30.0)
+
+
+def test_encode_mp3_timeout_raises(tmp_path):
+    src = tmp_path / "src.wav"
+    create_silent_wav(src, duration=0.5, sample_rate=16000)
+    mp3 = tmp_path / "out.mp3"
+    with (
+        patch("tapeback._stt_media._check_ffmpeg"),
+        patch(
+            "tapeback._stt_media.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1.0),
+        ),
+        pytest.raises(RuntimeError, match="ffmpeg timed out"),
+    ):
+        _encode_mp3(src, mp3, timeout=1.0)

@@ -108,13 +108,15 @@ def test_openai_transcriber_calls_api_and_maps_segments(monkeypatch, settings, t
         patch("openai.OpenAI", return_value=mock_client) as openai_cls,
     ):
 
-        def _fake_encode(_wav: Path, mp3: Path) -> None:
+        def _fake_encode(_wav: Path, mp3: Path, *, timeout: float) -> None:
             mp3.write_bytes(b"fake-mp3-bytes")
 
         encode.side_effect = _fake_encode
         segments, info = OpenAITranscriber(s).transcribe(audio, stage="transcribe")
 
     assert openai_cls.call_args.kwargs["api_key"] == "sk-test"
+    assert openai_cls.call_args.kwargs["max_retries"] == 0
+    assert "timeout" in openai_cls.call_args.kwargs
     assert mock_create.called
     kwargs = mock_create.call_args.kwargs
     assert kwargs["model"] == "whisper-1"
@@ -152,7 +154,7 @@ def test_openai_transcriber_text_only_model_skips_verbose(monkeypatch, settings,
         patch("openai.OpenAI", return_value=mock_client),
     ):
 
-        def _fake_encode(_wav: Path, mp3: Path) -> None:
+        def _fake_encode(_wav: Path, mp3: Path, *, timeout: float) -> None:
             mp3.write_bytes(b"x")
 
         encode.side_effect = _fake_encode
@@ -203,7 +205,7 @@ def test_openai_transcriber_diarize_model_maps_speakers(monkeypatch, settings, t
         patch("openai.OpenAI", return_value=mock_client),
     ):
 
-        def _fake_encode(_wav: Path, mp3: Path) -> None:
+        def _fake_encode(_wav: Path, mp3: Path, *, timeout: float) -> None:
             mp3.write_bytes(b"x")
 
         encode.side_effect = _fake_encode
@@ -257,7 +259,7 @@ def test_openai_transcriber_chunks_long_audio(monkeypatch, settings, tmp_path):
     with (
         patch("tapeback._stt_openai._wav_duration", return_value=150.0),
         patch("tapeback._stt_openai._max_chunk_seconds", return_value=100.0),
-        patch("tapeback._stt_openai._slice_wav") as slice_wav,
+        patch("tapeback._stt_openai_chunks._slice_wav") as slice_wav,
         patch.object(OpenAITranscriber, "_transcribe_one_upload", side_effect=_fake_one_upload),
     ):
         segments, info = t.transcribe(audio)
@@ -319,7 +321,7 @@ def test_openai_transcriber_chunks_run_in_parallel(monkeypatch, settings, tmp_pa
     with (
         patch("tapeback._stt_openai._wav_duration", return_value=300.0),
         patch("tapeback._stt_openai._max_chunk_seconds", return_value=100.0),
-        patch("tapeback._stt_openai._slice_wav"),
+        patch("tapeback._stt_openai_chunks._slice_wav"),
         patch.object(OpenAITranscriber, "_transcribe_one_upload", side_effect=_fake_one_upload),
     ):
         segments, info = t.transcribe(audio)
@@ -329,8 +331,8 @@ def test_openai_transcriber_chunks_run_in_parallel(monkeypatch, settings, tmp_pa
     assert info["duration"] == 300.0
 
 
-def test_diarize_model_chunks_under_api_duration_cap(monkeypatch, settings, tmp_path):
-    """Size-only slicing leaves ~50min MP3s; diarize API rejects >1400s — cap by duration."""
+def test_diarize_model_chunks_under_soft_target(monkeypatch, settings, tmp_path):
+    """Diarize soft target (600s) keeps slices under the hard 1400s API cap."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     audio = tmp_path / "long.wav"
     create_silent_wav(audio, duration=1.0, sample_rate=16000)
@@ -345,7 +347,7 @@ def test_diarize_model_chunks_under_api_duration_cap(monkeypatch, settings, tmp_
     t = OpenAITranscriber(s)
     # Size-based limit alone would allow a single ~2988s upload (the failing case).
     size_only_limit = 2988.0
-    expected_chunk = 1400.0 * 0.95
+    expected_chunk = 600.0
     piece_durations: list[float] = []
 
     def _fake_one_upload(job: _UploadJob, on_status, speaker_order=None):
@@ -370,16 +372,16 @@ def test_diarize_model_chunks_under_api_duration_cap(monkeypatch, settings, tmp_
         )
 
     with (
-        patch("tapeback._stt_openai._wav_duration", return_value=3000.0),
+        patch("tapeback._stt_openai._wav_duration", return_value=1609.0),
         patch("tapeback._stt_openai._max_chunk_seconds", return_value=size_only_limit),
-        patch("tapeback._stt_openai._slice_wav"),
+        patch("tapeback._stt_openai_chunks._slice_wav"),
         patch.object(OpenAITranscriber, "_transcribe_one_upload", side_effect=_fake_one_upload),
     ):
         segments, info = t.transcribe(audio)
 
-    assert piece_durations == [expected_chunk, expected_chunk, 3000.0 - 2 * expected_chunk]
+    assert piece_durations == [expected_chunk, expected_chunk, 1609.0 - 2 * expected_chunk]
     assert len(segments) == 3
-    assert info["duration"] == 3000.0
+    assert info["duration"] == 1609.0
 
 
 def test_openai_transcriber_auto_language_locks_then_parallels(monkeypatch, settings, tmp_path):
@@ -421,7 +423,7 @@ def test_openai_transcriber_auto_language_locks_then_parallels(monkeypatch, sett
     with (
         patch("tapeback._stt_openai._wav_duration", return_value=200.0),
         patch("tapeback._stt_openai._max_chunk_seconds", return_value=100.0),
-        patch("tapeback._stt_openai._slice_wav"),
+        patch("tapeback._stt_openai_chunks._slice_wav"),
         patch.object(OpenAITranscriber, "_transcribe_one_upload", side_effect=_fake_one_upload),
     ):
         segments, info = t.transcribe(audio)
@@ -494,3 +496,168 @@ def test_load_transcriber_selects_openai(monkeypatch, settings):
     s = settings.model_copy(update={"stt_backend": "openai"})
     t = load_transcriber(s)
     assert isinstance(t, OpenAITranscriber)
+
+
+def test_openai_transcriber_retries_timeout_then_succeeds(monkeypatch, settings, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    audio = tmp_path / "clip.wav"
+    create_silent_wav(audio, duration=0.5, sample_rate=16000)
+
+    s = settings.model_copy(
+        update={
+            "stt_model": "whisper-1",
+            "resume_cache": False,
+            "stt_max_retries": 5,
+            "stt_retry_base_delay": 1.0,
+            "stt_heartbeat_seconds": 0,
+            "language": "en",
+        }
+    )
+    t = OpenAITranscriber(s)
+    calls = {"n": 0}
+    status: list[str] = []
+
+    def _call_api(mp3_path, *, language, duration):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise type("APITimeoutError", (Exception,), {})("timed out")
+        return SimpleNamespace(
+            text="hello",
+            language="en",
+            duration=0.5,
+            segments=[SimpleNamespace(start=0.0, end=0.4, text=" hello", words=None)],
+        )
+
+    def _fake_encode(_wav: Path, mp3: Path, *, timeout: float) -> None:
+        mp3.write_bytes(b"x")
+
+    with (
+        patch("tapeback._stt_openai._encode_mp3", side_effect=_fake_encode),
+        patch.object(OpenAITranscriber, "_call_api", side_effect=_call_api),
+        patch("tapeback._stt_retry.time.sleep"),
+    ):
+        segments, info = t.transcribe(audio, on_status=status.append)
+
+    assert calls["n"] == 3
+    assert [seg.text.strip() for seg in segments] == ["hello"]
+    assert any("retrying" in line for line in status)
+    assert info["partial"] is False
+
+
+def test_openai_transcriber_does_not_retry_bad_request(monkeypatch, settings, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    audio = tmp_path / "clip.wav"
+    create_silent_wav(audio, duration=0.5, sample_rate=16000)
+    s = settings.model_copy(
+        update={"stt_model": "whisper-1", "resume_cache": False, "stt_max_retries": 5}
+    )
+    t = OpenAITranscriber(s)
+    calls = {"n": 0}
+
+    class BadRequestError(Exception):
+        status_code = 400
+
+    def _call_api(mp3_path, *, language, duration):
+        calls["n"] += 1
+        raise BadRequestError("audio duration too long")
+
+    def _fake_encode(_wav: Path, mp3: Path, *, timeout: float) -> None:
+        mp3.write_bytes(b"x")
+
+    with (
+        patch("tapeback._stt_openai._encode_mp3", side_effect=_fake_encode),
+        patch.object(OpenAITranscriber, "_call_api", side_effect=_call_api),
+        pytest.raises(BadRequestError),
+    ):
+        t.transcribe(audio)
+
+    assert calls["n"] == 1
+
+
+def test_openai_chunk_resume_skips_completed_chunk(monkeypatch, settings, tmp_path):
+    """After chunk 0 succeeds and chunk 1 fails, a re-run must not re-upload chunk 0."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    audio = tmp_path / "long.wav"
+    create_silent_wav(audio, duration=1.0, sample_rate=16000)
+    cache_dir = tmp_path / "resume"
+    s = settings.model_copy(
+        update={
+            "stt_model": "gpt-4o-transcribe-diarize",
+            "resume_cache": True,
+            "resume_cache_dir": cache_dir,
+            "language": "en",
+            "stt_max_retries": 0,
+        }
+    )
+    uploaded: list[int] = []
+
+    def _fail_on_second(job, on_status, speaker_order=None):
+        uploaded.append(job.chunk_index)
+        if job.chunk_index == 1:
+            raise type("APITimeoutError", (Exception,), {})("timed out")
+        if speaker_order is not None and "A" not in speaker_order:
+            speaker_order.append("A")
+        return (
+            [
+                Segment(
+                    start=job.time_offset,
+                    end=job.time_offset + 0.5,
+                    text=f"chunk-{job.chunk_index}",
+                    words=None,
+                    speaker="Speaker 1",
+                )
+            ],
+            {
+                "language": "en",
+                "language_probability": 1.0,
+                "duration": job.duration,
+                "partial": False,
+            },
+        )
+
+    def _ok(job, on_status, speaker_order=None):
+        uploaded.append(job.chunk_index)
+        if speaker_order is not None and "A" not in speaker_order:
+            speaker_order.append("A")
+        return (
+            [
+                Segment(
+                    start=job.time_offset,
+                    end=job.time_offset + 0.5,
+                    text=f"chunk-{job.chunk_index}",
+                    words=None,
+                    speaker="Speaker 1",
+                )
+            ],
+            {
+                "language": "en",
+                "language_probability": 1.0,
+                "duration": job.duration,
+                "partial": False,
+            },
+        )
+
+    with (
+        patch("tapeback._stt_openai._wav_duration", return_value=1200.0),
+        patch("tapeback._stt_openai._max_chunk_seconds", return_value=2988.0),
+        patch("tapeback._stt_openai_chunks._slice_wav"),
+        patch.object(OpenAITranscriber, "_transcribe_one_upload", side_effect=_fail_on_second),
+    ):
+        t1 = OpenAITranscriber(s)
+        with pytest.raises(Exception, match="timed out"):
+            t1.transcribe(audio)
+    assert uploaded == [0, 1]
+
+    uploaded.clear()
+    with (
+        patch("tapeback._stt_openai._wav_duration", return_value=1200.0),
+        patch("tapeback._stt_openai._max_chunk_seconds", return_value=2988.0),
+        patch("tapeback._stt_openai_chunks._slice_wav"),
+        patch.object(OpenAITranscriber, "_transcribe_one_upload", side_effect=_ok),
+    ):
+        t2 = OpenAITranscriber(s)
+        segments, info = t2.transcribe(audio)
+
+    assert uploaded == [1]
+    assert [seg.text for seg in segments] == ["chunk-0", "chunk-1"]
+    assert info["duration"] == 1200.0

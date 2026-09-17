@@ -71,6 +71,18 @@ class Settings(BaseSettings):
     # API key for remote STT (TAPEBACK_STT_API_KEY). Falls back to OPENAI_API_KEY
     # then TAPEBACK_LLM_API_KEY when llm_provider=openai.
     stt_api_key: SecretStr = SecretStr("")
+    # Per-request read/write timeout for remote STT (connect stays short separately).
+    # Diarize slices (~10 min audio) often need several minutes of server time; 120s
+    # was killing healthy uploads and forcing retry loops.
+    stt_timeout: float = Field(default=900.0, gt=0.0)
+    # App-level retries per chunk after a retryable failure (timeouts, 5xx, …).
+    stt_max_retries: int = Field(default=5, ge=0)
+    # Exponential backoff base between remote STT retries (capped in const).
+    stt_retry_base_delay: float = Field(default=5.0, gt=0.0)
+    # Status heartbeat while a remote upload is in flight.
+    stt_heartbeat_seconds: float = Field(default=15.0, gt=0.0)
+    # Wall clock for ffmpeg encode/slice used by remote STT uploads.
+    stt_ffmpeg_timeout: float = Field(default=120.0, gt=0.0)
 
     # Decoding / device (local backend; remote ignores most of these)
     language: str = "auto"

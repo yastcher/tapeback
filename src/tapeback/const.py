@@ -33,6 +33,14 @@ OPENAI_DIARIZE_CHUNKING_SECONDS = 30.0
 # Hard API duration caps (size limit alone is not enough for these models).
 OPENAI_DIARIZE_MAX_UPLOAD_SECONDS = 1400.0
 OPENAI_GPT_TRANSCRIBE_MAX_UPLOAD_SECONDS = 1500.0
+# Soft targets keep each upload well under the hard cap and under one read-timeout
+# budget (near-max diarize slices timed out after ~30 min of SDK retries).
+OPENAI_DIARIZE_TARGET_UPLOAD_SECONDS = 600.0
+OPENAI_GPT_TRANSCRIBE_TARGET_UPLOAD_SECONDS = 600.0
+# Connect timeout for the shared OpenAI client (read/write come from settings).
+STT_REMOTE_CONNECT_TIMEOUT = 10.0
+# Cap exponential backoff between remote STT upload attempts.
+STT_REMOTE_RETRY_DELAY_CAP = 60.0
 
 # Frames read per iteration when de-interleaving a stereo WAV. Large enough that the
 # per-chunk overhead is irrelevant, small enough that the transient buffer (~4 MB at
