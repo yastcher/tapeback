@@ -15,6 +15,7 @@ from tapeback import const
 from tapeback._gpu import free_gpu_memory, sample_gpu
 from tapeback._lazy import load_transcriber
 from tapeback._runlog import run_log
+from tapeback._stt_caps import allows_local_diarize
 from tapeback._timing import stage_timer
 from tapeback.audio import (
     convert_to_mono16k,
@@ -249,8 +250,16 @@ def process_stereo_file(
     ]
     raw_segments = merge_channel_segments(mic_segments, raw_monitor)
 
+    want_diarize = diarize and settings.diarize
+    if want_diarize and not allows_local_diarize(settings.stt_backend, settings.stt_model):
+        on_status(
+            "Skipping local diarization — remote STT model "
+            f"'{settings.stt_model}' provides text only or remote speakers."
+        )
+        want_diarize = False
+
     diarized = False
-    if diarize and settings.diarize and settings.hf_token.get_secret_value():
+    if want_diarize and settings.hf_token.get_secret_value():
         if not diarization_available():
             on_status(
                 "Warning: pyannote-audio not installed, skipping diarization. "
@@ -271,6 +280,7 @@ def process_stereo_file(
                 monitor_segments = assign_speakers(monitor_segments, diarization_segments)
             diarized = True
 
+    # Remote diarize already set speaker labels; channel fallback only when unset.
     if not diarized and monitor_segments and monitor_segments[0].speaker is None:
         monitor_segments = [
             Segment(
@@ -350,6 +360,13 @@ def _maybe_diarize_segments(
 ) -> list[Segment]:
     """Run diarization if enabled, configured, and token available."""
     if not diarize or not settings.diarize:
+        return segments
+
+    if not allows_local_diarize(settings.stt_backend, settings.stt_model):
+        on_status(
+            "Skipping local diarization — remote STT model "
+            f"'{settings.stt_model}' provides text only or remote speakers."
+        )
         return segments
 
     if not settings.hf_token.get_secret_value():

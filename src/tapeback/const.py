@@ -20,6 +20,28 @@ TEMP_DIR = "/tmp/tapeback"
 # Sample rates
 SAMPLE_RATE_16K = 16000
 
+# Remote STT upload limits (OpenAI documents a 25 MiB hard cap; stay under it).
+# Bitrate chosen so ~50 minutes of mono speech fits in one upload at this margin.
+STT_REMOTE_MAX_UPLOAD_BYTES = 24 * 1024 * 1024
+STT_REMOTE_MP3_BITRATE_K = 64
+# Leave headroom under the hard upload cap when sizing time slices from bitrate.
+STT_REMOTE_UPLOAD_MARGIN = 0.95
+# Truncate ffmpeg stderr in errors so logs stay readable.
+STT_REMOTE_FFMPEG_ERROR_TAIL = 500
+# OpenAI gpt-4o-transcribe-diarize requires chunking_strategy above this duration.
+OPENAI_DIARIZE_CHUNKING_SECONDS = 30.0
+# Hard API duration caps (size limit alone is not enough for these models).
+OPENAI_DIARIZE_MAX_UPLOAD_SECONDS = 1400.0
+OPENAI_GPT_TRANSCRIBE_MAX_UPLOAD_SECONDS = 1500.0
+# Soft targets keep each upload well under the hard cap and under one read-timeout
+# budget (near-max diarize slices timed out after ~30 min of SDK retries).
+OPENAI_DIARIZE_TARGET_UPLOAD_SECONDS = 600.0
+OPENAI_GPT_TRANSCRIBE_TARGET_UPLOAD_SECONDS = 600.0
+# Connect timeout for the shared OpenAI client (read/write come from settings).
+STT_REMOTE_CONNECT_TIMEOUT = 10.0
+# Cap exponential backoff between remote STT upload attempts.
+STT_REMOTE_RETRY_DELAY_CAP = 60.0
+
 # Frames read per iteration when de-interleaving a stereo WAV. Large enough that the
 # per-chunk overhead is irrelevant, small enough that the transient buffer (~4 MB at
 # this size) does not matter next to the output arrays.

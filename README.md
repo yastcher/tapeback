@@ -1,9 +1,9 @@
 # tapeback
 
 Local meeting recorder for Linux. Records system audio + microphone via
-PipeWire/PulseAudio, transcribes with Whisper, identifies speakers, saves
-Markdown to your Obsidian vault. Everything runs on your machine, no cloud
-services or API calls needed for transcription.
+PipeWire/PulseAudio, transcribes with Whisper (local by default), identifies speakers, saves
+Markdown to your Obsidian vault. Transcription stays on your machine unless you
+opt into a remote STT backend (OpenAI today).
 
 Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord, Slack huddles.
 
@@ -13,7 +13,8 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 
 - **Live transcription** (opt-in): read the transcript while the meeting is still going — Whisper transcribes in the background every 60 seconds (set `TAPEBACK_LIVE=true`)
 - **Platform-agnostic**: captures OS-level audio, works with any app
-- **Local transcription**: faster-whisper on CPU or CUDA GPU
+- **Local transcription**: faster-whisper on CPU or CUDA GPU (default)
+- **Optional remote STT**: set `TAPEBACK_STT_BACKEND=openai` to use a remote transcription backend instead of local Whisper. OpenAI is the only remote backend today (requires `tapeback[stt]` + `TAPEBACK_STT_API_KEY`; meeting audio leaves the machine). Uploads retry on timeouts/transient errors with status heartbeats; finished chunks are cached so `tapeback process` on the same WAV only re-uploads what is missing.
 - **Speaker diarization**: pyannote identifies who said what
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
@@ -82,10 +83,15 @@ Then install tapeback:
 ```bash
 uv tool install tapeback                          # recording + transcription
 uv tool install "tapeback[tray]"                  # + system tray icon
-uv tool install "tapeback[llm]"                   # + LLM summaries
+uv tool install "tapeback[stt]"                   # + remote OpenAI STT
+uv tool install "tapeback[llm]"                   # + LLM summaries (also installs openai)
 uv tool install "tapeback[diarize]"               # + speaker diarization
-uv tool install "tapeback[tray,llm,diarize]"      # everything
+uv tool install "tapeback[tray,stt,llm,diarize]"  # everything
 ```
+
+`tapeback[stt]` installs the openai SDK for remote transcription.
+`tapeback[llm]` also installs that SDK (plus anthropic), so remote STT works if
+you already have the LLM extra.
 
 ### pipx or Nix
 
@@ -217,10 +223,15 @@ provider (any provider with an API key set).
 
 ### PII masking
 
-Summarization is the only thing tapeback sends off the machine — recording,
-transcription and diarization are all local. If that request bothers you, either
-leave summarization off (`TAPEBACK_SUMMARIZE=false`, and nothing is ever sent) or
-turn on masking:
+By default, recording, transcription and diarization stay on your machine.
+Summarization is the usual off-machine path: a text request to an LLM provider.
+If that bothers you, leave summarization off (`TAPEBACK_SUMMARIZE=false`) or turn
+on masking.
+
+**Opt-in remote STT is a second outbound path.** With
+`TAPEBACK_STT_BACKEND=openai`, meeting audio is uploaded to OpenAI.
+PII masking cannot apply there — it only rewrites text before summarization.
+Keep the default (`local`) unless you accept that trade-off.
 
 ```bash
 TAPEBACK_MASK_PII=true
@@ -358,9 +369,17 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 
 | Variable | Default | Description |
 |---|---|---|
-| `TAPEBACK_WHISPER_MODEL` | `large-v3-turbo` | Whisper model (`tiny`, `base`, `small`, `medium`, `large-v3-turbo`) |
+| `TAPEBACK_STT_BACKEND` | `local` | `local` (faster-whisper on this machine) or a remote backend id. Today: `openai` (OpenAI Audio Transcriptions API). Remote STT requires `tapeback[stt]` (or `tapeback[llm]`, which also installs the openai SDK) and `TAPEBACK_STT_API_KEY` (falls back to `OPENAI_API_KEY`, or `TAPEBACK_LLM_API_KEY` with `TAPEBACK_LLM_PROVIDER=openai`); meeting audio then leaves the machine |
+| `TAPEBACK_STT_MODEL` | *(backend default)* | Model for the active STT backend. **Local** default `large-v3-turbo` (`tiny`/`base`/`small`/`medium`/`large-v3-turbo`). **OpenAI** default `whisper-1` (timestamps + local pyannote; size-limited chunks only). Also: `gpt-transcribe` (modern text quality; local diarize skipped; soft target ≤600s per upload, hard API cap 1500s), `gpt-4o-transcribe-diarize` (remote speakers; local diarize skipped; soft target ≤600s, hard API cap 1400s). Long meetings are sliced under the 25 MiB size cap, the soft target, and the hard API duration cap. Deprecated alias: `TAPEBACK_WHISPER_MODEL` |
+| `TAPEBACK_STT_API_KEY` | *(empty)* | API key for remote STT. Falls back to `OPENAI_API_KEY` then the LLM OpenAI key |
+| `TAPEBACK_STT_CONCURRENCY` | `4` | Max parallel uploads when a long recording is sliced (not used for the diarize model, which uploads slices sequentially) |
+| `TAPEBACK_STT_TIMEOUT` | `900` | Read/write timeout (seconds) for each remote STT HTTP request. Connect timeout is fixed at 10s. Needs to be long enough for diarize slices (~10 min of audio often needs several minutes of server time). App-level retries are separate from the OpenAI SDK (SDK retries are disabled). |
+| `TAPEBACK_STT_MAX_RETRIES` | `5` | App-level retries per chunk after a timeout, connection error, or HTTP 408/429/5xx/529 |
+| `TAPEBACK_STT_RETRY_BASE_DELAY` | `5` | Exponential backoff base between remote STT retries (capped at 60s) |
+| `TAPEBACK_STT_HEARTBEAT_SECONDS` | `15` | While an upload is in flight, emit a status line this often so a long API wait does not look hung |
+| `TAPEBACK_STT_FFMPEG_TIMEOUT` | `120` | Wall-clock timeout for ffmpeg encode/slice used to prepare remote uploads |
 | `TAPEBACK_LANGUAGE` | `auto` | Language code (`auto` for auto-detection, or `en`, `ru`, `fr`, etc.) |
-| `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu` |
+| `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu`. Local backend only |
 | `TAPEBACK_GPU_TELEMETRY` | `true` | Sample GPU clocks/temperature during transcription and print a one-line summary per stage. Observation only — tapeback never changes clock or power caps. No-op without `nvidia-smi` or on `cpu` |
 | `TAPEBACK_RESUME_CACHE` | `true` | Reuse a channel already transcribed from the same audio with the same output-affecting settings, so an interrupted run does not redo finished work. Changing the model, glossary, language or any decoding setting invalidates it |
 | `TAPEBACK_RESUME_CACHE_DIR` | *(XDG)* | Where reusable channel results go. Default `~/.local/share/tapeback/resume` |

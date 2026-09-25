@@ -1,11 +1,16 @@
-"""PII masking for the one thing that leaves this machine — the LLM request.
+"""PII masking for the LLM summarization request.
 
-Recording, Whisper and pyannote all run locally; `summarizer.summarize()` is the only
-place a transcript crosses to a third party, and its fallback chain can hand the same
-text to a second provider when the first fails. When `TAPEBACK_MASK_PII` is on, this
-module replaces structured PII with `[LABEL_N]` placeholders before the text is sent and
-restores the real values in the parsed result, so the vault keeps what was actually said
-while no provider ever sees it.
+By default, recording, local Whisper and pyannote all stay on-machine;
+`summarizer.summarize()` is the only place a *transcript* crosses to a third party, and
+its fallback chain can hand the same text to a second provider when the first fails.
+When `TAPEBACK_MASK_PII` is on, this module replaces structured PII with `[LABEL_N]`
+placeholders before the text is sent and restores the real values in the parsed result,
+so the vault keeps what was actually said while no provider ever sees it.
+
+A second outbound path exists when `TAPEBACK_STT_BACKEND` is a remote backend
+(today: `openai`): meeting *audio* is uploaded for speech-to-text. Masking cannot
+help there — the raw audio leaves as-is. Prefer the local backend if that is
+unacceptable.
 
 Off by default. With masking disabled every method is the identity function — the request
 is byte-identical to what it would have been without this module.

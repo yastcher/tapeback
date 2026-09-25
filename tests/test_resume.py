@@ -55,13 +55,13 @@ def test_key_changes_per_channel(cached_settings, audio):
 
 @pytest.mark.parametrize(
     "field",
-    ["whisper_model", "compute_type", "beam_size", "chunk_length", "hotwords", "language"],
+    ["stt_model", "compute_type", "beam_size", "chunk_length", "hotwords", "language"],
 )
 def test_key_changes_when_an_output_affecting_setting_changes(cached_settings, audio, field):
     """A cached channel is only reusable if it would be produced the same way."""
     base = _resume.resume_key(audio, cached_settings, "transcribe")
     changed = {
-        "whisper_model": "tiny",
+        "stt_model": "tiny",
         "compute_type": "float32",
         "beam_size": 1,
         "chunk_length": 7,

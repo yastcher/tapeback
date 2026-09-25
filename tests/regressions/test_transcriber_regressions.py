@@ -64,10 +64,10 @@ def test_cuda_inference_fallback_to_cpu(tmp_vault, capsys):
 
     assert mock_model_cls.call_count == 2
     assert mock_model_cls.call_args_list[0] == call(
-        s.whisper_model, device="cuda", compute_type="float16", local_files_only=True
+        s.stt_model, device="cuda", compute_type="float16", local_files_only=True
     )
     assert mock_model_cls.call_args_list[1] == call(
-        s.whisper_model, device="cpu", compute_type="int8", local_files_only=True
+        s.stt_model, device="cpu", compute_type="int8", local_files_only=True
     )
 
     assert len(segments) == 1
@@ -114,7 +114,7 @@ def test_cuda_fallback_when_transcribe_call_raises(tmp_vault, capsys):
 
     assert mock_model_cls.call_count == 2
     assert mock_model_cls.call_args_list[1] == call(
-        s.whisper_model, device="cpu", compute_type="int8", local_files_only=True
+        s.stt_model, device="cpu", compute_type="int8", local_files_only=True
     )
     assert len(segments) == 1
     assert segments[0].text == "Hello"

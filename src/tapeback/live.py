@@ -7,20 +7,16 @@ import sys
 import threading
 import wave
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 
 from tapeback import const
 from tapeback._gpu import free_gpu_memory
-from tapeback._lazy import load_transcriber
+from tapeback._lazy import TranscriberLike, load_transcriber
 from tapeback.formatter import format_live_markdown
 from tapeback.models import Segment, Word
 from tapeback.settings import Settings
 from tapeback.vault import save_live_markdown
-
-if TYPE_CHECKING:
-    from tapeback.transcriber import Transcriber
 
 # Tolerance for deduplication: segments within this many seconds are considered duplicates
 DEDUP_TOLERANCE_SEC = 0.5
@@ -167,9 +163,9 @@ class LiveTranscriber:
             / f"{session_name}{const.FILE_LIVE_SUFFIX}.md"
         )
 
-        # Transcriber is created lazily on the first chunk to avoid blocking
-        # the main thread with model loading
-        self._transcriber: Transcriber | None = None
+        # Backend is created lazily on the first chunk to avoid blocking
+        # the main thread with a model / SDK load.
+        self._transcriber: TranscriberLike | None = None
 
     @property
     def live_md_path(self) -> Path:
@@ -184,14 +180,14 @@ class LiveTranscriber:
         self._stop_event.set()
         self._thread.join(timeout=120)
 
-        # Free GPU memory so the full pipeline can use it
+        # Free GPU memory so the full pipeline can use it (no-op for remote STT).
         if self._transcriber is not None:
             del self._transcriber
             self._transcriber = None
             free_gpu_memory()
 
-    def _ensure_transcriber(self) -> Transcriber:
-        """Lazily create the Transcriber (loads Whisper model)."""
+    def _ensure_transcriber(self) -> TranscriberLike:
+        """Lazily create the configured transcription backend."""
         if self._transcriber is None:
             self._transcriber = load_transcriber(self._settings)
         return self._transcriber
@@ -328,7 +324,7 @@ class LiveTranscriber:
 
     def _transcribe_chunk(
         self,
-        transcriber: Transcriber,
+        transcriber: TranscriberLike,
         pcm_bytes: bytes,
         byte_offset: int,
         overlap_bytes: int,

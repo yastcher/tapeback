@@ -8,13 +8,23 @@ from tapeback.settings import Settings
 
 def test_settings_from_env(monkeypatch, vault_env):
     """Settings should parse values from environment variables."""
-    monkeypatch.setenv("TAPEBACK_WHISPER_MODEL", "tiny")
+    monkeypatch.setenv("TAPEBACK_STT_MODEL", "tiny")
     monkeypatch.setenv("TAPEBACK_LANGUAGE", "ru")
 
     s = Settings()
     assert s.vault_path == vault_env
-    assert s.whisper_model == "tiny"
+    assert s.stt_model == "tiny"
     assert s.language == "ru"
+
+
+def test_settings_whisper_model_env_deprecated(monkeypatch, vault_env):
+    """TAPEBACK_WHISPER_MODEL still works but feeds stt_model."""
+    monkeypatch.delenv("TAPEBACK_STT_MODEL", raising=False)
+    monkeypatch.setenv("TAPEBACK_WHISPER_MODEL", "tiny")
+    with pytest.warns(DeprecationWarning, match="TAPEBACK_WHISPER_MODEL"):
+        s = Settings()
+    assert s.stt_model == "tiny"
+    assert s.whisper_model == "tiny"
 
 
 def test_settings_vault_path_default(monkeypatch, tmp_path):
@@ -30,7 +40,14 @@ def test_settings_vault_path_default(monkeypatch, tmp_path):
 def test_settings_defaults(tmp_vault):
     """Default settings should match expected values."""
     s = Settings(vault_path=tmp_vault)
-    assert s.whisper_model == "large-v3-turbo"
+    assert s.stt_backend == "local"
+    assert s.stt_model == "large-v3-turbo"
+    assert s.stt_concurrency == 4
+    assert s.stt_timeout == 900.0
+    assert s.stt_max_retries == 5
+    assert s.stt_retry_base_delay == 5.0
+    assert s.stt_heartbeat_seconds == 15.0
+    assert s.stt_ffmpeg_timeout == 120.0
     assert s.language == "auto"
     assert s.device == "cuda"
     assert s.compute_type == "auto"
@@ -44,6 +61,21 @@ def test_settings_defaults(tmp_vault):
     assert s.attachments_dir == "attachments/audio"
     assert s.diarize is True
     assert s.max_speakers is None
+
+
+def test_settings_stt_backend_openai_default_model(tmp_vault):
+    s = Settings(vault_path=tmp_vault, stt_backend="openai")
+    assert s.stt_model == "whisper-1"
+
+
+def test_settings_stt_backend_from_env(monkeypatch, vault_env):
+    monkeypatch.setenv("TAPEBACK_STT_BACKEND", "openai")
+    monkeypatch.setenv("TAPEBACK_STT_MODEL", "gpt-4o-transcribe")
+    monkeypatch.setenv("TAPEBACK_STT_CONCURRENCY", "8")
+    s = Settings()
+    assert s.stt_backend == "openai"
+    assert s.stt_model == "gpt-4o-transcribe"
+    assert s.stt_concurrency == 8
 
 
 def test_settings_hf_token_from_env(monkeypatch, vault_env):

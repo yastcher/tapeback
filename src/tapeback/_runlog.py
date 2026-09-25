@@ -35,7 +35,14 @@ OUTCOME_FAILED = "failed"
 # settings.model_dump(): Settings carries hf_token and llm_api_key, and a
 # post-mortem file that leaks credentials is worse than no post-mortem file.
 RECORDED_SETTINGS = (
-    "whisper_model",
+    "stt_backend",
+    "stt_model",
+    "stt_concurrency",
+    "stt_timeout",
+    "stt_max_retries",
+    "stt_retry_base_delay",
+    "stt_heartbeat_seconds",
+    "stt_ffmpeg_timeout",
     "language",
     "device",
     "compute_type",

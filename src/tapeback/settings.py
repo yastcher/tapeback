@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
+from warnings import warn
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,12 +29,23 @@ type LLMProvider = Literal[
     "qwen",
 ]
 
+# "local" = faster-whisper on this machine; other values are remote STT backends.
+# Today the only remote backend is "openai" (Audio Transcriptions API).
+# Remote STT uploads meeting audio off-machine — opt-in only.
+type SttBackend = Literal["local", "openai"]
+
+DEFAULT_LOCAL_STT_MODEL = "large-v3-turbo"
+# OpenAI remote default: whisper-1 keeps timestamps so local pyannote still works.
+# Switch to gpt-transcribe or gpt-4o-transcribe-diarize via TAPEBACK_STT_MODEL.
+DEFAULT_REMOTE_STT_MODEL = "whisper-1"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="TAPEBACK_",
         env_file=(Path.home() / ".config" / "tapeback" / ".env", ".env"),
         env_file_encoding="utf-8",
+        populate_by_name=True,
     )
 
     # Output directory (Obsidian vault or any folder)
@@ -43,8 +55,36 @@ class Settings(BaseSettings):
     meetings_dir: str = "meetings"
     attachments_dir: str = "attachments/audio"
 
-    # Whisper
-    whisper_model: str = "large-v3-turbo"
+    # STT backend. Default stays fully local (faster-whisper).
+    # Set TAPEBACK_STT_BACKEND=openai for the OpenAI remote backend — requires
+    # tapeback[stt] (or tapeback[llm], which also installs the openai SDK) and
+    # TAPEBACK_STT_API_KEY (or OPENAI_API_KEY). Meeting audio then leaves the
+    # machine; see README privacy notes.
+    stt_backend: SttBackend = "local"
+    # Model id for the active STT backend. Local default large-v3-turbo; OpenAI
+    # remote default whisper-1. Empty resolves in the validator.
+    stt_model: str = ""
+    # Deprecated: prefer TAPEBACK_STT_MODEL. Still read so old .env files work.
+    whisper_model: str = ""
+    # Max concurrent remote uploads when a long recording is sliced into chunks.
+    stt_concurrency: int = Field(default=4, ge=1)
+    # API key for remote STT (TAPEBACK_STT_API_KEY). Falls back to OPENAI_API_KEY
+    # then TAPEBACK_LLM_API_KEY when llm_provider=openai.
+    stt_api_key: SecretStr = SecretStr("")
+    # Per-request read/write timeout for remote STT (connect stays short separately).
+    # Diarize slices (~10 min audio) often need several minutes of server time; 120s
+    # was killing healthy uploads and forcing retry loops.
+    stt_timeout: float = Field(default=900.0, gt=0.0)
+    # App-level retries per chunk after a retryable failure (timeouts, 5xx, …).
+    stt_max_retries: int = Field(default=5, ge=0)
+    # Exponential backoff base between remote STT retries (capped in const).
+    stt_retry_base_delay: float = Field(default=5.0, gt=0.0)
+    # Status heartbeat while a remote upload is in flight.
+    stt_heartbeat_seconds: float = Field(default=15.0, gt=0.0)
+    # Wall clock for ffmpeg encode/slice used by remote STT uploads.
+    stt_ffmpeg_timeout: float = Field(default=120.0, gt=0.0)
+
+    # Decoding / device (local backend; remote ignores most of these)
     language: str = "auto"
     device: str = "cuda"
     compute_type: str = "auto"  # "int8"/"float16"
@@ -176,8 +216,9 @@ class Settings(BaseSettings):
     summarize: bool = True
     # Replace emails and phone numbers with placeholders in the transcript before it is
     # sent to an LLM provider, and restore the real values in the summary written to the
-    # vault. Off by default. Only has any effect while summarization runs — that request
-    # is the only thing tapeback sends off the machine. See _mask.py.
+    # vault. Off by default. Only has any effect while summarization runs — masking does
+    # not apply to remote STT (audio leaves the machine as-is when a remote backend is on).
+    # See _mask.py.
     mask_pii: bool = False
     # Comma-separated literal terms to mask alongside emails and phone numbers — names,
     # company and project names, which is the PII people actually speak aloud. Matching
@@ -190,7 +231,29 @@ class Settings(BaseSettings):
     llm_model: str = ""
 
     @model_validator(mode="after")
-    def _validate_live_chunking(self) -> "Settings":
+    def _resolve_stt_settings(self) -> Self:
+        """Resolve stt_model defaults; accept deprecated TAPEBACK_WHISPER_MODEL."""
+        model = self.stt_model.strip() if self.stt_model else ""
+        if not model and self.whisper_model:
+            warn(
+                "TAPEBACK_WHISPER_MODEL is deprecated; use TAPEBACK_STT_MODEL instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            model = self.whisper_model.strip()
+        if not model:
+            model = (
+                DEFAULT_REMOTE_STT_MODEL
+                if self.stt_backend == "openai"
+                else DEFAULT_LOCAL_STT_MODEL
+            )
+
+        object.__setattr__(self, "stt_model", model)
+        object.__setattr__(self, "whisper_model", model)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_live_chunking(self) -> Self:
         """Live chunks must be shorter than the interval or the loop drops audio."""
         if self.live and self.live_min_chunk > self.live_interval:
             raise ValueError(
