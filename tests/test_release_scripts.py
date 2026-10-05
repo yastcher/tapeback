@@ -85,9 +85,9 @@ def test_every_copy_of_the_version_agrees():
     assert set(release_from_tag.pkgbuild_versions(REPO_ROOT).values()) == {declared}
 
 
-def test_pre_release_smoke_installs_into_the_images_ci_does():
+def test_local_deb_smoke_installs_into_the_images_ci_does():
     """Two copies of one list drift apart silently; this one is read from both sides."""
-    qa = (REPO_ROOT / "scripts" / "pre_release_qa.sh").read_text()
+    qa = (REPO_ROOT / "scripts" / "deb-smoke.sh").read_text()
     ci = (REPO_ROOT / ".github" / "workflows" / "deb-e2e.yml").read_text()
 
     qa_images = re.search(r"^SMOKE_IMAGES=\((?P<images>[^)]*)\)$", qa, re.M)

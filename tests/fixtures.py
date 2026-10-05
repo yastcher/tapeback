@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import wave
+from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock
@@ -231,39 +232,59 @@ def release_tree(tmp_path):
 
 @pytest.fixture
 def run_gate(tmp_path):
-    """Run the real gate.sh with `uv` and `python3` stubbed on PATH.
+    """Run the real scripts/gate.sh with every command it calls stubbed on PATH.
 
-    Returns a callable: `run_gate(*args, fail="uv run ty check")` makes that one
-    command exit 1, and gives back the finished process and every command the gate
-    invoked, in order.
+    Returns a callable: `run_gate(*args, changed=[...], fail="uv run ty check")` runs
+    the gate on a branch whose diff against origin/main is `changed` (None: no merge
+    base at all), makes the `fail` command exit 1, and gives back the finished process
+    and every command the gate invoked, in order. The repository root reads `<root>`.
     """
-    (tmp_path / "scripts").mkdir()
-    gate = tmp_path / "scripts" / "gate.sh"
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    gate = scripts / "gate.sh"
     shutil.copy2(REPO_ROOT / "scripts" / "gate.sh", gate)
+    logging_stub = (
+        "#!/usr/bin/env bash\n"
+        'printf "%s %s\\n" "${0##*/}" "$*" >> "$GATE_LOG"\n'
+        'if [ "${0##*/} $*" = "$GATE_FAIL" ]; then exit 1; fi\n'
+    )
     stubs = tmp_path / "bin"
     stubs.mkdir()
-    for name in ("uv", "python3"):
-        stub = stubs / name
-        stub.write_text(
-            "#!/usr/bin/env bash\n"
-            'printf "%s %s\\n" "${0##*/}" "$*" >> "$GATE_LOG"\n'
-            'if [ "${0##*/} $*" = "$GATE_FAIL" ]; then exit 1; fi\n'
-        )
-        stub.chmod(0o755)
+    for path in (stubs / "uv", stubs / "python3", stubs / "docker", scripts / "deb-smoke.sh"):
+        path.write_text(logging_stub)
+        path.chmod(0o755)
+    # git answers only the two questions the gate asks it.
+    git = stubs / "git"
+    git.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$*" in\n'
+        '  *merge-base*) [ -n "$GATE_NO_BASE" ] && exit 1; echo base ;;\n'
+        '  *"diff --name-only"*) printf "%s" "$GATE_CHANGED" ;;\n'
+        "esac\n"
+    )
+    git.chmod(0o755)
     log = tmp_path / "commands.log"
 
-    def run(*args: str, fail: str = "") -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    def run(
+        *args: str, changed: Sequence[str] | None = (), fail: str = ""
+    ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        env = {
+            "PATH": f"{stubs}:{os.environ['PATH']}",
+            "GATE_LOG": str(log),
+            "GATE_FAIL": fail,
+            "GATE_NO_BASE": "1" if changed is None else "",
+            "GATE_CHANGED": "".join(f"{name}\n" for name in changed or ()),
+        }
         result = subprocess.run(
             [gate, *args],
-            env=os.environ
-            | {"PATH": f"{stubs}:{os.environ['PATH']}", "GATE_LOG": str(log), "GATE_FAIL": fail},
+            env=os.environ | env,
             capture_output=True,
             text=True,
             check=False,
             timeout=30,
         )
-        commands = log.read_text().splitlines() if log.exists() else []
-        return result, commands
+        lines = log.read_text().splitlines() if log.exists() else []
+        return result, [line.replace(str(tmp_path), "<root>").rstrip() for line in lines]
 
     return run
 

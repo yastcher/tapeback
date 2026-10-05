@@ -38,7 +38,7 @@ No web servers, databases, Docker.
 - Format: `uv run ruff format`
 - Type check: `uv run ty check`
 - Test: `uv run pytest` (coverage ≥90% enforced via pyproject.toml)
-- Gate (everything CI checks, one verdict): `scripts/gate.sh`
+- Gate (everything CI checks, one verdict): `scripts/gate.sh`; the packaging stands run when the diff touches their paths, `--all` forces them
 
 ## Code quality
 
@@ -84,7 +84,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
   - the order — by user impact. The script appends, so an infrastructure line lands last by itself; a user-facing one placed under existing infrastructure lines takes `--top`.
 - Released sections are immutable. An outdated entry is superseded by a new one, never rewritten.
 - **Release flow — maintainer only, on `main`, after the PRs are merged:** `scripts/pre_release_qa.sh` → `scripts/release.sh patch|minor|major` → the tag publishes to PyPI and GitHub (`publish.yml`) → `scripts/aur-publish.sh <version>`. `release.sh` refuses a tree `pre_release_qa.sh` has not stamped (`SKIP_PRERELEASE_QA=1` for a hotfix that cannot wait), bumps every copy of the version, closes `[Unreleased]` into `## [X.Y.Z] — <date>`, commits, pushes `main`, then tags. `publish.yml` checks the tag against every copy with `scripts/release_from_tag.py` before building, and publishes that section as the release notes. An agent never runs `release.sh` — it commits and pushes.
-- `scripts/pre_release_qa.sh` runs, cheapest first: `scripts/gate.sh`; the e2e quality suite (needs the `tests/data/` recordings and `HF_TOKEN` — a skipped test fails the run); `uv build` + `scripts/build-deb.sh`; the `.deb` install smoke on the `deb-e2e.yml` images; the Arch package smoke (`scripts/arch-smoke.sh`). Needs docker and nfpm.
+- `scripts/pre_release_qa.sh` runs `scripts/gate.sh --all` (every stand, whatever the diff), then the e2e quality suite (needs the `tests/data/` recordings and `HF_TOKEN` — a skipped test fails the run). Needs docker and nfpm.
 - Bundled interpreters in distro packages come from a pinned tarball URL (`scripts/build-deb.sh`), not from a tool that fetches one (`uv python install`). The URL is deterministic and so is the archive layout; a tool's layout varies by its own version and by the runner's platform, which once put a broken python into the `.deb`.
 - PKGBUILD in this repo keeps `sha256sums=('SKIP')` — the real checksum is set by `scripts/aur-publish.sh` in the AUR repo, once the tarball exists.
 
@@ -106,7 +106,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 
 0. `git diff --stat` — assess scope of changes
 1. `uv run ruff check --fix` and `uv run ruff format` — the fixers; the gate only checks.
-2. **`scripts/gate.sh`** — the CI job step for step (`tests/test_gate.py` keeps the two in sync). The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye.
+2. **`scripts/gate.sh`** — CI step for step (`tests/test_gate.py` keeps the two in sync): the checks always, the `.deb` and Arch stands when the diff against `origin/main` touches the paths their workflows filter on — the same minutes CI would spend, spent before the push. The stands need docker and nfpm. The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye.
 3. Security review (see checklist below)
 4. **Tech lead review**: re-read your own diff as a strict reviewer. Look for overengineering, antipatterns copied from existing code, unnecessary complexity, and assertions weakened to make a test pass. Fix what you find before finishing.
 5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume.

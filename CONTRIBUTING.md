@@ -28,7 +28,10 @@ scripts/gate.sh
 ```
 
 The gate has passed only when its last line reads `all gates passed`. Coverage is
-enforced at 90% by `pyproject.toml`, so new code needs tests.
+enforced at 90% by `pyproject.toml`, so new code needs tests. When the branch touches
+`src/`, `packaging/` or `pyproject.toml`, the gate also builds and installs the `.deb`
+and Arch packages in containers, as CI does — that needs docker and
+[nfpm](https://nfpm.goreleaser.com/), and some minutes.
 
 ## CHANGELOG and the version
 
