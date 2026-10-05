@@ -1,5 +1,3 @@
-# CLAUDE.md
-
 ## Project
 
 CLI tool for recording meeting audio (Google Meet, Zoom, Teams, Telegram — any platform) on Linux via PulseAudio/PipeWire system audio capture. Transcribes locally with faster-whisper (optional OpenAI remote STT), saves markdown to Obsidian vault.
@@ -27,7 +25,7 @@ No web servers, databases, Docker.
 
 - Source: `src/tapeback/` — cli.py, recorder.py, audio.py, channel.py, transcriber.py, remote_stt.py, diarizer.py, speaker_merge.py, formatter.py, vault.py, summarizer.py, glossary.py, live.py, tray.py, pipeline.py + models.py, settings.py, const.py
 - Private helpers are `_`-prefixed: `_gpu.py` (nvidia-smi, thermal clamp, VRAM), `_worker.py` + `_isolated.py` (out-of-process transcription), `_resume.py` (reusing a finished channel or remote STT chunk), `_quality.py` (transcript metrics and the hallucination filter), `_mask.py` (PII masking at the LLM boundary), `_stt_openai.py` + `_stt_openai_chunks.py` + `_stt_openai_fmt.py` + `_stt_caps.py` + `_stt_media.py` + `_stt_retry.py` (remote STT: OpenAI backend, chunking/resume, response mapping, capabilities, ffmpeg upload helpers, retries/heartbeats), `_sni.py` + `_dbusmenu.py` + `_tray_env.py` (tray protocol), `_runlog.py`, `_timing.py`, `_lazy.py`. The prefix means "internal to tapeback", not "pure" — `_gpu.py` shells out and `_worker.py` spawns processes.
-- Benchmarks live in `scripts/bench_transcribe.py` — it drives the real `Transcriber`, so it measures what ships. Configuration choices here are made from its table, not from reasoning; see `.claude/plans/BACKLOG.md` for what that has already overturned.
+- Benchmarks live in `scripts/bench_transcribe.py` — it drives the real `Transcriber`, so it measures what ships. Configuration choices here are made from its table, not from reasoning; see `docs/spec/BACKLOG.md` for what that has already overturned.
 - Constants: `src/tapeback/const.py` — import as `from tapeback import const`, use as `const.SPEAKER_YOU`
 - Domain models (Segment, Word, DiarizationSegment, Summary, ActionItem) live in models.py — never in infrastructure modules
 - Settings: pydantic-settings with `TAPEBACK_` prefix, env vars and `.env` only
@@ -40,6 +38,7 @@ No web servers, databases, Docker.
 - Format: `uv run ruff format`
 - Type check: `uv run ty check`
 - Test: `uv run pytest` (coverage ≥90% enforced via pyproject.toml)
+- Gate (everything CI checks, one verdict): `./gate.sh`
 
 ## Code quality
 
@@ -77,21 +76,22 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 ## Versioning & releases
 
 - Semantic Versioning: MAJOR.MINOR.PATCH
-- After a release tag is pushed, all subsequent changes MUST go into a new version.
-  Never amend a released version — bump the version first, then make changes.
-- CHANGELOG entries for released versions are immutable. Before writing to CHANGELOG.md, run `git tag --sort=-v:refname | head -5` — if the top section version ≤ latest tag, that section is frozen. Create a new patch version (e.g. 0.8.8 → 0.8.9) with today's date.
-- Never use `[Unreleased]` — always assign the next concrete version number with today's date (e.g. `## [0.8.9] — 2026-04-02`).
-- Order CHANGELOG entries by user impact: user-facing fixes first, infrastructure/internal changes last.
-- Version is the single source of truth in `pyproject.toml`. All other files are updated via `scripts/release.sh <version>` — `uv.lock` (which records the project's own version) and all five packaging targets in `packaging/`: `PKGBUILD`, `tapeback-cuda`, `tapeback-diarize`, `tapeback-llm`, `tapeback-tray`, plus `deb/`. CI and publish both install with `uv sync --locked`, so a stale `uv.lock` fails the release before anything is built.
+- **Between releases the top CHANGELOG section is always `## [Unreleased]`.** It claims no number, so a branch has nothing to decide — two branches that each opened `## [0.9.9]` with their own date once merged into a conflict over a number neither had the right to pick.
+- **A branch never touches the version** — not `pyproject.toml`, not `uv.lock`, not `packaging/`. Only `scripts/release.sh` writes it, into every copy at once; `tests/test_release_scripts.py` fails a PR in which the copies disagree.
+- **A CHANGELOG entry lands by command, not by editing the file:** `python3 scripts/changelog_add.py Fixed "- **Topic.** What changed."` (or `--file entry.md`). It writes into `[Unreleased]`, creates the subsection in the order Security / Added / Changed / Fixed / Removed / Docs, and refuses a section a tag has closed. What it cannot decide stays with you:
+  - the text — passed verbatim, so hand it a finished markdown bullet;
+  - the subsection — documentation-only changes go under `### Docs`;
+  - the order — by user impact. The script appends, so an infrastructure line lands last by itself; a user-facing one placed under existing infrastructure lines takes `--top`.
+- Released sections are immutable. An outdated entry is superseded by a new one, never rewritten.
+- **Release flow — maintainer only, on `main`, after the PRs are merged:** `scripts/pre_release_qa.sh` → `scripts/release.sh patch|minor|major` → the tag publishes to PyPI and GitHub (`publish.yml`) → `scripts/aur-publish.sh <version>`. `release.sh` refuses a tree `pre_release_qa.sh` has not stamped (`SKIP_PRERELEASE_QA=1` for a hotfix that cannot wait), bumps every copy of the version, closes `[Unreleased]` into `## [X.Y.Z] — <date>`, commits, pushes `main`, then tags. `publish.yml` checks the tag against every copy with `scripts/release_from_tag.py` before building, and publishes that section as the release notes. An agent never runs `release.sh` — it commits and pushes.
+- `scripts/pre_release_qa.sh` runs, cheapest first: `./gate.sh`; the e2e quality suite (needs the `tests/data/` recordings and `HF_TOKEN` — a skipped test fails the run); `uv build` + `scripts/build-deb.sh`; the `.deb` install smoke on the `deb-e2e.yml` images. Needs docker and nfpm.
 - Bundled interpreters in distro packages come from a pinned tarball URL (`scripts/build-deb.sh`), not from a tool that fetches one (`uv python install`). The URL is deterministic and so is the archive layout; a tool's layout varies by its own version and by the runner's platform, which once put a broken python into the `.deb`.
-- Release flow: bump version → update CHANGELOG → commit → tag → push → CI publishes to PyPI → update AUR
-- AUR publishing is manual: clone AUR repo, copy PKGBUILD, generate `.SRCINFO`, compute sha256sum, push.
-- PKGBUILD in this repo keeps `sha256sums=('SKIP')` — real checksum is set only in the AUR repo after the tarball is available.
+- PKGBUILD in this repo keeps `sha256sums=('SKIP')` — the real checksum is set by `scripts/aur-publish.sh` in the AUR repo, once the tarball exists.
 
 ## Git
 
 - Conventional commits (feat:, fix:, docs:, refactoring:)
-- Always PR, never push to main
+- Always PR, never push to main. The one exception is `scripts/release.sh`, run by the maintainer: the release commit is mechanical and has nothing to review.
 - **Do not run git commit, checkout, reset, clean, stash, rebase** — these are blocked in settings.json. Ask user if needed.
 - Max ~500 lines of diff per commit — stop and propose a commit before continuing
 - Always work in the current branch — never switch branches
@@ -105,17 +105,17 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 ## Before finishing
 
 0. `git diff --stat` — assess scope of changes
-1. `uv run ruff check --fix`
-2. `uv run ruff format`
-3. `uv run ty check`
-4. `uv run pytest`
-5. Security review (see checklist below)
-6. **Tech lead review**: re-read your own diff as a strict reviewer. Look for overengineering, antipatterns copied from existing code, unnecessary complexity, and assertions weakened to make a test pass. Fix what you find before finishing.
-7. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume.
-8. **Always update CHANGELOG.md** — check `git tag` first; if top section is already released, bump patch version
-9. **Propose a commit message** (Conventional Commits). `git commit` is blocked, so the user runs it — hand them the exact message. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
+1. `uv run ruff check --fix` and `uv run ruff format` — the fixers; the gate only checks.
+2. **`./gate.sh`** — the CI job step for step (`tests/test_gate.py` keeps the two in sync). The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye.
+3. Security review (see checklist below)
+4. **Tech lead review**: re-read your own diff as a strict reviewer. Look for overengineering, antipatterns copied from existing code, unnecessary complexity, and assertions weakened to make a test pass. Fix what you find before finishing.
+5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume.
+6. **Always add a CHANGELOG entry** — under `[Unreleased]`, with `scripts/changelog_add.py`; never pick a version number.
+7. **Propose a commit message** (Conventional Commits). `git commit` is blocked, so the user runs it — hand them the exact message. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
 
-Do not finish until lint, types, tests, security review, and tech lead review pass.
+**Run the gate bare, into a file:** `./gate.sh > "$log" 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate.
+
+Do not finish until the gate, security review, and tech lead review pass.
 
 ## Security review checklist
 
@@ -127,6 +127,6 @@ Before completing any change, verify:
 
 ## Gotchas
 
-- **Everything committed to git is in English** — code, comments, logs, README, CHANGELOG, CLAUDE.md, specs in `.claude/plans/`, commit messages. This is an open-source project read by people who don't speak Russian. Chat replies to the user follow the user's language; files do not. Russian is fine only as *data* (e.g. quoted Whisper hallucination strings, Russian-speech test fixtures).
+- **Everything committed to git is in English** — code, comments, logs, README, CHANGELOG, AGENTS.md, specs in `docs/spec/`, commit messages. This is an open-source project read by people who don't speak Russian. Chat replies to the user follow the user's language; files do not. Russian is fine only as *data* (e.g. quoted Whisper hallucination strings, Russian-speech test fixtures).
 - At the end of each non-trivial session, suggest 1–3 items for .claude/insights-inbox.md
   Notes regarding the migration of permissions from .claude/settings.local.json to .claude/settings.json are also welcome

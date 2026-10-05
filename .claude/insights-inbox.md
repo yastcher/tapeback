@@ -1,5 +1,5 @@
-## Раздражения (где Claude ошибся)
+## Friction (where the agent went wrong)
 
-## Что зашло (паттерны, которые работают)
+## What worked (patterns worth keeping)
 
-## Сомнения (не уверен, стоит ли это правило)
+## Doubts (not sure this should become a rule)
