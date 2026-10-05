@@ -74,11 +74,10 @@ changes have been reverted after measurement contradicted them;
 
 ## CI on pull requests
 
-Every commit pushed to a PR re-runs lint, format, types and tests. Packaging changes
-additionally build the `.deb` and install it in five distro containers.
-
-From a fork, the AI review job is skipped — its API key is not exposed to forked pull
-requests. That is expected and not a failure.
+Every commit pushed to a PR re-runs lint, format, types and tests, on Python 3.13 and
+3.14. Changes to `src/`, `packaging/` or `pyproject.toml` additionally build the `.deb`
+and install it in six Ubuntu and Debian containers, and build the AUR package in an
+Arch container.
 
 ## Reporting a bug
 

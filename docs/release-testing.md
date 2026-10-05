@@ -21,8 +21,9 @@ layers below are only needed when the cheaper layers have surprises.
 ### 1. `scripts/pre_release_qa.sh` (run before every release)
 
 Runs the gate, the e2e quality suite on real recordings, then builds the wheel and
-the .debs and installs them in clean containers — the same five images as the
-`deb-e2e` workflow — running `tapeback --version` and `tapeback status` in each.
+the .debs and installs them in clean containers — the same images as the
+`deb-e2e` workflow — running `tapeback --version` and `tapeback status` in each,
+then builds and runs the AUR package in an Arch container.
 This catches the most common failure modes: broken shebangs, wrong venv paths,
 missing system dependencies, broken hooks. On success it stamps the tree, and
 `scripts/release.sh` tags only a stamped tree.
@@ -37,18 +38,21 @@ docker run --rm -v $PWD/dist:/dist ubuntu:26.04 bash -c '
 '
 ```
 
-**Do not use `ubuntu:24.10` or other EOL releases** — their apt repositories
-are removed, `apt-get update` fails, and the .deb dependency resolution can't
-complete. Stick to actively-supported releases: current LTS (26.04), previous
-LTS (24.04), current interim (25.10 while supported), and current Debian stable
-(13).
+**Do not keep EOL releases in the image list** — their apt repositories are
+removed, `apt-get update` fails, and the .deb dependency resolution can't
+complete. An interim release lives nine months: add the new one when it ships and
+drop the old one when it reaches EOL, in `deb-e2e.yml` and `pre_release_qa.sh`
+together (`tests/test_release_scripts.py` fails when the two lists differ).
 
 ### 2. CI gate on every PR (automatic)
 
-`.github/workflows/deb-e2e.yml` runs the same docker smoke on a 5-image matrix
-(Ubuntu 22.04 / 24.04 / 26.04, Debian 12 / 13) for any PR that touches
-`packaging/`, `scripts/build-deb.sh`, `pyproject.toml`, or `src/`. A regression
-in the build pipeline never reaches a release tag — the PR turns red first.
+`.github/workflows/deb-e2e.yml` runs the same docker smoke on a 6-image matrix
+(Ubuntu 22.04 / 24.04 / 26.04 / 26.10, Debian 12 / 13) for any PR that touches
+`packaging/`, `scripts/build-deb.sh`, `pyproject.toml`, or `src/`.
+`.github/workflows/arch-e2e.yml` builds `packaging/PKGBUILD` from the PR's tree in
+an Arch container and runs it on the system Python (`scripts/arch-smoke.sh`). A
+regression in either pipeline never reaches a release tag — the PR turns red
+first.
 
 ### 3. Manual acceptance (run once per minor, or when behavior changes)
 

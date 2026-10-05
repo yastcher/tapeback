@@ -11,6 +11,7 @@
 #                        pyannote, and ideally a GPU; takes minutes.
 #   3. packages        — uv build, scripts/build-deb.sh
 #   4. .deb smoke      — the deb-e2e workflow's install test, on the same images
+#   5. Arch smoke      — scripts/arch-smoke.sh, the arch-e2e workflow's test
 #
 # Needs docker and nfpm. Writes the tree hash into the git directory on success;
 # `release.sh` compares it with the tree it is about to tag.
@@ -20,7 +21,7 @@ root=$(git rev-parse --show-toplevel)
 cd "$root"
 
 # The images `.github/workflows/deb-e2e.yml` installs into.
-SMOKE_IMAGES=(ubuntu:26.04 ubuntu:24.04 ubuntu:22.04 debian:13 debian:12)
+SMOKE_IMAGES=(ubuntu:26.10 ubuntu:26.04 ubuntu:24.04 ubuntu:22.04 debian:13 debian:12)
 
 stamp=$(git rev-parse --path-format=absolute --git-path pre_release_qa.ok)
 tree=$(git rev-parse 'HEAD^{tree}')
@@ -72,6 +73,9 @@ for image in "${SMOKE_IMAGES[@]}"; do
     tapeback status
   '
 done
+
+step "Arch smoke"
+docker run --rm -v "$root:/src:ro" archlinux:latest /src/scripts/arch-smoke.sh
 
 echo "$tree" > "$stamp"
 printf '\n\033[32mpre_release_qa: passed for tree %s\033[0m\n' "$tree"

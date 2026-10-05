@@ -97,6 +97,7 @@ def test_pre_release_smoke_installs_into_the_images_ci_does():
     assert ci_images is not None
     assert qa_images["images"].split() == re.findall(r"- (\S+)", ci_images["images"])
     assert qa_images["images"].split() == [
+        "ubuntu:26.10",
         "ubuntu:26.04",
         "ubuntu:24.04",
         "ubuntu:22.04",
