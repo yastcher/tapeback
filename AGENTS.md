@@ -38,7 +38,7 @@ No web servers, databases, Docker.
 - Format: `uv run ruff format`
 - Type check: `uv run ty check`
 - Test: `uv run pytest` (coverage ≥90% enforced via pyproject.toml)
-- Gate (everything CI checks, one verdict): `./gate.sh`
+- Gate (everything CI checks, one verdict): `scripts/gate.sh`
 
 ## Code quality
 
@@ -79,12 +79,12 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - **Between releases the top CHANGELOG section is always `## [Unreleased]`.** It claims no number, so a branch has nothing to decide — two branches that each opened `## [0.9.9]` with their own date once merged into a conflict over a number neither had the right to pick.
 - **A branch never touches the version** — not `pyproject.toml`, not `uv.lock`, not `packaging/`. Only `scripts/release.sh` writes it, into every copy at once; `tests/test_release_scripts.py` fails a PR in which the copies disagree.
 - **A CHANGELOG entry lands by command, not by editing the file:** `python3 scripts/changelog_add.py Fixed "- **Topic.** What changed."` (or `--file entry.md`). It writes into `[Unreleased]`, creates the subsection in the order Security / Added / Changed / Fixed / Removed / Docs, and refuses a section a tag has closed. What it cannot decide stays with you:
-  - the text — passed verbatim, so hand it a finished markdown bullet;
+  - the text — passed verbatim, so hand it a finished markdown bullet (dry it in Chekhov style);
   - the subsection — documentation-only changes go under `### Docs`;
   - the order — by user impact. The script appends, so an infrastructure line lands last by itself; a user-facing one placed under existing infrastructure lines takes `--top`.
 - Released sections are immutable. An outdated entry is superseded by a new one, never rewritten.
 - **Release flow — maintainer only, on `main`, after the PRs are merged:** `scripts/pre_release_qa.sh` → `scripts/release.sh patch|minor|major` → the tag publishes to PyPI and GitHub (`publish.yml`) → `scripts/aur-publish.sh <version>`. `release.sh` refuses a tree `pre_release_qa.sh` has not stamped (`SKIP_PRERELEASE_QA=1` for a hotfix that cannot wait), bumps every copy of the version, closes `[Unreleased]` into `## [X.Y.Z] — <date>`, commits, pushes `main`, then tags. `publish.yml` checks the tag against every copy with `scripts/release_from_tag.py` before building, and publishes that section as the release notes. An agent never runs `release.sh` — it commits and pushes.
-- `scripts/pre_release_qa.sh` runs, cheapest first: `./gate.sh`; the e2e quality suite (needs the `tests/data/` recordings and `HF_TOKEN` — a skipped test fails the run); `uv build` + `scripts/build-deb.sh`; the `.deb` install smoke on the `deb-e2e.yml` images. Needs docker and nfpm.
+- `scripts/pre_release_qa.sh` runs, cheapest first: `scripts/gate.sh`; the e2e quality suite (needs the `tests/data/` recordings and `HF_TOKEN` — a skipped test fails the run); `uv build` + `scripts/build-deb.sh`; the `.deb` install smoke on the `deb-e2e.yml` images. Needs docker and nfpm.
 - Bundled interpreters in distro packages come from a pinned tarball URL (`scripts/build-deb.sh`), not from a tool that fetches one (`uv python install`). The URL is deterministic and so is the archive layout; a tool's layout varies by its own version and by the runner's platform, which once put a broken python into the `.deb`.
 - PKGBUILD in this repo keeps `sha256sums=('SKIP')` — the real checksum is set by `scripts/aur-publish.sh` in the AUR repo, once the tarball exists.
 
@@ -106,14 +106,14 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 
 0. `git diff --stat` — assess scope of changes
 1. `uv run ruff check --fix` and `uv run ruff format` — the fixers; the gate only checks.
-2. **`./gate.sh`** — the CI job step for step (`tests/test_gate.py` keeps the two in sync). The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye.
+2. **`scripts/gate.sh`** — the CI job step for step (`tests/test_gate.py` keeps the two in sync). The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye.
 3. Security review (see checklist below)
 4. **Tech lead review**: re-read your own diff as a strict reviewer. Look for overengineering, antipatterns copied from existing code, unnecessary complexity, and assertions weakened to make a test pass. Fix what you find before finishing.
 5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume.
 6. **Always add a CHANGELOG entry** — under `[Unreleased]`, with `scripts/changelog_add.py`; never pick a version number.
 7. **Propose a commit message** (Conventional Commits). `git commit` is blocked, so the user runs it — hand them the exact message. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
 
-**Run the gate bare, into a file:** `./gate.sh > "$log" 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate.
+**Run the gate bare, into a file:** `scripts/gate.sh > "$log" 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate.
 
 Do not finish until the gate, security review, and tech lead review pass.
 
@@ -127,6 +127,5 @@ Before completing any change, verify:
 
 ## Gotchas
 
-- **Everything committed to git is in English** — code, comments, logs, README, CHANGELOG, AGENTS.md, specs in `docs/spec/`, commit messages. This is an open-source project read by people who don't speak Russian. Chat replies to the user follow the user's language; files do not. Russian is fine only as *data* (e.g. quoted Whisper hallucination strings, Russian-speech test fixtures).
+- **Everything committed to git is in English** — code, comments, logs, README, CHANGELOG, AGENTS.md, specs in `docs/spec/`, commit messages. Chat replies to the user follow the user's language; files do not.
 - At the end of each non-trivial session, suggest 1–3 items for .claude/insights-inbox.md
-  Notes regarding the migration of permissions from .claude/settings.local.json to .claude/settings.json are also welcome

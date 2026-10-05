@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.9] — 2026-09-18
+## [Unreleased]
+
+<!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
+<!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
 ### Security
 - In-progress recordings no longer live in `/tmp/tapeback`. That path sits in a world-writable directory and was created with `mkdir(exist_ok=True, mode=0o700)`, which sets the mode only when it actually creates the directory — an existing one was accepted with no check of owner, mode or symlink. On a shared machine another local user could pre-create it and then read every meeting: raw microphone and system audio, captured before any masking applies. Sessions now go to `$XDG_RUNTIME_DIR/tapeback` (0700 and user-owned by construction, cleared at logout) or `~/.cache/tapeback/sessions` where that is unset, and the directory is verified private before use rather than assumed to be.
@@ -24,6 +27,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - `TAPEBACK_WHISPER_MODEL` now emits a `FutureWarning` (visible by default) instead of a hidden `DeprecationWarning`.
 - `start` / `stop` / `process` print one stderr line when a remote STT backend is enabled, so uploads are not silent (live mode notes that audio is uploaded during the meeting and again after stop).
+- Releases are cut by `scripts/release.sh patch|minor|major`, which refuses a tree `scripts/pre_release_qa.sh` has not passed (gate, e2e quality, .deb smoke). The version and the dated CHANGELOG section are written only there; between releases new entries go under `[Unreleased]` via `scripts/changelog_add.py`. `scripts/gate.sh` runs the CI checks locally. Development-only; released packages are unaffected.
 
 ## [0.9.8] — 2026-08-05
 

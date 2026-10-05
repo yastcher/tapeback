@@ -1,8 +1,9 @@
 # Release testing
 
-CHANGELOG entries for tagged versions are immutable (see CLAUDE.md). A broken
+CHANGELOG entries for tagged versions are immutable (see AGENTS.md). A broken
 release forces a patch-version bump even if no functional change is intended.
-This document is the gate before pushing a tag.
+This document describes what stands between a merged PR and a tag;
+`scripts/release.sh` refuses to tag a tree `scripts/pre_release_qa.sh` has not passed.
 
 ## Why
 
@@ -17,31 +18,14 @@ in the package that can drift silently. Hence the layered test plan below.
 Run them in order. Each layer is fast enough to be the default; the slower
 layers below are only needed when the cheaper layers have surprises.
 
-### 1. Local docker smoke (~2 min, run before every release)
+### 1. `scripts/pre_release_qa.sh` (run before every release)
 
-Build the wheel + .debs, install them inside a clean Ubuntu/Debian container,
-and run `tapeback --version` and `tapeback status`. This catches the most
-common failure modes: broken shebangs, wrong venv paths, missing system
-dependencies, broken hooks.
-
-```bash
-uv build
-./scripts/build-deb.sh dist/tapeback-*.whl
-
-# Base package on current Ubuntu LTS:
-docker run --rm -v $PWD/dist:/dist ubuntu:26.04 bash -c '
-    apt-get update -qq && apt-get install -y -qq /dist/tapeback_*.deb
-    tapeback --version
-    tapeback status
-'
-
-# Same on previous LTS releases + both Debian stable lines:
-for img in ubuntu:24.04 ubuntu:22.04 debian:13 debian:12; do
-    docker run --rm -v $PWD/dist:/dist "$img" bash -c '
-        apt-get update -qq && apt-get install -y -qq /dist/tapeback_*.deb && tapeback --version
-    '
-done
-```
+Runs the gate, the e2e quality suite on real recordings, then builds the wheel and
+the .debs and installs them in clean containers — the same five images as the
+`deb-e2e` workflow — running `tapeback --version` and `tapeback status` in each.
+This catches the most common failure modes: broken shebangs, wrong venv paths,
+missing system dependencies, broken hooks. On success it stamps the tree, and
+`scripts/release.sh` tags only a stamped tree.
 
 Optional extras (these run pip install during postinst, ~30 s + network):
 
@@ -66,26 +50,7 @@ LTS (24.04), current interim (25.10 while supported), and current Debian stable
 `packaging/`, `scripts/build-deb.sh`, `pyproject.toml`, or `src/`. A regression
 in the build pipeline never reaches a release tag — the PR turns red first.
 
-### 3. Pre-release tag (optional, for risky changes)
-
-For changes that touch the venv layout, bundled Python, or hook scripts,
-publish a release-candidate tag first:
-
-```bash
-# In CHANGELOG.md, the [0.9.3] section is fine — rc1 reuses it.
-git tag v0.9.3-rc1
-git push origin v0.9.3-rc1
-```
-
-The publish workflow runs on any `v*` tag, including pre-release semver. The
-GitHub Release will be marked as pre-release automatically (`v0.9.3-rc1` is
-non-final per SemVer). Install the artifact on a real Ubuntu/Debian machine
-and run through the manual checklist below.
-
-If rc1 is happy, push the final `v0.9.3` (no code changes needed; the rc1 .deb
-contents are re-built from the same commit).
-
-### 4. Manual acceptance (run once per minor, or when behavior changes)
+### 3. Manual acceptance (run once per minor, or when behavior changes)
 
 On a fresh Ubuntu/Debian VM or real machine:
 

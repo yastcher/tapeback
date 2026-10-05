@@ -5,10 +5,10 @@
 ## Checklist
 
 - [ ] `uv run ruff check --fix` and `uv run ruff format`
-- [ ] `uv run ty check`
-- [ ] `uv run pytest` — passes, coverage still ≥ 90%
+- [ ] `scripts/gate.sh` ends with `all gates passed`
 - [ ] A bug fix has a test that failed before the fix
-- [ ] README and CHANGELOG updated if behaviour or settings changed
+- [ ] README updated if behaviour or settings changed
+- [ ] CHANGELOG entry under `[Unreleased]` via `scripts/changelog_add.py` — the version is not bumped
 
 ## Measurements
 

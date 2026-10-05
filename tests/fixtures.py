@@ -1,7 +1,11 @@
+import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import wave
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -12,6 +16,8 @@ from pydantic import SecretStr
 from tapeback.recorder import Recorder
 from tapeback.settings import Settings
 from tapeback.summarizer import _PROVIDER_ENV_VARS
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _pyannote_available() -> bool:
@@ -204,6 +210,64 @@ def e2e_output_dir(tmp_path):
     return d
 
 
+@pytest.fixture
+def release_tree(tmp_path):
+    """A tree where every copy of the version agrees on 1.2.3 — what
+    scripts/release_from_tag.py accepts. Tests break one copy at a time."""
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "tapeback"\nversion = "1.2.3"\n')
+    (tmp_path / "uv.lock").write_text(
+        'version = 1\n\n[[package]]\nname = "click"\nversion = "8.1.7"\n\n'
+        '[[package]]\nname = "tapeback"\nversion = "1.2.3"\nsource = { editable = "." }\n'
+    )
+    for directory in ("packaging", "packaging/tapeback-llm"):
+        (tmp_path / directory).mkdir(exist_ok=True)
+        (tmp_path / directory / "PKGBUILD").write_text("pkgname=tapeback\npkgver=1.2.3\npkgrel=1\n")
+    (tmp_path / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [Unreleased]\n\n## [1.2.3] — 2026-10-05\n\n### Fixed\n"
+        "- The fix.\n\n## [1.2.2] — 2026-10-01\n\n### Added\n- The feature.\n"
+    )
+    return tmp_path
+
+
+@pytest.fixture
+def run_gate(tmp_path):
+    """Run the real gate.sh with `uv` and `python3` stubbed on PATH.
+
+    Returns a callable: `run_gate(*args, fail="uv run ty check")` makes that one
+    command exit 1, and gives back the finished process and every command the gate
+    invoked, in order.
+    """
+    (tmp_path / "scripts").mkdir()
+    gate = tmp_path / "scripts" / "gate.sh"
+    shutil.copy2(REPO_ROOT / "scripts" / "gate.sh", gate)
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    for name in ("uv", "python3"):
+        stub = stubs / name
+        stub.write_text(
+            "#!/usr/bin/env bash\n"
+            'printf "%s %s\\n" "${0##*/}" "$*" >> "$GATE_LOG"\n'
+            'if [ "${0##*/} $*" = "$GATE_FAIL" ]; then exit 1; fi\n'
+        )
+        stub.chmod(0o755)
+    log = tmp_path / "commands.log"
+
+    def run(*args: str, fail: str = "") -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        result = subprocess.run(
+            [gate, *args],
+            env=os.environ
+            | {"PATH": f"{stubs}:{os.environ['PATH']}", "GATE_LOG": str(log), "GATE_FAIL": fail},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        commands = log.read_text().splitlines() if log.exists() else []
+        return result, commands
+
+    return run
+
+
 # --- WAV file helpers ---
 
 
@@ -363,6 +427,16 @@ class HttpError(Exception):
 
 
 # --- Test helpers ---
+
+
+def load_script(name: str) -> ModuleType:
+    """Load `scripts/<name>.py` by path — `scripts/` is not an importable package."""
+    spec = importlib.util.spec_from_file_location(name, REPO_ROOT / "scripts" / f"{name}.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def clear_all_provider_env_vars(monkeypatch) -> None:
