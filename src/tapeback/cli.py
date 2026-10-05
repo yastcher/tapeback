@@ -7,12 +7,26 @@ from pathlib import Path
 import click
 
 from tapeback import const
-from tapeback.recorder import Recorder, detect_devices
-from tapeback.settings import get_settings
+from tapeback.recorder import NoActiveRecording, Recorder, detect_devices
+from tapeback.settings import Settings, get_settings
 
 
 def _echo_status(msg: str) -> None:
     """Status callback that prints to stderr via click."""
+    click.echo(msg, err=True)
+
+
+def _echo_remote_stt_notice(settings: Settings, *, live: bool = False) -> None:
+    """Warn once when meeting audio will leave the machine via remote STT."""
+    if settings.stt_backend == "local":
+        return
+    if live:
+        msg = (
+            f"Remote STT enabled: meeting audio will be uploaded to {settings.stt_backend} "
+            "during the meeting and again after stop."
+        )
+    else:
+        msg = f"Remote STT enabled: meeting audio will be uploaded to {settings.stt_backend}."
     click.echo(msg, err=True)
 
 
@@ -75,7 +89,8 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
     click.echo(f"Mic: {mic}", err=True)
 
     live_transcriber = None
-    if settings.live and not no_live:
+    live_active = settings.live and not no_live
+    if live_active:
         from tapeback.live import LiveTranscriber
 
         mic_path = Path(const.TEMP_DIR) / session_name / const.FILE_MIC
@@ -83,6 +98,8 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
         live_transcriber = LiveTranscriber(settings, session_name, mic_path, monitor_path)
         live_transcriber.start()
         click.echo(f"Live transcript: {live_transcriber.live_md_path}", err=True)
+
+    _echo_remote_stt_notice(settings, live=live_active)
 
     click.echo("Run 'tapeback stop' to finish and transcribe.", err=True)
     click.echo("Or press Ctrl+C to stop and transcribe now.", err=True)
@@ -111,6 +128,9 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
             do_summarize=not no_summarize,
             on_status=_echo_status,
         )
+    except NoActiveRecording:
+        # Peer `tapeback stop` won the race between is_recording() and stop().
+        return
     except KeyboardInterrupt:
         click.echo(
             f"\nAborted during processing. Audio files kept in {const.TEMP_DIR}/",
@@ -127,6 +147,8 @@ def stop() -> None:
     """
     settings = get_settings()
     recorder = Recorder()
+
+    _echo_remote_stt_notice(settings)
 
     from tapeback.pipeline import stop_and_process
 
@@ -155,6 +177,8 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
       tapeback process call.wav --name "client-call" --no-diarize
     """
     settings = get_settings()
+
+    _echo_remote_stt_notice(settings)
 
     from tapeback.pipeline import process_file
 

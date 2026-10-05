@@ -517,3 +517,114 @@ def test_tray_missing_dependency(runner):
 
     assert result.exit_code != 0
     assert "pystray" in result.output
+
+
+# --- remote STT runtime notice ---
+
+
+def test_start_prints_remote_stt_notice(runner, vault_env):
+    settings = Settings(vault_path=vault_env, stt_backend="openai")
+    recorder = MagicMock()
+    recorder.start.return_value = "remote-notice"
+    recorder.is_recording.side_effect = [True, False, False]
+
+    with (
+        patch("tapeback.cli.get_settings", return_value=settings),
+        patch("tapeback.cli.Recorder", return_value=recorder),
+        patch("tapeback.cli.detect_devices", return_value=("mon", "mic")),
+        patch("tapeback.pipeline.stop_and_process"),
+        patch("time.sleep"),
+    ):
+        result = runner.invoke(cli, ["start", "remote-notice", "--no-summarize"])
+
+    assert result.exit_code == 0, result.output + str(result.exception or "")
+    assert "Remote STT enabled: meeting audio will be uploaded to openai." in result.stderr
+    assert "during the meeting" not in result.stderr
+
+
+def test_start_remote_stt_notice_mentions_live_upload(runner, vault_env):
+    settings = Settings(vault_path=vault_env, stt_backend="openai", live=True)
+    recorder = MagicMock()
+    recorder.start.return_value = "remote-live"
+    recorder.is_recording.side_effect = [True, False, False]
+    live = MagicMock()
+    live.live_md_path = "/tmp/live.md"
+
+    with (
+        patch("tapeback.cli.get_settings", return_value=settings),
+        patch("tapeback.cli.Recorder", return_value=recorder),
+        patch("tapeback.cli.detect_devices", return_value=("mon", "mic")),
+        patch("tapeback.live.LiveTranscriber", return_value=live),
+        patch("tapeback.pipeline.stop_and_process"),
+        patch("time.sleep"),
+    ):
+        result = runner.invoke(cli, ["start", "remote-live", "--no-summarize"])
+
+    assert result.exit_code == 0, result.output + str(result.exception or "")
+    assert "Remote STT enabled: meeting audio will be uploaded to openai" in result.stderr
+    assert "during the meeting" in result.stderr
+    assert "again after stop" in result.stderr
+
+
+def test_start_local_backend_has_no_remote_stt_notice(runner, vault_env):
+    settings = Settings(vault_path=vault_env, stt_backend="local")
+    recorder = MagicMock()
+    recorder.start.return_value = "local-silent"
+    recorder.is_recording.side_effect = [True, False, False]
+
+    with (
+        patch("tapeback.cli.get_settings", return_value=settings),
+        patch("tapeback.cli.Recorder", return_value=recorder),
+        patch("tapeback.cli.detect_devices", return_value=("mon", "mic")),
+        patch("tapeback.pipeline.stop_and_process"),
+        patch("time.sleep"),
+    ):
+        result = runner.invoke(cli, ["start", "local-silent", "--no-summarize"])
+
+    assert result.exit_code == 0, result.output + str(result.exception or "")
+    assert "Remote STT enabled" not in result.stderr
+
+
+def test_stop_prints_remote_stt_notice(runner, vault_env):
+    settings = Settings(vault_path=vault_env, stt_backend="openai")
+
+    with (
+        patch("tapeback.cli.get_settings", return_value=settings),
+        patch("tapeback.cli.Recorder"),
+        patch("tapeback.pipeline.stop_and_process"),
+    ):
+        result = runner.invoke(cli, ["stop"])
+
+    assert result.exit_code == 0, result.output + str(result.exception or "")
+    assert "Remote STT enabled: meeting audio will be uploaded to openai." in result.stderr
+
+
+def test_process_prints_remote_stt_notice(runner, tmp_path, vault_env):
+    settings = Settings(vault_path=vault_env, stt_backend="openai")
+    audio = tmp_path / "clip.wav"
+    create_silent_wav(audio)
+
+    with (
+        patch("tapeback.cli.get_settings", return_value=settings),
+        patch("tapeback.pipeline.process_file") as mock_process,
+    ):
+        result = runner.invoke(cli, ["process", str(audio), "--no-summarize"])
+
+    assert result.exit_code == 0, result.output + str(result.exception or "")
+    assert "Remote STT enabled: meeting audio will be uploaded to openai." in result.stderr
+    mock_process.assert_called_once()
+
+
+def test_process_local_backend_has_no_remote_stt_notice(runner, tmp_path, vault_env):
+    settings = Settings(vault_path=vault_env, stt_backend="local")
+    audio = tmp_path / "clip.wav"
+    create_silent_wav(audio)
+
+    with (
+        patch("tapeback.cli.get_settings", return_value=settings),
+        patch("tapeback.pipeline.process_file"),
+    ):
+        result = runner.invoke(cli, ["process", str(audio), "--no-summarize"])
+
+    assert result.exit_code == 0, result.output + str(result.exception or "")
+    assert "Remote STT enabled" not in result.stderr

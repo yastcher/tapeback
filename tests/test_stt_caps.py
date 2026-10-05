@@ -45,6 +45,19 @@ def test_gpt_transcribe_has_duration_cap():
     assert caps.max_upload_seconds == 1500.0
 
 
+def test_unknown_openai_model_raises_with_supported_ids():
+    with pytest.raises(ValueError, match="whisper-1") as exc_info:
+        openai_capabilities_for("whisper1")
+    msg = str(exc_info.value)
+    assert "gpt-transcribe" in msg
+    assert "gpt-4o-transcribe-diarize" in msg
+
+
+def test_diarize_suffix_alone_is_not_accepted():
+    with pytest.raises(ValueError, match="supported"):
+        openai_capabilities_for("custom-diarize")
+
+
 def test_local_backend_always_allows_diarize():
     assert allows_local_diarize("local", "gpt-transcribe") is True
 

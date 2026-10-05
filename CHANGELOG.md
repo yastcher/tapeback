@@ -13,7 +13,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 - `tapeback start` no longer crashes with `No recording in progress` when `tapeback stop` already finished the session from another terminal.
+- `tapeback start` also exits cleanly when a peer `stop` clears the session in the remaining window between the last `is_recording()` check and `recorder.stop()` (`NoActiveRecording`).
 - Remote OpenAI STT no longer dies silently after a long SDK default timeout (~30 minutes with no status): owned timeouts, retries, heartbeats, and shorter default slice targets keep near-max diarize uploads visible and recoverable instead of failing with nothing saved.
+- `TAPEBACK_WHISPER_MODEL` no longer leaks into remote backends: with `TAPEBACK_STT_BACKEND=openai` and no `TAPEBACK_STT_MODEL`, the deprecated alias is ignored and the OpenAI default `whisper-1` is used.
+- Unknown OpenAI STT model ids are rejected at settings load with an explicit allowlist (`whisper-1`, `gpt-transcribe`, `gpt-4o-transcribe-diarize`) instead of silently falling through to gpt-transcribe capabilities.
+
+### Changed
+- `TAPEBACK_WHISPER_MODEL` now emits a `FutureWarning` (visible by default) instead of a hidden `DeprecationWarning`.
+- `start` / `stop` / `process` print one stderr line when a remote STT backend is enabled, so uploads are not silent (live mode notes that audio is uploaded during the meeting and again after stop).
 
 ## [0.9.8] — 2026-08-05
 

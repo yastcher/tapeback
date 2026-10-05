@@ -16,6 +16,12 @@ OPENAI_MODEL_WHISPER_1 = "whisper-1"
 OPENAI_MODEL_GPT_TRANSCRIBE = "gpt-transcribe"
 OPENAI_MODEL_GPT_DIARIZE = "gpt-4o-transcribe-diarize"
 
+_OPENAI_SUPPORTED_MODELS = (
+    OPENAI_MODEL_WHISPER_1,
+    OPENAI_MODEL_GPT_TRANSCRIBE,
+    OPENAI_MODEL_GPT_DIARIZE,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class RemoteSttCapabilities:
@@ -43,7 +49,11 @@ class RemoteSttCapabilities:
 
 
 def openai_capabilities_for(model: str) -> RemoteSttCapabilities:
-    """Derive capabilities from an OpenAI Audio Transcriptions model id."""
+    """Derive capabilities from an OpenAI Audio Transcriptions model id.
+
+    Only the model ids documented in the README are accepted; anything else
+    raises ValueError listing the supported ids.
+    """
     name = model.strip().lower()
     if name == OPENAI_MODEL_WHISPER_1:
         return RemoteSttCapabilities(
@@ -52,20 +62,22 @@ def openai_capabilities_for(model: str) -> RemoteSttCapabilities:
             modern_context=False,
             max_upload_seconds=None,
         )
-    if name == OPENAI_MODEL_GPT_DIARIZE or name.endswith("-diarize"):
+    if name == OPENAI_MODEL_GPT_DIARIZE:
         return RemoteSttCapabilities(
             word_timestamps=False,
             remote_diarize=True,
             modern_context=False,
             max_upload_seconds=const.OPENAI_DIARIZE_MAX_UPLOAD_SECONDS,
         )
-    # gpt-transcribe, gpt-4o-transcribe, gpt-4o-mini-transcribe, …
-    return RemoteSttCapabilities(
-        word_timestamps=False,
-        remote_diarize=False,
-        modern_context=True,
-        max_upload_seconds=const.OPENAI_GPT_TRANSCRIBE_MAX_UPLOAD_SECONDS,
-    )
+    if name == OPENAI_MODEL_GPT_TRANSCRIBE:
+        return RemoteSttCapabilities(
+            word_timestamps=False,
+            remote_diarize=False,
+            modern_context=True,
+            max_upload_seconds=const.OPENAI_GPT_TRANSCRIBE_MAX_UPLOAD_SECONDS,
+        )
+    supported = ", ".join(_OPENAI_SUPPORTED_MODELS)
+    raise ValueError(f"Unsupported OpenAI STT model {model!r}. Supported: {supported}")
 
 
 def allows_local_diarize(stt_backend: str, stt_model: str) -> bool:

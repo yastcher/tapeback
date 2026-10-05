@@ -14,6 +14,10 @@ from tapeback import const
 from tapeback.settings import Settings
 
 
+class NoActiveRecording(RuntimeError):
+    """Raised when stop() is called with no session in progress."""
+
+
 class SessionData(TypedDict):
     pid_monitor: int
     pid_mic: int
@@ -244,7 +248,7 @@ class Recorder:
         Removes session.json.
         """
         if not self._session_file.exists():
-            raise RuntimeError("No recording in progress.")
+            raise NoActiveRecording("No recording in progress.")
 
         session: SessionData = json.loads(self._session_file.read_text())
         pids = [session["pid_monitor"], session["pid_mic"]]

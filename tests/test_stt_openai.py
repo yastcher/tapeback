@@ -493,7 +493,7 @@ def test_openai_transcribe_stereo_language_and_speaker(monkeypatch, settings, tm
 
 def test_load_transcriber_selects_openai(monkeypatch, settings):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    s = settings.model_copy(update={"stt_backend": "openai"})
+    s = settings.model_copy(update={"stt_backend": "openai", "stt_model": "whisper-1"})
     t = load_transcriber(s)
     assert isinstance(t, OpenAITranscriber)
 

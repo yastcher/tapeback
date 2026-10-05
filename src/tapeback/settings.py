@@ -5,6 +5,7 @@ from warnings import warn
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tapeback._stt_caps import openai_capabilities_for
 from tapeback.glossary import DEFAULT_HOTWORDS
 
 # Default models per provider — used when TAPEBACK_LLM_MODEL is not set.
@@ -237,10 +238,12 @@ class Settings(BaseSettings):
         if not model and self.whisper_model:
             warn(
                 "TAPEBACK_WHISPER_MODEL is deprecated; use TAPEBACK_STT_MODEL instead.",
-                DeprecationWarning,
+                FutureWarning,
                 stacklevel=2,
             )
-            model = self.whisper_model.strip()
+            # Legacy alias is local-only; remote backends ignore it and use their default.
+            if self.stt_backend == "local":
+                model = self.whisper_model.strip()
         if not model:
             model = (
                 DEFAULT_REMOTE_STT_MODEL
@@ -250,6 +253,8 @@ class Settings(BaseSettings):
 
         object.__setattr__(self, "stt_model", model)
         object.__setattr__(self, "whisper_model", model)
+        if self.stt_backend == "openai":
+            openai_capabilities_for(model)
         return self
 
     @model_validator(mode="after")

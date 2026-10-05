@@ -21,7 +21,7 @@ def test_settings_whisper_model_env_deprecated(monkeypatch, vault_env):
     """TAPEBACK_WHISPER_MODEL still works but feeds stt_model."""
     monkeypatch.delenv("TAPEBACK_STT_MODEL", raising=False)
     monkeypatch.setenv("TAPEBACK_WHISPER_MODEL", "tiny")
-    with pytest.warns(DeprecationWarning, match="TAPEBACK_WHISPER_MODEL"):
+    with pytest.warns(FutureWarning, match="TAPEBACK_WHISPER_MODEL"):
         s = Settings()
     assert s.stt_model == "tiny"
     assert s.whisper_model == "tiny"
@@ -70,12 +70,17 @@ def test_settings_stt_backend_openai_default_model(tmp_vault):
 
 def test_settings_stt_backend_from_env(monkeypatch, vault_env):
     monkeypatch.setenv("TAPEBACK_STT_BACKEND", "openai")
-    monkeypatch.setenv("TAPEBACK_STT_MODEL", "gpt-4o-transcribe")
+    monkeypatch.setenv("TAPEBACK_STT_MODEL", "gpt-transcribe")
     monkeypatch.setenv("TAPEBACK_STT_CONCURRENCY", "8")
     s = Settings()
     assert s.stt_backend == "openai"
-    assert s.stt_model == "gpt-4o-transcribe"
+    assert s.stt_model == "gpt-transcribe"
     assert s.stt_concurrency == 8
+
+
+def test_settings_rejects_unknown_openai_model(tmp_vault):
+    with pytest.raises(ValidationError, match="whisper1"):
+        Settings(vault_path=tmp_vault, stt_backend="openai", stt_model="whisper1")
 
 
 def test_settings_hf_token_from_env(monkeypatch, vault_env):
