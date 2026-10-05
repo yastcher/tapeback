@@ -162,8 +162,8 @@ def test_status_command(runner, vault_env):
             "started_at": "2026-03-20T10:00:00",
             "pid_monitor": 12345,
             "pid_mic": 12346,
-            "monitor_path": "/tmp/tapeback/test/monitor.wav",
-            "mic_path": "/tmp/tapeback/test/mic.wav",
+            "monitor_path": "/run/user/1000/tapeback/test/monitor.wav",
+            "mic_path": "/run/user/1000/tapeback/test/mic.wav",
         }
         with patch("tapeback.recorder.Recorder.get_session_info", return_value=session_info):
             result = runner.invoke(cli, ["status"])
@@ -548,7 +548,7 @@ def test_start_remote_stt_notice_mentions_live_upload(runner, vault_env):
     recorder.start.return_value = "remote-live"
     recorder.is_recording.side_effect = [True, False, False]
     live = MagicMock()
-    live.live_md_path = "/tmp/live.md"
+    live.live_md_path = vault_env / "live.md"
 
     with (
         patch("tapeback.cli.get_settings", return_value=settings),

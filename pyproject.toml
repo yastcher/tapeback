@@ -82,7 +82,6 @@ select = ["E", "W", "F", "I", "UP", "B", "G", "PLC", "PLR", "SIM", "S", "RUF"]
 ignore = [
     "S603",    # subprocess calls are safe (list-based, no shell)
     "S607",    # partial executable paths (ffmpeg, parecord) are intentional
-    "S108",    # /tmp/tapeback is intentional, secured with 0700 permissions
 ]
 fixable = ["ALL"]
 

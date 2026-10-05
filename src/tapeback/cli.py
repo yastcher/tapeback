@@ -7,7 +7,7 @@ from pathlib import Path
 import click
 
 from tapeback import const
-from tapeback.recorder import NoActiveRecording, Recorder, detect_devices
+from tapeback.recorder import NoActiveRecording, Recorder, detect_devices, session_dir
 from tapeback.settings import Settings, get_settings
 
 
@@ -83,6 +83,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
 
     monitor, mic = detect_devices(settings)
     session_name = recorder.start(settings, session_name=name)
+    session_path = session_dir(session_name)
 
     click.echo(f"Recording started: {session_name}", err=True)
     click.echo(f"Monitor: {monitor}", err=True)
@@ -93,8 +94,8 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
     if live_active:
         from tapeback.live import LiveTranscriber
 
-        mic_path = Path(const.TEMP_DIR) / session_name / const.FILE_MIC
-        monitor_path = Path(const.TEMP_DIR) / session_name / const.FILE_MONITOR
+        mic_path = session_path / const.FILE_MIC
+        monitor_path = session_path / const.FILE_MONITOR
         live_transcriber = LiveTranscriber(settings, session_name, mic_path, monitor_path)
         live_transcriber.start()
         click.echo(f"Live transcript: {live_transcriber.live_md_path}", err=True)
@@ -133,7 +134,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
         return
     except KeyboardInterrupt:
         click.echo(
-            f"\nAborted during processing. Audio files kept in {const.TEMP_DIR}/",
+            f"\nAborted during processing. Audio files kept in {session_path}/",
             err=True,
         )
 

@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -30,6 +31,63 @@ class SessionData(TypedDict):
 _DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "tapeback"
 
 _SESSION_NAME_RE = re.compile(r"^[\w-]+$")
+
+_SESSION_DIR_NAME = "tapeback"
+_FALLBACK_SESSION_PARTS = (".cache", "tapeback", "sessions")
+
+
+def _ensure_private_dir(path: Path) -> None:
+    """Create the directory as 0700, or refuse one that is not privately ours.
+
+    `mkdir(mode=...)` sets the mode only when it actually creates the directory, so an
+    existing one has to be checked rather than trusted. lstat, not stat: mkdir with
+    exist_ok follows a symlink to a directory and reports success, and a symlink is
+    exactly what an attacker would plant. Refuse rather than chmod — repairing the mode
+    cannot undo the window in which someone else already held the directory open.
+    """
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    info = path.lstat()
+    if stat.S_ISLNK(info.st_mode):
+        raise RuntimeError(f"Refusing to use {path}: it is a symlink, not a directory")
+    if info.st_uid != os.geteuid():
+        raise RuntimeError(f"Refusing to use {path}: owned by uid {info.st_uid}, not this user")
+    if info.st_mode & 0o077:
+        raise RuntimeError(
+            f"Refusing to use {path}: reachable by other users "
+            f"(mode {stat.S_IMODE(info.st_mode):04o}, expected 0700)"
+        )
+
+
+def session_root() -> Path:
+    """Directory holding recordings that are still in progress. Created if missing.
+
+    `XDG_RUNTIME_DIR` (/run/user/$UID) is created by logind as 0700 and owned by the
+    user, so a directory under it is private by construction, and it is cleared at
+    logout — the same lifetime a /tmp directory had, without the shared parent. That
+    parent was the problem: /tmp is world-writable, so any other local user could
+    pre-create the path and quietly collect every meeting recording, raw microphone and
+    system audio both, captured long before any masking applies.
+
+    Without XDG_RUNTIME_DIR (ssh without logind, containers, cron) the user's cache
+    directory is the fallback — user-owned for the same reason, at the cost of
+    surviving a reboot.
+    """
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    root = (
+        Path(runtime) / _SESSION_DIR_NAME
+        if runtime
+        else Path.home().joinpath(*_FALLBACK_SESSION_PARTS)
+    )
+    _ensure_private_dir(root)
+    return root
+
+
+def session_dir(session_name: str) -> Path:
+    """Directory holding one session's raw channels. Not created here — `start` does
+    that; callers that only need the path (live transcription, status messages) should
+    not have a side effect."""
+    validate_session_name(session_name)
+    return session_root() / session_name
 
 
 def validate_session_name(session_name: str) -> None:
@@ -181,7 +239,8 @@ class Recorder:
     def start(self, settings: Settings, session_name: str | None = None) -> str:
         """Start two parecord subprocesses for monitor and mic recording.
 
-        Creates temp directory /tmp/tapeback/{session_name}/ with monitor.wav and mic.wav.
+        Creates a private session directory (see `session_root`) holding monitor.wav
+        and mic.wav.
         Saves state to session.json. Returns session_name.
         """
         if self.is_recording():
@@ -199,10 +258,8 @@ class Recorder:
         else:
             validate_session_name(session_name)
 
-        base_dir = Path(const.TEMP_DIR)
-        base_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        tmp_dir = base_dir / session_name
-        tmp_dir.mkdir(exist_ok=True, mode=0o700)
+        tmp_dir = session_dir(session_name)
+        _ensure_private_dir(tmp_dir)
 
         monitor_path = tmp_dir / const.FILE_MONITOR
         mic_path = tmp_dir / const.FILE_MIC

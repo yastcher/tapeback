@@ -47,6 +47,18 @@ requires_dbus_next = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
+def isolate_session_root(monkeypatch, tmp_path_factory):
+    """Keep recordings made by tests out of the developer's real runtime directory.
+
+    recorder.session_root() resolves XDG_RUNTIME_DIR at call time, so without this any
+    test that starts a recording would create directories under /run/user/$UID and
+    leave them there. Pointing it at a per-session tmp directory scopes every test to
+    what it created itself.
+    """
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path_factory.mktemp("runtime")))
+
+
+@pytest.fixture(autouse=True)
 def isolate_settings_sources(monkeypatch):
     """Cut Settings off from the developer's real configuration.
 
@@ -389,8 +401,8 @@ def create_session_file(session_file, **overrides):
         "pid_monitor": 99998,
         "pid_mic": 99999,
         "session_name": "test_session",
-        "monitor_path": "/tmp/tapeback/test_session/monitor.wav",
-        "mic_path": "/tmp/tapeback/test_session/mic.wav",
+        "monitor_path": "/run/user/1000/tapeback/test_session/monitor.wav",
+        "mic_path": "/run/user/1000/tapeback/test_session/mic.wav",
         "started_at": "2026-03-17T14:30:00",
         **overrides,
     }
