@@ -23,11 +23,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Remote OpenAI STT no longer dies silently after a long SDK default timeout (~30 minutes with no status): owned timeouts, retries, heartbeats, and shorter default slice targets keep near-max diarize uploads visible and recoverable instead of failing with nothing saved.
 - `TAPEBACK_WHISPER_MODEL` no longer leaks into remote backends: with `TAPEBACK_STT_BACKEND=openai` and no `TAPEBACK_STT_MODEL`, the deprecated alias is ignored and the OpenAI default `whisper-1` is used.
 - Unknown OpenAI STT model ids are rejected at settings load with an explicit allowlist (`whisper-1`, `gpt-transcribe`, `gpt-4o-transcribe-diarize`) instead of silently falling through to gpt-transcribe capabilities.
+- AUR: no stray `tapeback-debug` package, no debugedit errors on every bundled library.
 
 ### Changed
 - `TAPEBACK_WHISPER_MODEL` now emits a `FutureWarning` (visible by default) instead of a hidden `DeprecationWarning`.
 - `start` / `stop` / `process` print one stderr line when a remote STT backend is enabled, so uploads are not silent (live mode notes that audio is uploaded during the meeting and again after stop).
 - Releases are cut by `scripts/release.sh patch|minor|major`, which refuses a tree `scripts/pre_release_qa.sh` has not passed (gate, e2e quality, .deb smoke). The version and the dated CHANGELOG section are written only there; between releases new entries go under `[Unreleased]` via `scripts/changelog_add.py`. `scripts/gate.sh` runs the CI checks locally. Development-only; released packages are unaffected.
+- CI tests Python 3.13 and 3.14 on a pinned Ubuntu 24.04 runner. Packaging smoke adds Ubuntu 26.10 and an Arch build of the AUR package. The Gemini PR-review workflow is gone. Development-only.
 
 ## [0.9.8] — 2026-08-05
 
