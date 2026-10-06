@@ -445,7 +445,8 @@ def maybe_summarize(md_path: Path | str | None, settings: Settings) -> None:
             click.echo("Warning: No transcript content found, skipping summarization.", err=True)
             return
 
-        click.echo("Summarizing...", err=True)
+        # No "Summarizing..." here: the pipeline reports the stage through its status
+        # callback, which is what reaches the run record; printing it again doubled it.
         summary = summarize(transcript, settings)
         summary_md = format_summary_markdown(summary)
         new_content = inject_summary_into_markdown(md_content, summary_md)
