@@ -3,10 +3,12 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import wave
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -14,6 +16,7 @@ import pytest
 from click.testing import CliRunner
 from pydantic import SecretStr
 
+from tapeback import cli as cli_module
 from tapeback.recorder import Recorder
 from tapeback.settings import Settings
 from tapeback.summarizer import _PROVIDER_ENV_VARS
@@ -233,6 +236,99 @@ def release_tree(tmp_path):
     return tmp_path
 
 
+# `parecord` as tapeback meets it: called with --device=... and an output path, it writes
+# a WAV there and records until SIGTERM. Each call logs its PID, its device and the mode
+# of the directory it was told to write into — after the audio is in place, so a logged
+# call is a recorder that has captured something. The trap comes first: bash runs it
+# only between commands, so a SIGTERM during the copy still leaves a whole file. The
+# loop rather than one long `sleep`, which as a background job would outlive the script.
+_FAKE_PARECORD = """#!/usr/bin/env bash
+trap 'exit 0' TERM
+device="" out=""
+for arg in "$@"; do
+  case "$arg" in
+    --device=*) device="${arg#--device=}" ;;
+    -*) ;;
+    *) out="$arg" ;;
+  esac
+done
+cp "$FAKE_PARECORD_AUDIO/$device.wav" "$out"
+printf '%s %s %s\\n' "$$" "$device" "$(stat -c %a "$(dirname "$out")")" >> "$FAKE_PARECORD_LOG"
+while :; do sleep 0.05; done
+"""
+
+
+@dataclass(frozen=True)
+class ParecordCall:
+    pid: int
+    device: str
+    dir_mode: str
+
+
+@pytest.fixture
+def fake_parecord(tmp_path, monkeypatch):
+    """Record a meeting without PulseAudio: a fake `parecord` on PATH, and the two
+    sources pointed at it. The mic speaks for the first 2 s, the other side for the next
+    2 s, at the recording rate. Returns a callable listing the recorders started."""
+    audio = tmp_path / "fake-audio"
+    audio.mkdir()
+    create_mono_wav_segments(audio / "fake.mic.wav", 48000, [(2.0, 0.8), (2.0, 0.0)])
+    create_mono_wav_segments(audio / "fake.monitor.wav", 48000, [(2.0, 0.0), (2.0, 0.8)])
+    bin_dir = tmp_path / "fake-bin"
+    bin_dir.mkdir()
+    script = bin_dir / "parecord"
+    script.write_text(_FAKE_PARECORD)
+    script.chmod(0o755)
+    log = tmp_path / "parecord.log"
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_PARECORD_AUDIO", str(audio))
+    monkeypatch.setenv("FAKE_PARECORD_LOG", str(log))
+    # Named sources skip the @DEFAULT_MONITOR@ probe, which needs a sound server.
+    monkeypatch.setenv("TAPEBACK_MONITOR_SOURCE", "fake.monitor")
+    monkeypatch.setenv("TAPEBACK_MIC_SOURCE", "fake.mic")
+
+    def calls() -> list[ParecordCall]:
+        lines = log.read_text().splitlines() if log.exists() else []
+        return [
+            ParecordCall(int(pid), device, mode)
+            for pid, device, mode in (line.split() for line in lines)
+        ]
+
+    return calls
+
+
+@pytest.fixture
+def cpu_only(monkeypatch):
+    """No GPU for a flow whose model is a stand-in: CUDA would only add a real nvidia-smi
+    poll, and make the run depend on the machine it happens to be on."""
+    monkeypatch.setenv("TAPEBACK_DEVICE", "cpu")
+    monkeypatch.setenv("TAPEBACK_GPU_TELEMETRY", "false")
+
+
+# How long the simulated meeting may take to get both recorders writing. Bounds a wait
+# for a state reached in milliseconds; never asserted on.
+_RECORDERS_START_SECONDS = 5.0
+
+
+@pytest.fixture
+def ctrl_c_while_recording(monkeypatch, fake_parecord):
+    """The user presses Ctrl+C while `tapeback start` waits for the meeting to end.
+
+    The interrupt arrives where the real one would — in the command's wait loop — and
+    only once both recorders have captured their audio: a person stops a meeting that
+    has been recorded, not one that has not started yet. Only tapeback.cli's `time` is
+    replaced; the recorder's own waits stay real."""
+    real_sleep = time.sleep
+
+    def _interrupt(_seconds: float) -> None:
+        deadline = time.monotonic() + _RECORDERS_START_SECONDS
+        while len(fake_parecord()) < 2 and time.monotonic() < deadline:
+            real_sleep(0.01)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli_module, "time", SimpleNamespace(sleep=_interrupt))
+
+
 @pytest.fixture
 def run_gate(tmp_path):
     """Run the real scripts/gate.sh with every command it calls stubbed on PATH.
@@ -336,6 +432,24 @@ def create_stereo_wav(path, duration, sample_rate, left_amplitude, right_amplitu
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         wf.writeframes(stereo.tobytes())
+
+
+def create_mono_wav_segments(path, sample_rate, segments_spec):
+    """Create a mono WAV of 440 Hz sections; segments_spec: list of (duration, amplitude).
+    An amplitude of 0 is digital silence."""
+    samples = np.concatenate(
+        [
+            (
+                amp * np.sin(2 * np.pi * 440 * np.linspace(0, dur, int(dur * sample_rate))) * 32767
+            ).astype(np.int16)
+            for dur, amp in segments_spec
+        ]
+    )
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(samples.tobytes())
 
 
 def create_stereo_wav_segments(path, sample_rate, segments_spec):
@@ -549,6 +663,23 @@ def mock_pyannote_annotation(tracks):
         itertracks_result.append((turn, None, speaker))
     mock_annotation.itertracks.return_value = itertracks_result
     return mock_annotation
+
+
+def mock_whisper_by_channel(mic_segments, monitor_segments):
+    """A WhisperModel stand-in that answers per channel, going by the 16 kHz file it is
+    handed — so a test can tell who said what — and, like faster-whisper, reports that
+    file's real duration. Segments: (start, end, text) tuples."""
+
+    def transcribe(audio, **kwargs):
+        segments = mic_segments if "mic_16k" in str(audio) else monitor_segments
+        result, info = mock_whisper_transcribe(segments).transcribe(audio, **kwargs)
+        with wave.open(str(audio), "rb") as wf:
+            info.duration = wf.getnframes() / wf.getframerate()
+        return result, info
+
+    model = MagicMock()
+    model.transcribe.side_effect = transcribe
+    return model
 
 
 def process_state(pid: int) -> str | None:

@@ -57,6 +57,8 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 ## Testing
 
 - pytest with mocks only at system boundaries (subprocess, file I/O)
+- **Prefer a flow through real seams to micro-units.** Walk the user's path — `tests/test_recording_flow.py` runs `tapeback start`, Ctrl+C and the note with a real Recorder, real ffmpeg and a real vault — and fake only what lies outside tapeback: `parecord` (`fake_parecord`), the Whisper and pyannote models, LLM HTTP, the user's Ctrl+C (`ctrl_c_while_recording`). A mock of tapeback's own parts proves only the mock. Keep small units for pure functions, and a regression test where the flow cannot see the defect.
+- **A protection is proven by switching it off.** Run the test once against the old behaviour and watch it fail. A flow can pass for a reason other than the one it claims: one stayed green with zombie recorders, because the next ffmpeg call reaped them.
 - Audio tests with real ffmpeg marked `@pytest.mark.skipif(not shutil.which("ffmpeg"))`
 - **All fixtures** in `tests/fixtures.py` (registered via `conftest.py`) — never define fixtures in test files
 - **All imports at top of file** in tests — same rule as production code, no local imports
