@@ -215,6 +215,45 @@ def _resolve_source_via_pactl() -> str:
     return default_source
 
 
+def _process_running(pid: int) -> bool:
+    """Whether a recorder process is still running.
+
+    kill(pid, 0) alone cannot tell: a process that has exited stays a zombie until its
+    parent reaps it, and kill still succeeds on a zombie. `tapeback start` and the tray
+    spawn parecord themselves and never wait() on it, and `tapeback stop` runs in another
+    process altogether — so a stopped recorder kept reading as alive, and every stop
+    waited out the whole kill timeout before SIGKILLing processes already dead.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    if not _is_zombie(pid):
+        return True
+    # Exited. Reap it if it is ours; another process's zombie is its parent's to collect.
+    _reap(pid, os.WNOHANG)
+    return False
+
+
+def _reap(pid: int, flags: int) -> None:
+    """Collect an exited child of this process, so it does not linger as a zombie.
+    A pid that is not our child raises ChildProcessError, which is the expected case for
+    `tapeback stop` run against another terminal's recording."""
+    with contextlib.suppress(ChildProcessError):
+        os.waitpid(pid, flags)
+
+
+def _is_zombie(pid: int) -> bool:
+    """An exited process another parent has not reaped yet. Reads /proc: Linux only,
+    as tapeback is."""
+    try:
+        stat_line = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return False
+    # The state follows the command name, which is parenthesised and may hold spaces.
+    return stat_line.rsplit(")", 1)[1].split()[0] == "Z"
+
+
 def _terminate_process(pid: int) -> None:
     """Send SIGTERM to a single process, ignore if already dead."""
     with contextlib.suppress(ProcessLookupError):
@@ -227,17 +266,15 @@ def _wait_and_kill(pids: list[int], timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
 
     while alive and time.monotonic() < deadline:
-        for pid in list(alive):
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                alive.discard(pid)
+        alive = {pid for pid in alive if _process_running(pid)}
         if alive:
             time.sleep(0.1)
 
     for pid in alive:
         with contextlib.suppress(ProcessLookupError):
             os.kill(pid, signal.SIGKILL)
+            # SIGKILL cannot be ignored, so waiting for our own child cannot hang.
+            _reap(pid, 0)
 
 
 class Recorder:
@@ -345,9 +382,7 @@ class Recorder:
             return False
 
         for key in ("pid_monitor", "pid_mic"):
-            try:
-                os.kill(session[key], 0)
-            except ProcessLookupError:
+            if not _process_running(session[key]):
                 # Process is dead — clean up stale session
                 self._session_file.unlink(missing_ok=True)
                 return False

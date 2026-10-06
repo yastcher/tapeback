@@ -547,3 +547,15 @@ def mock_pyannote_annotation(tracks):
         itertracks_result.append((turn, None, speaker))
     mock_annotation.itertracks.return_value = itertracks_result
     return mock_annotation
+
+
+def process_state(pid: int) -> str | None:
+    """The kernel's one-letter state for a process (R, S, Z, ...); None once it is gone,
+    reaped included. A zombie is "Z": exited, but its parent has not collected it."""
+    try:
+        stat_line = Path(f"/proc/{pid}/stat").read_text()
+    except (FileNotFoundError, ProcessLookupError):
+        # ProcessLookupError: reaped between opening the file and reading it.
+        return None
+    # The state follows the command name, which is parenthesised and may hold spaces.
+    return stat_line.rsplit(")", 1)[1].split()[0]

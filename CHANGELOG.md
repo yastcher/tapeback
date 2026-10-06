@@ -24,6 +24,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TAPEBACK_WHISPER_MODEL` no longer leaks into remote backends: with `TAPEBACK_STT_BACKEND=openai` and no `TAPEBACK_STT_MODEL`, the deprecated alias is ignored and the OpenAI default `whisper-1` is used.
 - Unknown OpenAI STT model ids are rejected at settings load with an explicit allowlist (`whisper-1`, `gpt-transcribe`, `gpt-4o-transcribe-diarize`) instead of silently falling through to gpt-transcribe capabilities.
 - AUR: no stray `tapeback-debug` package, no debugedit errors on every bundled library.
+- Stopping a recording no longer waits five seconds. Stopped recorders stayed zombies, and the check took them for running.
 
 ### Changed
 - `TAPEBACK_WHISPER_MODEL` now emits a `FutureWarning` (visible by default) instead of a hidden `DeprecationWarning`.
