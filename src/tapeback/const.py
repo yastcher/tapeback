@@ -14,8 +14,8 @@ FILE_MIC = "mic.wav"
 FILE_MONITOR = "monitor.wav"
 FILE_SESSION = "session.json"
 
-# Temp directory
-TEMP_DIR = "/tmp/tapeback"
+# Where in-progress recordings live is not a constant: it depends on settings and
+# XDG_STATE_HOME, and is verified to be private before use. See recorder.session_root().
 
 # Sample rates
 SAMPLE_RATE_16K = 16000

@@ -15,7 +15,17 @@ permissions:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    # Pinned like publish.yml and deb-e2e.yml: `ubuntu-latest` moves on its own
+    # schedule, and CI should not test on a different system than the release builds on.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both versions pyproject.toml declares. The AUR package runs on Arch's system
+        # Python, which is the newer one.
+        python-version: ["3.13", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -28,7 +38,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0

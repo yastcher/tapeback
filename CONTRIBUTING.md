@@ -19,16 +19,34 @@ PulseAudio or PipeWire, but no test records anything.
 
 ## Before opening a pull request
 
-Run all four. CI runs the same commands and nothing else:
+Fix what the tools can fix, then run the gate — the CI checks, step for step:
 
 ```bash
 uv run ruff check --fix
 uv run ruff format
-uv run ty check
-uv run pytest
+scripts/gate.sh
 ```
 
-Coverage is enforced at 90% by `pyproject.toml`, so new code needs tests.
+The gate has passed only when its last line reads `all gates passed`. Coverage is
+enforced at 90% by `pyproject.toml`, so new code needs tests. When the branch touches
+`src/`, `packaging/` or `pyproject.toml`, the gate also builds and installs the `.deb`
+and Arch packages in containers, as CI does — that needs docker and
+[nfpm](https://nfpm.goreleaser.com/), and some minutes.
+
+## CHANGELOG and the version
+
+- **Add an entry, never a version.** Entries go under `## [Unreleased]`, through the
+  script rather than by hand:
+
+  ```bash
+  python3 scripts/changelog_add.py Fixed "- **Topic.** What was wrong, what is right now."
+  ```
+
+  Subsections are Security / Added / Changed / Fixed / Removed / Docs; changes to
+  documentation alone go under `Docs`.
+- **Do not touch the version** — not in `pyproject.toml`, `uv.lock` or `packaging/`.
+  The maintainer's `scripts/release.sh` writes it everywhere at release time and turns
+  `[Unreleased]` into the dated section; a PR that bumps it fails the tests.
 
 ## What reviewers look for
 
@@ -46,7 +64,7 @@ Coverage is enforced at 90% by `pyproject.toml`, so new code needs tests.
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`,
   `docs:`, `refactor:`.
 
-`CLAUDE.md` holds the full working agreement for this repository. It is written for AI
+`AGENTS.md` holds the full working agreement for this repository. It is written for AI
 assistants but describes the same rules a human reviewer applies.
 
 ## Configuration decisions are made from measurements
@@ -55,15 +73,14 @@ Anything touching transcription speed or quality — model, compute type, decodi
 parameters, the glossary — is decided from `scripts/bench_transcribe.py`, which drives
 the real `Transcriber` on real audio. Include its table in the PR. Several plausible
 changes have been reverted after measurement contradicted them;
-`.claude/plans/BACKLOG.md` records which ones and why.
+`docs/spec/BACKLOG.md` records which ones and why.
 
 ## CI on pull requests
 
-Every commit pushed to a PR re-runs lint, format, types and tests. Packaging changes
-additionally build the `.deb` and install it in five distro containers.
-
-From a fork, the AI review job is skipped — its API key is not exposed to forked pull
-requests. That is expected and not a failure.
+Every commit pushed to a PR re-runs lint, format, types and tests, on Python 3.13 and
+3.14. Changes to `src/`, `packaging/` or `pyproject.toml` additionally build the `.deb`
+and install it in six Ubuntu and Debian containers, and build the AUR package in an
+Arch container.
 
 ## Reporting a bug
 

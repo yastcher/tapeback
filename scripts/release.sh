@@ -1,57 +1,98 @@
 #!/usr/bin/env bash
-# Update version across all files that contain it.
-# Usage: ./scripts/release.sh 0.9.0
+# Cut a release: name the unreleased section, commit, push, tag. The tag is what
+# publishes — `.github/workflows/publish.yml` builds and uploads to PyPI and GitHub.
+#
+#     scripts/release.sh patch      # 0.9.8 -> 0.9.9
+#     scripts/release.sh minor      # 0.9.8 -> 0.10.0
+#     scripts/release.sh major      # 0.9.8 -> 1.0.0
+#
+# **The part is chosen HERE, at the release, because only here is it knowable.**
+# Entries accumulate under `## [Unreleased]`, which claims no number; this command
+# turns that heading into the version and opens a fresh one above it. A feature
+# branch never touches the version.
+#
+# Run by the maintainer, on main, after the PRs are merged. It is the one thing
+# that pushes to main directly: the release commit is mechanical, and there is
+# nothing in it to review that the tagged PRs did not already show.
+#
+# One command, because the ORDER is the whole point and git cannot enforce it: the
+# branch must reach the remote before the tag does, or the release names a commit
+# main does not contain. Every step is safe to retry — a failure leaves the tree in
+# a state this same command can run from, or finishes with a plain `git push`.
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <version>"
-    echo "Example: $0 0.9.0"
-    exit 1
+PART="${1:-patch}"
+case "$PART" in
+  patch | minor | major) ;;
+  *)
+    echo "usage: $0 patch|minor|major   (what this release is)" >&2
+    exit 2
+    ;;
+esac
+
+cd "$(git rev-parse --show-toplevel)"
+
+# A dirty tree means the tag would name a state nobody can check out again.
+if [ -n "$(git status --porcelain)" ]; then
+  echo "working tree is dirty — commit first" >&2
+  exit 1
 fi
 
-VERSION="$1"
-
-# Validate semver format
-if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
-    echo "Error: '$VERSION' is not a valid semver version"
-    exit 1
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$BRANCH" != "main" ]; then
+  echo "releases are cut from main, not '$BRANCH' — merge the PR first" >&2
+  exit 1
 fi
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-
-# 1. pyproject.toml
-sed -i "s/^version = \".*\"/version = \"$VERSION\"/" "$REPO_ROOT/pyproject.toml"
-echo "Updated pyproject.toml"
-
-# 2. uv.lock records the project's own version, so bumping pyproject.toml alone leaves
-# it stale — and both CI and the publish workflow install with `uv sync --locked`, which
-# refuses a stale lockfile and fails the whole release. Regenerating here resolves the
-# dependency graph again, so review the diff: it should touch only the tapeback version.
-(cd "$REPO_ROOT" && uv lock --quiet)
-echo "Updated uv.lock"
-
-# 3. All PKGBUILDs
-while IFS= read -r pkgbuild; do
-    sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$pkgbuild"
-    echo "Updated ${pkgbuild#$REPO_ROOT/}"
-done < <(find "$REPO_ROOT/packaging" -name PKGBUILD)
-
-# 4. Verify CHANGELOG.md has a section for this version
-if ! grep -q "^## \[$VERSION\]" "$REPO_ROOT/CHANGELOG.md"; then
-    echo ""
-    echo "Warning: CHANGELOG.md has no section for [$VERSION]."
-    echo "Add one before tagging:"
-    echo "  ## [$VERSION] — $(date +%Y-%m-%d)"
+# Everything being released must already be on the remote branch: `git push <tag>`
+# carries the objects, so a tag on local-only history publishes perfectly well
+# while main silently lacks the code that was released.
+if ! git merge-base --is-ancestor HEAD "origin/$BRANCH" 2>/dev/null; then
+  echo "HEAD is not on origin/$BRANCH — push the branch first, then release" >&2
+  echo "(compared against the local remote-tracking ref; 'git fetch' if it is stale)" >&2
+  exit 1
 fi
 
-# Show results
-echo ""
-echo "Version updated to $VERSION in:"
-grep -rl "$VERSION" "$REPO_ROOT/pyproject.toml" "$REPO_ROOT/packaging"/*/PKGBUILD "$REPO_ROOT/packaging/PKGBUILD" 2>/dev/null | sed "s|$REPO_ROOT/||"
-echo ""
-echo "Next steps:"
-echo "  1. Review changes:  git diff"
-echo "  2. Commit:          git commit -am 'release: v$VERSION'"
-echo "  3. Tag:             git tag v$VERSION"
-echo "  4. Push:            git push origin main v$VERSION"
-echo "  5. Update AUR:      scripts/aur-publish.sh $VERSION"
+# Only a tree `scripts/pre_release_qa.sh` passed may be tagged: the stamp holds the
+# tree hash. SKIP_PRERELEASE_QA=1 is for a hotfix that cannot wait for the run; the
+# tag still has the publish workflow's lint, types and tests behind it.
+stamp="$(git rev-parse --path-format=absolute --git-path pre_release_qa.ok)"
+tree="$(git rev-parse 'HEAD^{tree}')"
+if [ "${SKIP_PRERELEASE_QA:-}" = "1" ]; then
+  echo "SKIP_PRERELEASE_QA=1: releasing without the pre-release run" >&2
+elif [ "$(cat "$stamp" 2>/dev/null)" != "$tree" ]; then
+  echo "no green pre-release run for this tree — run scripts/pre_release_qa.sh first" >&2
+  exit 1
+fi
+
+# Bump every manifest, rename `## [Unreleased]`, open a fresh one. Refuses an
+# empty section, because the section IS the release notes.
+RELEASING=1 scripts/bump-version.sh "$PART"
+
+VERSION="$(grep -m1 -E '^version = "' pyproject.toml | sed -E 's/^version = "(.*)"/\1/')"
+TAG="v$VERSION"
+
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  echo "$TAG already exists — tags are immutable, bump again instead" >&2
+  exit 1
+fi
+
+git add -A
+git commit -q -m "chore(release): $VERSION"
+
+# The same check the publish workflow runs on the tag, asked here so a bad section
+# costs a second instead of a failed pipeline. Its output is the release notes, so
+# reading them now IS the review.
+echo "── release notes for $TAG ─────────────────────────────────────"
+python3 scripts/release_from_tag.py "$TAG"
+echo "───────────────────────────────────────────────────────────────"
+
+# Branch before tag, for the reason above. If this push fails nothing has been
+# published yet, and the fix is a plain `git push` — the commit is already made.
+git push origin "$BRANCH"
+git tag "$TAG"
+git push origin "$TAG"
+
+echo
+echo "released $TAG · the publish workflow builds it · [Unreleased] is open again"
+echo "once the GitHub release is up: scripts/aur-publish.sh $VERSION"

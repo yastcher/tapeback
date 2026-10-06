@@ -5,10 +5,13 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TypedDict
+from zoneinfo import ZoneInfo
 
 from tapeback import const
 from tapeback.settings import Settings
@@ -27,9 +30,79 @@ class SessionData(TypedDict):
     started_at: str
 
 
-_DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "tapeback"
-
 _SESSION_NAME_RE = re.compile(r"^[\w-]+$")
+
+_SESSIONS_DIR_NAME = "sessions"
+
+
+def _state_dir() -> Path:
+    """tapeback's XDG state directory — ~/.local/state/tapeback unless XDG_STATE_HOME
+    says otherwise. Holds session.json and, under `sessions/`, the recordings it points
+    at. A relative XDG_STATE_HOME is ignored, as the XDG spec requires: it would put the
+    state wherever the command happened to be run from."""
+    xdg_state_home = os.environ.get("XDG_STATE_HOME", "")
+    base = Path(xdg_state_home)
+    if not base.is_absolute():
+        base = Path.home() / ".local" / "state"
+    return base / "tapeback"
+
+
+def _ensure_private_dir(path: Path) -> None:
+    """Create the directory as 0700, or refuse one that is not privately ours.
+
+    `mkdir(mode=...)` sets the mode only when it actually creates the directory, so an
+    existing one has to be checked rather than trusted. lstat, not stat: mkdir with
+    exist_ok follows a symlink to a directory and reports success, and a symlink is
+    exactly what an attacker would plant. Refuse rather than chmod — repairing the mode
+    cannot undo the window in which someone else already held the directory open.
+    """
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    info = path.lstat()
+    if stat.S_ISLNK(info.st_mode):
+        raise RuntimeError(f"Refusing to use {path}: it is a symlink, not a directory")
+    if info.st_uid != os.geteuid():
+        raise RuntimeError(f"Refusing to use {path}: owned by uid {info.st_uid}, not this user")
+    if info.st_mode & 0o077:
+        raise RuntimeError(
+            f"Refusing to use {path}: reachable by other users "
+            f"(mode {stat.S_IMODE(info.st_mode):04o}, expected 0700). "
+            f"If it is yours, run: chmod 700 {path}"
+        )
+
+
+def session_root(settings: Settings) -> Path:
+    """Directory holding recordings that are still in progress. Created if missing.
+
+    `TAPEBACK_SESSIONS_DIR` when set, otherwise `sessions/` in the XDG state directory
+    (~/.local/state/tapeback/sessions). Wherever it is, it is verified private before
+    use. Rejected locations, and why:
+
+    - /tmp/tapeback: /tmp is world-writable, so any other local user could pre-create
+      the path and quietly collect every meeting recording, raw microphone and system
+      audio both, captured long before any masking applies.
+    - $XDG_RUNTIME_DIR: private, but a tmpfs of 10% of RAM — 780 MB on an 8 GB laptop,
+      while an hour of recording needs about 1.6 GB once the merge and the 16 kHz copies
+      land next to the raw channels. The XDG spec itself asks applications not to put
+      large files there. /tmp has the same problem on systemd 258+, where it is a tmpfs
+      with a per-user quota (issue #13).
+    - Both of those are emptied at reboot or logout. A recording that was interrupted
+      before it was transcribed should survive that, so it can still be processed.
+
+    The state directory is on disk under the user's home: private by construction, as
+    the runtime directory was, without its size limit or its lifetime. A session is
+    removed once it has been processed; one that failed stays to be recovered.
+    """
+    root = settings.sessions_dir or _state_dir() / _SESSIONS_DIR_NAME
+    _ensure_private_dir(root)
+    return root
+
+
+def session_dir(settings: Settings, session_name: str) -> Path:
+    """Directory holding one session's raw channels. Not created here — `start` does
+    that; callers that only need the path (live transcription, status messages) should
+    not have a side effect."""
+    validate_session_name(session_name)
+    return session_root(settings) / session_name
 
 
 def validate_session_name(session_name: str) -> None:
@@ -144,6 +217,60 @@ def _resolve_source_via_pactl() -> str:
     return default_source
 
 
+def _meeting_time(settings: Settings, now: datetime.datetime) -> datetime.datetime:
+    """`now` on the meeting's clock: TAPEBACK_TIMEZONE, else the machine's own zone.
+
+    The session name becomes the note's file name and its date and time, so it has to
+    read as the user's clock. UTC filed a late meeting under the next day (issue #15).
+    """
+    if settings.timezone:
+        return now.astimezone(ZoneInfo(settings.timezone))
+    return now.astimezone()
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC)
+
+
+def _process_running(pid: int) -> bool:
+    """Whether a recorder process is still running.
+
+    kill(pid, 0) alone cannot tell: a process that has exited stays a zombie until its
+    parent reaps it, and kill still succeeds on a zombie. `tapeback start` and the tray
+    spawn parecord themselves and never wait() on it, and `tapeback stop` runs in another
+    process altogether — so a stopped recorder kept reading as alive, and every stop
+    waited out the whole kill timeout before SIGKILLing processes already dead.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    if not _is_zombie(pid):
+        return True
+    # Exited. Reap it if it is ours; another process's zombie is its parent's to collect.
+    _reap(pid, os.WNOHANG)
+    return False
+
+
+def _reap(pid: int, flags: int) -> None:
+    """Collect an exited child of this process, so it does not linger as a zombie.
+    A pid that is not our child raises ChildProcessError, which is the expected case for
+    `tapeback stop` run against another terminal's recording."""
+    with contextlib.suppress(ChildProcessError):
+        os.waitpid(pid, flags)
+
+
+def _is_zombie(pid: int) -> bool:
+    """An exited process another parent has not reaped yet. Reads /proc: Linux only,
+    as tapeback is."""
+    try:
+        stat_line = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return False
+    # The state follows the command name, which is parenthesised and may hold spaces.
+    return stat_line.rsplit(")", 1)[1].split()[0] == "Z"
+
+
 def _terminate_process(pid: int) -> None:
     """Send SIGTERM to a single process, ignore if already dead."""
     with contextlib.suppress(ProcessLookupError):
@@ -156,23 +283,27 @@ def _wait_and_kill(pids: list[int], timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
 
     while alive and time.monotonic() < deadline:
-        for pid in list(alive):
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                alive.discard(pid)
+        alive = {pid for pid in alive if _process_running(pid)}
         if alive:
             time.sleep(0.1)
 
     for pid in alive:
         with contextlib.suppress(ProcessLookupError):
             os.kill(pid, signal.SIGKILL)
+            # SIGKILL cannot be ignored, so waiting for our own child cannot hang.
+            _reap(pid, 0)
 
 
 class Recorder:
-    def __init__(self, state_dir: Path | None = None) -> None:
-        self._state_dir = state_dir or _DEFAULT_STATE_DIR
+    def __init__(
+        self,
+        state_dir: Path | None = None,
+        clock: Callable[[], datetime.datetime] = _utc_now,
+    ) -> None:
+        self._state_dir = state_dir or _state_dir()
         self._session_file = self._state_dir / const.FILE_SESSION
+        # The current instant; a test fixes it to name a session deterministically.
+        self._clock = clock
 
     @property
     def session_file(self) -> Path:
@@ -181,7 +312,8 @@ class Recorder:
     def start(self, settings: Settings, session_name: str | None = None) -> str:
         """Start two parecord subprocesses for monitor and mic recording.
 
-        Creates temp directory /tmp/tapeback/{session_name}/ with monitor.wav and mic.wav.
+        Creates a private session directory (see `session_root`) holding monitor.wav
+        and mic.wav.
         Saves state to session.json. Returns session_name.
         """
         if self.is_recording():
@@ -194,15 +326,14 @@ class Recorder:
 
         monitor_source, mic_source = detect_devices(settings)
 
+        started = _meeting_time(settings, self._clock())
         if session_name is None:
-            session_name = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d_%H-%M-%S")
+            session_name = started.strftime("%Y-%m-%d_%H-%M-%S")
         else:
             validate_session_name(session_name)
 
-        base_dir = Path(const.TEMP_DIR)
-        base_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        tmp_dir = base_dir / session_name
-        tmp_dir.mkdir(exist_ok=True, mode=0o700)
+        tmp_dir = session_dir(settings, session_name)
+        _ensure_private_dir(tmp_dir)
 
         monitor_path = tmp_dir / const.FILE_MONITOR
         mic_path = tmp_dir / const.FILE_MIC
@@ -235,7 +366,7 @@ class Recorder:
             "session_name": session_name,
             "monitor_path": str(monitor_path),
             "mic_path": str(mic_path),
-            "started_at": datetime.datetime.now(datetime.UTC).isoformat(),
+            "started_at": started.isoformat(),
         }
         self._session_file.write_text(json.dumps(session_data, indent=2))
 
@@ -275,9 +406,7 @@ class Recorder:
             return False
 
         for key in ("pid_monitor", "pid_mic"):
-            try:
-                os.kill(session[key], 0)
-            except ProcessLookupError:
+            if not _process_running(session[key]):
                 # Process is dead — clean up stale session
                 self._session_file.unlink(missing_ok=True)
                 return False

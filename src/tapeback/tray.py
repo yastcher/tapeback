@@ -9,7 +9,6 @@ from enum import Enum, auto
 from dbus_next import BusType
 from dbus_next.aio import MessageBus
 
-from tapeback import const
 from tapeback._dbusmenu import MENU_OBJECT_PATH, DBusMenu, MenuItem
 from tapeback._sni import SNI_OBJECT_PATH, StatusNotifierItem, register_with_watcher
 from tapeback._tray_env import TrayEnv, detect_tray_env
@@ -230,10 +229,10 @@ class TrayApp:
         with self._lock:
             if self._state == TrayState.RECORDING:
                 try:
-                    self._recorder.stop()
+                    monitor_path, _ = self._recorder.stop()
                     logger.info(
                         "Recording stopped on quit, files preserved in %s/",
-                        const.TEMP_DIR,
+                        monitor_path.parent,
                     )
                 except Exception:
                     logger.exception("Error stopping recording on quit")

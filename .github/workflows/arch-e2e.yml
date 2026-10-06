@@ -1,0 +1,29 @@
+name: arch-e2e
+
+# End-to-end test for the AUR path: build packaging/PKGBUILD from the PR's tree in a
+# clean Arch container, install it, and run it on Arch's system Python. The script
+# is the same one scripts/pre_release_qa.sh runs before a release.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "packaging/**"
+      - "pyproject.toml"
+      - "src/**"
+      - "scripts/arch-smoke.sh"
+      - ".github/workflows/arch-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build and run the Arch package
+        run: docker run --rm -v "$PWD:/src:ro" archlinux:latest /src/scripts/arch-smoke.sh

@@ -422,6 +422,8 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 | `TAPEBACK_MONITOR_SOURCE` | `auto` | PulseAudio monitor source name |
 | `TAPEBACK_MIC_SOURCE` | `auto` | PulseAudio mic source name |
 | `TAPEBACK_SAMPLE_RATE` | `48000` | Recording sample rate |
+| `TAPEBACK_SESSIONS_DIR` | *(XDG)* | Where recordings in progress live, about 1.6 GB per hour until processed. Default `~/.local/state/tapeback/sessions`. An absolute path: `~` is not expanded. Must be private to you (mode `0700`); tapeback refuses one other users can reach. A session that failed to process stays here, so it can be recovered |
+| `TAPEBACK_TIMEZONE` | *(system)* | Time zone for naming a recording, and so for the note's file name, date and time. An IANA name such as `Europe/Madrid`, or `UTC`. Unset: the machine's own zone |
 
 ### Speaker diarization
 

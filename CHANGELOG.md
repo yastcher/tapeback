@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.9] — 2026-09-18
+## [Unreleased]
+
+<!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
+<!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
+
+### Security
+- In-progress recordings no longer live in `/tmp/tapeback`. That path sits in a world-writable directory and was created with `mkdir(exist_ok=True, mode=0o700)`, which sets the mode only when it actually creates the directory — an existing one was accepted with no check of owner, mode or symlink. On a shared machine another local user could pre-create it and then read every meeting: raw microphone and system audio, captured before any masking applies. Sessions now go to `~/.local/state/tapeback/sessions` (on disk, user-owned, kept across a reboot so an interrupted meeting can still be processed) or wherever `TAPEBACK_SESSIONS_DIR` points, and the directory is verified private before use rather than assumed to be. This also ends recordings failing on a quota-limited tmpfs `/tmp`.
 
 ### Added
 - Optional remote speech-to-text backends (`TAPEBACK_STT_BACKEND`; default stays `local` / faster-whisper). OpenAI is the first remote backend (`openai`). New settings: `TAPEBACK_STT_MODEL` (local default `large-v3-turbo`, OpenAI default `whisper-1`; `TAPEBACK_WHISPER_MODEL` is deprecated), `TAPEBACK_STT_API_KEY` (preferred over `OPENAI_API_KEY` for STT), and `TAPEBACK_STT_CONCURRENCY`. Remote STT requires `tapeback[stt]` (openai SDK; `tapeback[llm]` also installs it) and uploads meeting audio off the machine — PII masking cannot apply there. For the OpenAI backend, model capabilities are derived automatically: `whisper-1` keeps timestamps + local pyannote; `gpt-transcribe` skips local diarization (soft target ≤600s per upload, hard cap 1500s); `gpt-4o-transcribe-diarize` returns remote speaker labels (soft target ≤600s, hard cap 1400s). Long meetings are sliced under the 25 MiB size cap, the soft target, and the per-model hard duration cap.
@@ -17,10 +23,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Remote OpenAI STT no longer dies silently after a long SDK default timeout (~30 minutes with no status): owned timeouts, retries, heartbeats, and shorter default slice targets keep near-max diarize uploads visible and recoverable instead of failing with nothing saved.
 - `TAPEBACK_WHISPER_MODEL` no longer leaks into remote backends: with `TAPEBACK_STT_BACKEND=openai` and no `TAPEBACK_STT_MODEL`, the deprecated alias is ignored and the OpenAI default `whisper-1` is used.
 - Unknown OpenAI STT model ids are rejected at settings load with an explicit allowlist (`whisper-1`, `gpt-transcribe`, `gpt-4o-transcribe-diarize`) instead of silently falling through to gpt-transcribe capabilities.
+- AUR: no stray `tapeback-debug` package, no debugedit errors on every bundled library.
+- Stopping a recording no longer waits five seconds. Stopped recorders stayed zombies, and the check took them for running.
+- The test suite no longer writes run records and resume-cache entries into your real `~/.local/share/tapeback`, where they evicted real ones. Development-only.
 
 ### Changed
+- Recordings are named in local time, not UTC: the note's file name, date and time. `TAPEBACK_TIMEZONE` sets another zone.
 - `TAPEBACK_WHISPER_MODEL` now emits a `FutureWarning` (visible by default) instead of a hidden `DeprecationWarning`.
 - `start` / `stop` / `process` print one stderr line when a remote STT backend is enabled, so uploads are not silent (live mode notes that audio is uploaded during the meeting and again after stop).
+- Releases are cut by `scripts/release.sh patch|minor|major`, which refuses a tree `scripts/pre_release_qa.sh` has not passed (gate, e2e quality, .deb smoke). The version and the dated CHANGELOG section are written only there; between releases new entries go under `[Unreleased]` via `scripts/changelog_add.py`. `scripts/gate.sh` runs the CI checks locally. Development-only; released packages are unaffected.
+- CI tests Python 3.13 and 3.14 on a pinned Ubuntu 24.04 runner. Packaging smoke adds Ubuntu 26.10 and an Arch build of the AUR package. The Gemini PR-review workflow is gone. Development-only.
 
 ## [0.9.8] — 2026-08-05
 

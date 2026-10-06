@@ -170,15 +170,23 @@ def test_do_stop_and_process_failure_returns_to_idle(tray_app):
 # --- Quit ---
 
 
-def test_quit_during_recording_stops_recorder(tray_app):
+def test_quit_during_recording_stops_recorder(tray_app, caplog):
     tray_app._state = TrayState.RECORDING
     tray_app._loop = MagicMock()
+    session = Path("/home/u/.local/state/tapeback/sessions/meeting")
+    tray_app._recorder.stop.return_value = (session / "monitor.wav", session / "mic.wav")
     import asyncio  # noqa: PLC0415
 
     tray_app._stopped = asyncio.Event()
-    tray_app._on_quit()
+    with caplog.at_level("INFO", logger="tapeback.tray"):
+        tray_app._on_quit()
     tray_app._recorder.stop.assert_called_once()
     tray_app._loop.call_soon_threadsafe.assert_called_once()
+    # The session that was kept, not just the root it lives under.
+    assert (
+        "Recording stopped on quit, files preserved in "
+        "/home/u/.local/state/tapeback/sessions/meeting/" in caplog.text
+    )
 
 
 def test_quit_while_idle_does_not_stop_recorder(tray_app):
