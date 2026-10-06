@@ -51,10 +51,11 @@ class RemoteSttCapabilities:
 def openai_capabilities_for(model: str) -> RemoteSttCapabilities:
     """Derive capabilities from an OpenAI Audio Transcriptions model id.
 
-    Only the model ids documented in the README are accepted; anything else
-    raises ValueError listing the supported ids.
+    Only the model ids documented in the README are accepted, matched exactly: the id
+    goes to OpenAI as written, so `Whisper-1` must fail here rather than pass and be
+    sent on. Anything else raises ValueError listing the supported ids.
     """
-    name = model.strip().lower()
+    name = model.strip()
     if name == OPENAI_MODEL_WHISPER_1:
         return RemoteSttCapabilities(
             word_timestamps=True,
