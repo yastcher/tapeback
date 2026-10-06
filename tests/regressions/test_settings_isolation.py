@@ -2,6 +2,9 @@
 
 import os
 
+from tapeback._resume import default_resume_dir
+from tapeback._runlog import default_run_log_dir
+from tapeback.recorder import Recorder
 from tapeback.settings import Settings, get_settings
 from tapeback.summarizer import _build_provider_chain
 
@@ -55,3 +58,20 @@ def test_env_var_set_inside_a_test_still_applies(monkeypatch):
     """Isolation must not break a test that deliberately sets a variable."""
     monkeypatch.setenv("TAPEBACK_BEAM_SIZE", "1")
     assert Settings().beam_size == 1
+
+
+def test_nothing_the_suite_writes_lands_in_the_developers_home(tmp_path_factory):
+    """Run records, the resume cache and session state default to the developer's real
+    XDG directories, so every one of them has to resolve inside the suite's tmp dir.
+
+    Bug: only XDG_STATE_HOME was redirected. Every test run wrote run records and
+    resume-cache entries into the real ~/.local/share/tapeback, and both keep a bounded
+    number of entries (200), so the suite's records evicted the developer's real ones —
+    174 of 200 run records on one machine were test sessions, and the whole resume cache
+    had been replaced.
+    """
+    base = tmp_path_factory.getbasetemp()
+
+    assert default_run_log_dir().is_relative_to(base)
+    assert default_resume_dir().is_relative_to(base)
+    assert Recorder().session_file.is_relative_to(base)

@@ -54,16 +54,18 @@ requires_dbus_next = pytest.mark.skipif(
 
 
 @pytest.fixture(autouse=True)
-def isolate_session_root(monkeypatch, tmp_path_factory):
-    """Keep recordings and session state made by tests out of the developer's home.
+def isolate_user_dirs(monkeypatch, tmp_path_factory):
+    """Keep everything the suite writes out of the developer's home.
 
-    recorder.session_root() and Recorder() resolve XDG_STATE_HOME at call time, so
-    without this any test that starts a recording would create directories under
-    ~/.local/state/tapeback and leave them there. Pointing it at a per-session tmp
-    directory scopes every test to what it created itself. XDG_STATE_HOME rather than
-    TAPEBACK_SESSIONS_DIR: isolate_settings_sources removes every TAPEBACK_ variable.
+    Session state and recordings default to XDG_STATE_HOME, run records and the resume
+    cache to XDG_DATA_HOME, all resolved at call time. Without this every test run wrote
+    into the real ~/.local/state and ~/.local/share/tapeback — and run records and the
+    resume cache are bounded (200 entries each), so the suite's entries evicted the
+    developer's real ones. XDG variables rather than TAPEBACK_* paths:
+    isolate_settings_sources removes every TAPEBACK_ variable.
     """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("state")))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path_factory.mktemp("data")))
 
 
 @pytest.fixture(autouse=True)

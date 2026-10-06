@@ -67,7 +67,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - **Assert exact values, not ranges**: `assert count == 2`, not `assert count >= 1`. Weak assertions hide bugs. If an assertion has to be loose, the test is measuring the wrong thing — fix the seam instead (e.g. inject a clock) rather than weakening the assert.
 - **Boundary values**: test the exact boundary (`==`), one below and one above. A `>=` in production code must have a test where left equals right.
 - **Test both branches of conditionals**: if code has `if x: A else: B`, test both paths.
-- **Isolation by construction, never by cleanup**: a test must not depend on leftover state from another test. Scope every assertion to what the test itself created.
+- **Isolation by construction, never by cleanup**: a test must not depend on leftover state from another test. Scope every assertion to what the test itself created. Nothing a test writes may land in the developer's home: the autouse `isolate_user_dirs` points `XDG_STATE_HOME` and `XDG_DATA_HOME` into the test's tmp dir.
 - **Bug fix workflow**: every fix MUST start with a failing test that reproduces the bug.
   Write the test first, verify it fails, then apply the fix and verify the test passes.
   This prevents regressions and documents the exact failure scenario.
