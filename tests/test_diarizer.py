@@ -618,6 +618,18 @@ def test_merge_similar_speakers_different_voices():
     assert len(speakers) == 2
 
 
+def test_merge_similar_speakers_zero_length_speakers_pass_through():
+    """No speech to compare: nothing merges, and nothing divides by the zero total."""
+    sr = 16000
+    audio = np.zeros(int(3.0 * sr), dtype=np.float32)
+    segments = [
+        DiarizationSegment(speaker="SPEAKER_00", start=1.0, end=1.0),
+        DiarizationSegment(speaker="SPEAKER_01", start=2.0, end=2.0),
+    ]
+
+    assert merge_similar_speakers(segments, audio, sr, similarity_threshold=0.96) == segments
+
+
 @pytest.mark.parametrize(
     "segments",
     [

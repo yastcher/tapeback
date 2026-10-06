@@ -54,22 +54,13 @@ def _speaker_spectral_profile(
     return result
 
 
-def _pick_merge_threshold(
-    sp_a: str,
-    sp_b: str,
-    total_speech: dict[str, float],
-    default_threshold: float,
-) -> float:
-    """Lower threshold when one speaker is a minor artifact (echo/crosstalk)."""
-    minor_total = min(total_speech[sp_a], total_speech[sp_b])
-    major_total = max(total_speech[sp_a], total_speech[sp_b])
-    if (
-        minor_total < MINOR_SPEAKER_MAX_SEC
-        and major_total > 0
-        and minor_total / major_total < MINOR_SPEAKER_RATIO
-    ):
-        return MINOR_SPEAKER_MERGE_THRESHOLD
-    return default_threshold
+def _similarity(a: np.ndarray, b: np.ndarray) -> float | None:
+    """Cosine similarity of two spectral profiles; None when either is silent."""
+    norm_a = float(np.linalg.norm(a))
+    norm_b = float(np.linalg.norm(b))
+    if norm_a < const.CHANNEL_EPSILON or norm_b < const.CHANNEL_EPSILON:
+        return None
+    return float(np.dot(a, b) / (norm_a * norm_b))
 
 
 def _apply_merge(merge_map: dict[str, str], sp_a: str, sp_b: str, speakers: list[str]) -> None:
@@ -99,7 +90,8 @@ def merge_similar_speakers(
     - Minor speaker absorption (MINOR_SPEAKER_MERGE_THRESHOLD = 0.92): when one
       speaker has very little speech (< 15s and < 20% of dominant), they are likely
       echo/crosstalk artifacts with unreliable spectral profiles. A lower threshold
-      absorbs them into the dominant speaker.
+      absorbs each into the one speaker it resembles most — never two, or a cluster
+      that resembles two real speakers would join them through itself.
 
     Power-spectrum similarity is a weak signal for voice identity — the channel
     frequency response dominates. Set to 0 to disable.
@@ -120,23 +112,40 @@ def merge_similar_speakers(
         for sp in speakers
     }
 
+    # Minor relative to the dominant speaker; with no speech at all, nothing is minor.
+    dominant = max(total_speech.values())
+    minor = {
+        sp
+        for sp in speakers
+        if dominant > 0
+        and total_speech[sp] < MINOR_SPEAKER_MAX_SEC
+        and total_speech[sp] / dominant < MINOR_SPEAKER_RATIO
+    }
+    majors = [sp for sp in speakers if sp not in minor]
+
     merge_map: dict[str, str] = {s: s for s in speakers}
 
-    for i, sp_a in enumerate(speakers):
-        for sp_b in speakers[i + 1 :]:
+    # Real speakers merge with each other only at the standard threshold.
+    for i, sp_a in enumerate(majors):
+        for sp_b in majors[i + 1 :]:
             if merge_map[sp_a] == merge_map[sp_b]:
                 continue
-
-            norm_a = float(np.linalg.norm(profiles[sp_a]))
-            norm_b = float(np.linalg.norm(profiles[sp_b]))
-            if norm_a < const.CHANNEL_EPSILON or norm_b < const.CHANNEL_EPSILON:
-                continue
-
-            similarity = float(np.dot(profiles[sp_a], profiles[sp_b]) / (norm_a * norm_b))
-            threshold = _pick_merge_threshold(sp_a, sp_b, total_speech, similarity_threshold)
-
-            if similarity >= threshold:
+            similarity = _similarity(profiles[sp_a], profiles[sp_b])
+            if similarity is not None and similarity >= similarity_threshold:
                 _apply_merge(merge_map, sp_a, sp_b, speakers)
+
+    # A minor cluster joins the ONE speaker it resembles most. Merging it pair by pair
+    # let a cluster that resembles two real speakers join them through itself.
+    for sp in sorted(minor):
+        scored = [
+            (similarity, major)
+            for major in majors
+            if (similarity := _similarity(profiles[sp], profiles[major])) is not None
+        ]
+        if scored:
+            best_similarity, best = max(scored)
+            if best_similarity >= MINOR_SPEAKER_MERGE_THRESHOLD:
+                merge_map[sp] = merge_map[best]
 
     if all(merge_map[s] == s for s in speakers):
         return diarization_segments

@@ -25,6 +25,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CI tests Python 3.13 and 3.14 on a pinned Ubuntu 24.04 runner. Packaging smoke adds Ubuntu 26.10 and an Arch build of the AUR package. The Gemini PR-review workflow is gone. Development-only.
 
 ### Fixed
+- Two people no longer merge into one speaker in the note. A short echo or cross-talk cluster resembling both used to join them.
 - Stopping a recording no longer waits five seconds. Stopped recorders stayed zombies, and the check took them for running.
 - `tapeback start` no longer crashes with `No recording in progress` when `tapeback stop` already finished the session from another terminal.
 - `tapeback start` also exits cleanly when a peer `stop` clears the session in the remaining window between the last `is_recording()` check and `recorder.stop()` (`NoActiveRecording`).

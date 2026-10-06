@@ -229,3 +229,14 @@ channel is minutes, so the payoff is smaller than it was.
 **Constraint that makes this fiddly:** faster-whisper silently truncates hotwords past
 `max_length // 2 - 1` = 223 tokens. A merged default-plus-personal list can exceed that
 without warning, so whatever is built has to measure and refuse rather than truncate.
+
+---
+
+## 6. Diarization: quality, and the clamp it ignores
+
+Found by the 0.9.9 pre-release QA; full numbers in `2026-10-06-diarization.md`. In
+short: pyannote reports the real speakers plus a small third cluster; the spectral
+merge of real speakers is too weak a signal to rely on; diarization runs at roughly
+the recording's length because it meets the thermal clamp with no check, no telemetry
+and warnings that bypass the run record. 0.9.9 fixed only the bridging defect; the
+rest belongs with pluggable diarization models, chosen from a bench table.
