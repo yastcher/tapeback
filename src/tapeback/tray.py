@@ -13,7 +13,7 @@ from tapeback._dbusmenu import MENU_OBJECT_PATH, DBusMenu, MenuItem
 from tapeback._sni import SNI_OBJECT_PATH, StatusNotifierItem, register_with_watcher
 from tapeback._tray_env import TrayEnv, detect_tray_env
 from tapeback.pipeline import stop_and_process
-from tapeback.recorder import Recorder, detect_devices, session_root
+from tapeback.recorder import Recorder, detect_devices
 from tapeback.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -229,10 +229,10 @@ class TrayApp:
         with self._lock:
             if self._state == TrayState.RECORDING:
                 try:
-                    self._recorder.stop()
+                    monitor_path, _ = self._recorder.stop()
                     logger.info(
                         "Recording stopped on quit, files preserved in %s/",
-                        session_root(),
+                        monitor_path.parent,
                     )
                 except Exception:
                     logger.exception("Error stopping recording on quit")

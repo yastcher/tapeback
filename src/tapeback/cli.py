@@ -83,7 +83,7 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
 
     monitor, mic = detect_devices(settings)
     session_name = recorder.start(settings, session_name=name)
-    session_path = session_dir(session_name)
+    session_path = session_dir(settings, session_name)
 
     click.echo(f"Recording started: {session_name}", err=True)
     click.echo(f"Monitor: {monitor}", err=True)

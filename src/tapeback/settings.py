@@ -187,6 +187,10 @@ class Settings(BaseSettings):
     monitor_source: str = "auto"
     mic_source: str = "auto"
     sample_rate: int = 48000
+    # Where recordings in progress live. None → XDG state dir
+    # (~/.local/state/tapeback/sessions). Must be private to this user — see
+    # recorder.session_root().
+    sessions_dir: Path | None = None
 
     # HuggingFace (for pyannote). SecretStr prevents leakage in repr/str/model_dump.
     hf_token: SecretStr = SecretStr("")

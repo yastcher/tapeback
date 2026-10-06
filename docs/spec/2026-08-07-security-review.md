@@ -52,11 +52,18 @@ masking added in 0.9.8 covers only text on its way to an LLM.
 The symlink variant additionally gives an attacker-chosen destination for `mkdir` and the
 subsequent writes, as the victim's user.
 
-**Fix.** `recorder.session_root()` now resolves `XDG_RUNTIME_DIR` (`/run/user/$UID`),
-which logind creates as 0700 owned by the user — private by construction rather than by
-convention, and cleared at logout, which is the lifetime `/tmp` gave us. Without it
-(ssh without logind, containers, cron) the fallback is `~/.cache/tapeback/sessions`,
-user-owned for the same reason.
+**Fix.** `recorder.session_root()` now resolves to `sessions/` in the XDG state
+directory (`~/.local/state/tapeback/sessions`, honouring `XDG_STATE_HOME`), or to
+`TAPEBACK_SESSIONS_DIR` when the user sets one. Under the user's home it is private by
+construction rather than by convention.
+
+`XDG_RUNTIME_DIR` (`/run/user/$UID`) was considered first and rejected. It is private,
+but it is a tmpfs of 10% of RAM — 780 MB on an 8 GB laptop — while an hour of recording
+needs about 1.6 GB once the merge and the 16 kHz copies sit next to the raw channels,
+and the XDG spec asks applications not to put large files there. It is also emptied at
+logout, as `/tmp` is at reboot, which loses a meeting that was interrupted before it was
+transcribed. Issue #13 reports the same size failure for `/tmp` itself, which is a
+quota-limited tmpfs on systemd 258+.
 
 `_ensure_private_dir()` then verifies rather than trusts: `lstat` (not `stat`, because
 `mkdir(exist_ok=True)` follows a symlink to a directory and reports success), owner must
@@ -68,7 +75,7 @@ Covered by `tests/regressions/test_session_dir_not_shared.py`, including the exa
 permission boundary (0700 accepted, one bit more in any position refused) and an
 end-to-end `start()` that asserts both channels land under the private root.
 
-Tests themselves now pin `XDG_RUNTIME_DIR` to a temp directory in an autouse fixture —
+Tests themselves now pin `XDG_STATE_HOME` to a temp directory in an autouse fixture —
 before this change the suite was writing real directories into `/tmp/tapeback`.
 
 ## Reviewed and clean

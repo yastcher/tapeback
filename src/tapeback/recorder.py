@@ -28,12 +28,21 @@ class SessionData(TypedDict):
     started_at: str
 
 
-_DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "tapeback"
-
 _SESSION_NAME_RE = re.compile(r"^[\w-]+$")
 
-_SESSION_DIR_NAME = "tapeback"
-_FALLBACK_SESSION_PARTS = (".cache", "tapeback", "sessions")
+_SESSIONS_DIR_NAME = "sessions"
+
+
+def _state_dir() -> Path:
+    """tapeback's XDG state directory — ~/.local/state/tapeback unless XDG_STATE_HOME
+    says otherwise. Holds session.json and, under `sessions/`, the recordings it points
+    at. A relative XDG_STATE_HOME is ignored, as the XDG spec requires: it would put the
+    state wherever the command happened to be run from."""
+    xdg_state_home = os.environ.get("XDG_STATE_HOME", "")
+    base = Path(xdg_state_home)
+    if not base.is_absolute():
+        base = Path.home() / ".local" / "state"
+    return base / "tapeback"
 
 
 def _ensure_private_dir(path: Path) -> None:
@@ -54,40 +63,44 @@ def _ensure_private_dir(path: Path) -> None:
     if info.st_mode & 0o077:
         raise RuntimeError(
             f"Refusing to use {path}: reachable by other users "
-            f"(mode {stat.S_IMODE(info.st_mode):04o}, expected 0700)"
+            f"(mode {stat.S_IMODE(info.st_mode):04o}, expected 0700). "
+            f"If it is yours, run: chmod 700 {path}"
         )
 
 
-def session_root() -> Path:
+def session_root(settings: Settings) -> Path:
     """Directory holding recordings that are still in progress. Created if missing.
 
-    `XDG_RUNTIME_DIR` (/run/user/$UID) is created by logind as 0700 and owned by the
-    user, so a directory under it is private by construction, and it is cleared at
-    logout — the same lifetime a /tmp directory had, without the shared parent. That
-    parent was the problem: /tmp is world-writable, so any other local user could
-    pre-create the path and quietly collect every meeting recording, raw microphone and
-    system audio both, captured long before any masking applies.
+    `TAPEBACK_SESSIONS_DIR` when set, otherwise `sessions/` in the XDG state directory
+    (~/.local/state/tapeback/sessions). Wherever it is, it is verified private before
+    use. Rejected locations, and why:
 
-    Without XDG_RUNTIME_DIR (ssh without logind, containers, cron) the user's cache
-    directory is the fallback — user-owned for the same reason, at the cost of
-    surviving a reboot.
+    - /tmp/tapeback: /tmp is world-writable, so any other local user could pre-create
+      the path and quietly collect every meeting recording, raw microphone and system
+      audio both, captured long before any masking applies.
+    - $XDG_RUNTIME_DIR: private, but a tmpfs of 10% of RAM — 780 MB on an 8 GB laptop,
+      while an hour of recording needs about 1.6 GB once the merge and the 16 kHz copies
+      land next to the raw channels. The XDG spec itself asks applications not to put
+      large files there. /tmp has the same problem on systemd 258+, where it is a tmpfs
+      with a per-user quota (issue #13).
+    - Both of those are emptied at reboot or logout. A recording that was interrupted
+      before it was transcribed should survive that, so it can still be processed.
+
+    The state directory is on disk under the user's home: private by construction, as
+    the runtime directory was, without its size limit or its lifetime. A session is
+    removed once it has been processed; one that failed stays to be recovered.
     """
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    root = (
-        Path(runtime) / _SESSION_DIR_NAME
-        if runtime
-        else Path.home().joinpath(*_FALLBACK_SESSION_PARTS)
-    )
+    root = settings.sessions_dir or _state_dir() / _SESSIONS_DIR_NAME
     _ensure_private_dir(root)
     return root
 
 
-def session_dir(session_name: str) -> Path:
+def session_dir(settings: Settings, session_name: str) -> Path:
     """Directory holding one session's raw channels. Not created here — `start` does
     that; callers that only need the path (live transcription, status messages) should
     not have a side effect."""
     validate_session_name(session_name)
-    return session_root() / session_name
+    return session_root(settings) / session_name
 
 
 def validate_session_name(session_name: str) -> None:
@@ -229,7 +242,7 @@ def _wait_and_kill(pids: list[int], timeout: float = 5.0) -> None:
 
 class Recorder:
     def __init__(self, state_dir: Path | None = None) -> None:
-        self._state_dir = state_dir or _DEFAULT_STATE_DIR
+        self._state_dir = state_dir or _state_dir()
         self._session_file = self._state_dir / const.FILE_SESSION
 
     @property
@@ -258,7 +271,7 @@ class Recorder:
         else:
             validate_session_name(session_name)
 
-        tmp_dir = session_dir(session_name)
+        tmp_dir = session_dir(settings, session_name)
         _ensure_private_dir(tmp_dir)
 
         monitor_path = tmp_dir / const.FILE_MONITOR
