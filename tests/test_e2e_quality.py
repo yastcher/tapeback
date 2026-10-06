@@ -1,9 +1,10 @@
 """End-to-end quality tests for the transcription + diarization pipeline.
 
 These tests use real audio files and real ML models (faster-whisper, pyannote).
-They are slow (minutes) and require GPU + HF token.
+They are slow (minutes) and need HF_TOKEN for pyannote; a GPU makes them faster.
+The recordings live in tests/data/, outside git.
 
-Run with: TAPEBACK_RUN_E2E=1 uv run pytest tests/test_e2e_quality.py -v
+Run with: TAPEBACK_RUN_E2E=1 HF_TOKEN=... uv run pytest tests/test_e2e_quality.py -v
 """
 
 import os
@@ -18,7 +19,8 @@ from tapeback.pipeline import process_stereo_file
 
 _RUN_E2E = os.environ.get("TAPEBACK_RUN_E2E", "").lower() in ("1", "true", "yes")
 _TEST_DATA = Path(__file__).parent / "data"
-_STEREO_WAV = _TEST_DATA / "2026-03-24_18-31-58.wav"
+# You on the mic, two other people on the monitor channel.
+_STEREO_WAV = _TEST_DATA / "2026-04-02_22-01-53.wav"
 
 pytestmark = [
     pytest.mark.skipif(not _RUN_E2E, reason="Set TAPEBACK_RUN_E2E=1 to run e2e tests"),
@@ -42,15 +44,11 @@ def test_stereo_pipeline_produces_segments(e2e_settings, e2e_output_dir):
 
 
 def test_stereo_pipeline_with_diarization(e2e_settings, e2e_output_dir):
-    """Full stereo pipeline with diarization.
-
-    Test audio: user speaks into mic, YouTube video plays on monitor.
-    Expected: "You" for mic segments, "Speaker N" for monitor segments.
-    The monitor channel has ONE speaker (video narrator) — diarization
-    should not split it into multiple speakers.
+    """Full stereo pipeline with diarization: "You" on the mic, and the two people on
+    the monitor channel as two speakers — neither merged into one nor split into more.
     """
     if not e2e_settings.hf_token.get_secret_value():
-        pytest.skip("TAPEBACK_HF_TOKEN required for diarization test")
+        pytest.skip("HF_TOKEN required for diarization test")
 
     segments, _info, _raw = process_stereo_file(
         _STEREO_WAV, e2e_output_dir, e2e_settings, diarize=True
@@ -61,16 +59,8 @@ def test_stereo_pipeline_with_diarization(e2e_settings, e2e_output_dir):
     speakers = {s.speaker for s in segments if s.speaker is not None}
     assert "You" in speakers, "Must detect user on mic channel"
 
-    non_you_speakers = speakers - {"You"}
-    assert len(non_you_speakers) >= 1, "Must detect at least one remote speaker"
-
-    # Quality check: monitor channel should have exactly ONE speaker
-    # The test audio has a single video narrator — splitting into multiple
-    # speakers indicates a diarization quality issue.
-    assert len(non_you_speakers) == 1, (
-        f"Expected 1 remote speaker, got {len(non_you_speakers)}: {non_you_speakers}. "
-        "Diarization incorrectly split a single speaker into multiple."
-    )
+    remote = speakers - {"You"}
+    assert len(remote) == 2, f"Expected the 2 people on the monitor channel, got {sorted(remote)}"
 
 
 def test_process_command_with_real_audio(e2e_settings):

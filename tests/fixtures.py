@@ -175,13 +175,14 @@ def stereo_wav(tmp_path):
 
 @pytest.fixture
 def e2e_settings(tmp_path):
-    """Settings for e2e tests with HF token from environment."""
+    """Settings for e2e tests, with the HF token from HF_TOKEN.
+
+    Only HF_TOKEN: isolate_settings_sources has already removed every TAPEBACK_
+    variable by the time this runs, so TAPEBACK_HF_TOKEN could never reach it.
+    """
     vault = tmp_path / "vault"
     vault.mkdir()
-    return Settings(
-        vault_path=vault,
-        hf_token=SecretStr(os.environ.get("TAPEBACK_HF_TOKEN", os.environ.get("HF_TOKEN", ""))),
-    )
+    return Settings(vault_path=vault, hf_token=SecretStr(os.environ.get("HF_TOKEN", "")))
 
 
 @pytest.fixture
