@@ -44,7 +44,8 @@ and Arch packages in containers, as CI does — that needs docker and
 
   Subsections are Security / Added / Changed / Fixed / Removed / Docs; changes to
   documentation alone go under `Docs`.
-- **Do not touch the version** — not in `pyproject.toml`, `uv.lock` or `packaging/`.
+- **Do not touch the version** — not in `pyproject.toml`, `uv.lock`, `packaging/` or README's
+  install commands.
   The maintainer's `scripts/release.sh` writes it everywhere at release time and turns
   `[Unreleased]` into the dated section; a PR that bumps it fails the tests.
 

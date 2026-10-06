@@ -79,7 +79,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 
 - Semantic Versioning: MAJOR.MINOR.PATCH
 - **Between releases the top CHANGELOG section is always `## [Unreleased]`.** It claims no number, so a branch has nothing to decide — two branches that each opened `## [0.9.9]` with their own date once merged into a conflict over a number neither had the right to pick.
-- **A branch never touches the version** — not `pyproject.toml`, not `uv.lock`, not `packaging/`. Only `scripts/release.sh` writes it, into every copy at once; `tests/test_release_scripts.py` fails a PR in which the copies disagree.
+- **A branch never touches the version** — not `pyproject.toml`, not `uv.lock`, not `packaging/`, not the install commands in README. Only `scripts/release.sh` writes it, into every copy at once; `tests/test_release_scripts.py` fails a PR in which the copies disagree.
 - **A CHANGELOG entry lands by command, not by editing the file:** `python3 scripts/changelog_add.py Fixed "- **Topic.** What changed."` (or `--file entry.md`). It writes into `[Unreleased]`, creates the subsection in the order Security / Added / Changed / Fixed / Removed / Docs, and refuses a section a tag has closed. What it cannot decide stays with you:
   - the text — passed verbatim, so hand it a finished markdown bullet (dry it in Chekhov style);
   - the subsection — documentation-only changes go under `### Docs`;

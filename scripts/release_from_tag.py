@@ -11,6 +11,9 @@ checked for free. `publish.yml` runs this before anything is built or uploaded:
   plain message, than as a failed install halfway through the publish job.
 * **every PKGBUILD must agree.** `scripts/bump-version.sh` writes them; a release
   that skipped it ships AUR packages pointing at the previous tarball.
+* **README's install commands must agree.** They download a release by name, so a
+  stale one installs an old version for everyone who copies them — they said 0.9.5
+  through three more releases.
 * **the CHANGELOG must have a non-empty section for it.** That section IS the
   release notes, and notes written after the release never get written.
 
@@ -30,6 +33,11 @@ import tomllib
 _TAG = re.compile(r"^v(\d+\.\d+\.\d+)$")
 _LOCKED = re.compile(r'^name = "tapeback"\nversion = "(?P<version>[^"]+)"', re.M)
 _PKGVER = re.compile(r"^pkgver=(?P<version>\S+)$", re.M)
+# The version in README's install commands: the release URL and the package file names.
+# The same two patterns scripts/bump-version.sh rewrites.
+_README_VERSION = re.compile(
+    r"releases/download/v(?P<url>\d+\.\d+\.\d+)/|tapeback(?:-[a-z]+)?_(?P<file>\d+\.\d+\.\d+)_"
+)
 
 
 def version_of_tag(tag: str) -> str:
@@ -67,6 +75,12 @@ def pkgbuild_versions(root: pathlib.Path) -> dict[str, str]:
     return found
 
 
+def readme_versions(root: pathlib.Path) -> set[str]:
+    """Every version README's install commands name; empty if it names none."""
+    text = (root / "README.md").read_text(encoding="utf-8")
+    return {m["url"] or m["file"] for m in _README_VERSION.finditer(text)}
+
+
 def changelog_notes(root: pathlib.Path, version: str) -> str:
     """The `## [X.Y.Z]` section, verbatim, without its heading or date."""
     text = (root / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -98,6 +112,9 @@ def check(root: pathlib.Path, tag: str) -> str:
     if locked != version:
         raise SystemExit(f"tag {tag} disagrees with uv.lock ({locked}) — run `uv lock`")
     stale = {path: found for path, found in pkgbuild_versions(root).items() if found != version}
+    readme = readme_versions(root)
+    if readme - {version}:
+        stale["README.md"] = ", ".join(sorted(readme))
     if stale:
         listed = ", ".join(f"{path} ({found})" for path, found in stale.items())
         raise SystemExit(f"tag {tag} disagrees with {listed} — run scripts/bump-version.sh")
