@@ -10,6 +10,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+## [0.9.9] — 2026-10-06
+
 ### Security
 - In-progress recordings no longer live in `/tmp/tapeback`. That path sits in a world-writable directory and was created with `mkdir(exist_ok=True, mode=0o700)`, which sets the mode only when it actually creates the directory — an existing one was accepted with no check of owner, mode or symlink. On a shared machine another local user could pre-create it and then read every meeting: raw microphone and system audio, captured before any masking applies. Sessions now go to `~/.local/state/tapeback/sessions` (on disk, user-owned, kept across a reboot so an interrupted meeting can still be processed) or wherever `TAPEBACK_SESSIONS_DIR` points, and the directory is verified private before use rather than assumed to be. This also ends recordings failing on a quota-limited tmpfs `/tmp`.
 
