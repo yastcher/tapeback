@@ -8,8 +8,10 @@ import signal
 import stat
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TypedDict
+from zoneinfo import ZoneInfo
 
 from tapeback import const
 from tapeback.settings import Settings
@@ -215,6 +217,21 @@ def _resolve_source_via_pactl() -> str:
     return default_source
 
 
+def _meeting_time(settings: Settings, now: datetime.datetime) -> datetime.datetime:
+    """`now` on the meeting's clock: TAPEBACK_TIMEZONE, else the machine's own zone.
+
+    The session name becomes the note's file name and its date and time, so it has to
+    read as the user's clock. UTC filed a late meeting under the next day (issue #15).
+    """
+    if settings.timezone:
+        return now.astimezone(ZoneInfo(settings.timezone))
+    return now.astimezone()
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC)
+
+
 def _process_running(pid: int) -> bool:
     """Whether a recorder process is still running.
 
@@ -278,9 +295,15 @@ def _wait_and_kill(pids: list[int], timeout: float = 5.0) -> None:
 
 
 class Recorder:
-    def __init__(self, state_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        state_dir: Path | None = None,
+        clock: Callable[[], datetime.datetime] = _utc_now,
+    ) -> None:
         self._state_dir = state_dir or _state_dir()
         self._session_file = self._state_dir / const.FILE_SESSION
+        # The current instant; a test fixes it to name a session deterministically.
+        self._clock = clock
 
     @property
     def session_file(self) -> Path:
@@ -303,8 +326,9 @@ class Recorder:
 
         monitor_source, mic_source = detect_devices(settings)
 
+        started = _meeting_time(settings, self._clock())
         if session_name is None:
-            session_name = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d_%H-%M-%S")
+            session_name = started.strftime("%Y-%m-%d_%H-%M-%S")
         else:
             validate_session_name(session_name)
 
@@ -342,7 +366,7 @@ class Recorder:
             "session_name": session_name,
             "monitor_path": str(monitor_path),
             "mic_path": str(mic_path),
-            "started_at": datetime.datetime.now(datetime.UTC).isoformat(),
+            "started_at": started.isoformat(),
         }
         self._session_file.write_text(json.dumps(session_data, indent=2))
 

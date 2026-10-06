@@ -298,6 +298,27 @@ def fake_parecord(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def system_timezone():
+    """Set the machine's time zone for one test: `system_timezone("Asia/Tokyo")`.
+
+    The C library reads TZ only on tzset(), so the zone is applied with it — and
+    restored with it too: a monkeypatched TZ would be put back after this fixture's
+    teardown, too late for the tzset that has to follow it."""
+    original = os.environ.get("TZ")
+
+    def _set(zone: str) -> None:
+        os.environ["TZ"] = zone
+        time.tzset()
+
+    yield _set
+    if original is None:
+        os.environ.pop("TZ", None)
+    else:
+        os.environ["TZ"] = original
+    time.tzset()
+
+
+@pytest.fixture
 def cpu_only(monkeypatch):
     """No GPU for a flow whose model is a stand-in: CUDA would only add a real nvidia-smi
     poll, and make the run depend on the machine it happens to be on."""

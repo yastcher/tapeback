@@ -28,6 +28,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The test suite no longer writes run records and resume-cache entries into your real `~/.local/share/tapeback`, where they evicted real ones. Development-only.
 
 ### Changed
+- Recordings are named in local time, not UTC: the note's file name, date and time. `TAPEBACK_TIMEZONE` sets another zone.
 - `TAPEBACK_WHISPER_MODEL` now emits a `FutureWarning` (visible by default) instead of a hidden `DeprecationWarning`.
 - `start` / `stop` / `process` print one stderr line when a remote STT backend is enabled, so uploads are not silent (live mode notes that audio is uploaded during the meeting and again after stop).
 - Releases are cut by `scripts/release.sh patch|minor|major`, which refuses a tree `scripts/pre_release_qa.sh` has not passed (gate, e2e quality, .deb smoke). The version and the dated CHANGELOG section are written only there; between releases new entries go under `[Unreleased]` via `scripts/changelog_add.py`. `scripts/gate.sh` runs the CI checks locally. Development-only; released packages are unaffected.

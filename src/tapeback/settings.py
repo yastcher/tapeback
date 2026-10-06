@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Literal, Self
 from warnings import warn
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tapeback._stt_caps import openai_capabilities_for
@@ -191,6 +192,9 @@ class Settings(BaseSettings):
     # (~/.local/state/tapeback/sessions). Must be private to this user — see
     # recorder.session_root().
     sessions_dir: Path | None = None
+    # Time zone for naming a recording, and so for the note's file name, date and time.
+    # None → the machine's own zone. An IANA name: Europe/Madrid, UTC, ...
+    timezone: str | None = None
 
     # HuggingFace (for pyannote). SecretStr prevents leakage in repr/str/model_dump.
     hf_token: SecretStr = SecretStr("")
@@ -260,6 +264,22 @@ class Settings(BaseSettings):
         if self.stt_backend == "openai":
             openai_capabilities_for(model)
         return self
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, value: str | None) -> str | None:
+        """Refuse an unknown zone when settings load, not at the first recording.
+        Empty means unset, as an empty variable in a .env file usually does."""
+        if not value:
+            return None
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(
+                f"unknown time zone {value!r} in TAPEBACK_TIMEZONE; "
+                "use an IANA name such as Europe/Madrid or UTC"
+            ) from exc
+        return value
 
     @model_validator(mode="after")
     def _validate_live_chunking(self) -> Self:
