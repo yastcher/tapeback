@@ -6,8 +6,9 @@
 #
 # What it does:
 #   1. Reads the current version from pyproject.toml — the single source of truth.
-#   2. Writes the new one into pyproject.toml, uv.lock and every PKGBUILD in
-#      packaging/. The .deb configs read $VERSION at build time and need nothing.
+#   2. Writes the new one into pyproject.toml, uv.lock, every PKGBUILD in packaging/
+#      and README's install commands. The .deb configs read $VERSION at build time
+#      and need nothing.
 #   3. Rewrites the CHANGELOG: `## [Unreleased]` becomes `## [X.Y.Z] — YYYY-MM-DD`
 #      and a fresh empty `## [Unreleased]` goes on top for the next cycle.
 #
@@ -79,6 +80,14 @@ while IFS= read -r pkgbuild; do
   sed -i "s/^pkgver=.*/pkgver=$NEW/" "$pkgbuild"
   echo "  $pkgbuild → $NEW"
 done < <(git ls-files -- 'packaging/PKGBUILD' 'packaging/*/PKGBUILD')
+
+# README's install commands download a release by name. The two patterns are the ones
+# scripts/release_from_tag.py checks: the release URL and the package file names.
+sed -i -E \
+  -e "s#(releases/download/v)[0-9]+\.[0-9]+\.[0-9]+/#\1$NEW/#g" \
+  -e "s#(tapeback(-[a-z]+)?_)[0-9]+\.[0-9]+\.[0-9]+_#\1${NEW}_#g" \
+  README.md
+echo "  README.md → $NEW"
 
 python3 scripts/changelog_release.py "$NEW" ${ALLOW_EMPTY:+"$ALLOW_EMPTY"}
 

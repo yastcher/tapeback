@@ -17,22 +17,26 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Optional remote speech-to-text backends (`TAPEBACK_STT_BACKEND`; default stays `local` / faster-whisper). OpenAI is the first remote backend (`openai`). New settings: `TAPEBACK_STT_MODEL` (local default `large-v3-turbo`, OpenAI default `whisper-1`; `TAPEBACK_WHISPER_MODEL` is deprecated), `TAPEBACK_STT_API_KEY` (preferred over `OPENAI_API_KEY` for STT), and `TAPEBACK_STT_CONCURRENCY`. Remote STT requires `tapeback[stt]` (openai SDK; `tapeback[llm]` also installs it) and uploads meeting audio off the machine — PII masking cannot apply there. For the OpenAI backend, model capabilities are derived automatically: `whisper-1` keeps timestamps + local pyannote; `gpt-transcribe` skips local diarization (soft target ≤600s per upload, hard cap 1500s); `gpt-4o-transcribe-diarize` returns remote speaker labels (soft target ≤600s, hard cap 1400s). Long meetings are sliced under the 25 MiB size cap, the soft target, and the per-model hard duration cap.
 - Remote STT resilience knobs: `TAPEBACK_STT_TIMEOUT` (default 900s — diarize slices need minutes of server time), `TAPEBACK_STT_MAX_RETRIES`, `TAPEBACK_STT_RETRY_BASE_DELAY`, `TAPEBACK_STT_HEARTBEAT_SECONDS`, `TAPEBACK_STT_FFMPEG_TIMEOUT`. Uploads use an app-owned OpenAI client (SDK retries off), retry timeouts/transient HTTP errors with backoff and in-flight heartbeats, and cache finished chunks so `tapeback process` on the same WAV only re-uploads what is missing.
 
-### Fixed
-- `tapeback start` no longer crashes with `No recording in progress` when `tapeback stop` already finished the session from another terminal.
-- `tapeback start` also exits cleanly when a peer `stop` clears the session in the remaining window between the last `is_recording()` check and `recorder.stop()` (`NoActiveRecording`).
-- Remote OpenAI STT no longer dies silently after a long SDK default timeout (~30 minutes with no status): owned timeouts, retries, heartbeats, and shorter default slice targets keep near-max diarize uploads visible and recoverable instead of failing with nothing saved.
-- `TAPEBACK_WHISPER_MODEL` no longer leaks into remote backends: with `TAPEBACK_STT_BACKEND=openai` and no `TAPEBACK_STT_MODEL`, the deprecated alias is ignored and the OpenAI default `whisper-1` is used.
-- Unknown OpenAI STT model ids are rejected at settings load with an explicit allowlist (`whisper-1`, `gpt-transcribe`, `gpt-4o-transcribe-diarize`) instead of silently falling through to gpt-transcribe capabilities.
-- AUR: no stray `tapeback-debug` package, no debugedit errors on every bundled library.
-- Stopping a recording no longer waits five seconds. Stopped recorders stayed zombies, and the check took them for running.
-- The test suite no longer writes run records and resume-cache entries into your real `~/.local/share/tapeback`, where they evicted real ones. Development-only.
-
 ### Changed
 - Recordings are named in local time, not UTC: the note's file name, date and time. `TAPEBACK_TIMEZONE` sets another zone.
 - `TAPEBACK_WHISPER_MODEL` now emits a `FutureWarning` (visible by default) instead of a hidden `DeprecationWarning`.
 - `start` / `stop` / `process` print one stderr line when a remote STT backend is enabled, so uploads are not silent (live mode notes that audio is uploaded during the meeting and again after stop).
 - Releases are cut by `scripts/release.sh patch|minor|major`, which refuses a tree `scripts/pre_release_qa.sh` has not passed (gate, e2e quality, .deb smoke). The version and the dated CHANGELOG section are written only there; between releases new entries go under `[Unreleased]` via `scripts/changelog_add.py`. `scripts/gate.sh` runs the CI checks locally. Development-only; released packages are unaffected.
 - CI tests Python 3.13 and 3.14 on a pinned Ubuntu 24.04 runner. Packaging smoke adds Ubuntu 26.10 and an Arch build of the AUR package. The Gemini PR-review workflow is gone. Development-only.
+
+### Fixed
+- Stopping a recording no longer waits five seconds. Stopped recorders stayed zombies, and the check took them for running.
+- `tapeback start` no longer crashes with `No recording in progress` when `tapeback stop` already finished the session from another terminal.
+- `tapeback start` also exits cleanly when a peer `stop` clears the session in the remaining window between the last `is_recording()` check and `recorder.stop()` (`NoActiveRecording`).
+- Remote OpenAI STT no longer dies silently after a long SDK default timeout (~30 minutes with no status): owned timeouts, retries, heartbeats, and shorter default slice targets keep near-max diarize uploads visible and recoverable instead of failing with nothing saved.
+- `TAPEBACK_WHISPER_MODEL` no longer leaks into remote backends: with `TAPEBACK_STT_BACKEND=openai` and no `TAPEBACK_STT_MODEL`, the deprecated alias is ignored and the OpenAI default `whisper-1` is used.
+- Unknown OpenAI STT model ids are rejected at settings load with an explicit allowlist (`whisper-1`, `gpt-transcribe`, `gpt-4o-transcribe-diarize`) instead of silently falling through to gpt-transcribe capabilities.
+- AUR: no stray `tapeback-debug` package, no debugedit errors on every bundled library.
+- Release pages no longer carry a stray `Default.gitignore` file.
+- The test suite no longer writes run records and resume-cache entries into your real `~/.local/share/tapeback`, where they evicted real ones. Development-only.
+
+### Docs
+- README's install commands name the current release. They still said 0.9.5, and now follow every release.
 
 ## [0.9.8] — 2026-08-05
 

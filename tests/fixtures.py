@@ -233,6 +233,11 @@ def release_tree(tmp_path):
         "# Changelog\n\n## [Unreleased]\n\n## [1.2.3] — 2026-10-05\n\n### Fixed\n"
         "- The fix.\n\n## [1.2.2] — 2026-10-01\n\n### Added\n- The feature.\n"
     )
+    (tmp_path / "README.md").write_text(
+        "wget https://github.com/yastcher/tapeback/releases/download/v1.2.3/tapeback_1.2.3_amd64.deb\n"
+        "sudo apt install ./tapeback_1.2.3_amd64.deb\n"
+        "sudo apt install ./tapeback-tray_1.2.3_all.deb   # tray icon\n"
+    )
     return tmp_path
 
 

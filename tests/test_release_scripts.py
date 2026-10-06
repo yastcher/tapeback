@@ -1,6 +1,9 @@
 """A release tag must agree with every copy of the version, and carry its notes."""
 
+import os
 import re
+import shutil
+import subprocess
 
 import pytest
 
@@ -40,8 +43,14 @@ def test_anything_but_vXYZ_is_not_a_release_tag(release_tree, tag):
             "pkgver=1.2.2",
             r"packaging/tapeback-llm/PKGBUILD \(1\.2\.2\)",
         ),
+        (
+            "README.md",
+            "tapeback-tray_1.2.3_all",
+            "tapeback-tray_1.2.2_all",
+            r"README\.md \(1\.2\.2, 1\.2\.3\)",
+        ),
     ],
-    ids=["pyproject", "uv.lock", "PKGBUILD"],
+    ids=["pyproject", "uv.lock", "PKGBUILD", "README"],
 )
 def test_one_stale_copy_of_the_version_refuses_the_tag(release_tree, path, old, new, message):
     target = release_tree / path
@@ -83,6 +92,37 @@ def test_every_copy_of_the_version_agrees():
     declared = release_from_tag.declared_version(REPO_ROOT)
 
     assert set(release_from_tag.pkgbuild_versions(REPO_ROOT).values()) == {declared}
+    # README's install commands download a release by name: a stale one installs an
+    # old version for everyone who copies them (they said 0.9.5 through 0.9.8).
+    assert release_from_tag.readme_versions(REPO_ROOT) == {declared}
+
+
+def test_bump_version_moves_every_copy_the_tag_check_reads(release_tree):
+    """The two halves of a release meet: what bump-version.sh writes is exactly what
+    release_from_tag.py checks, copy for copy. A copy one of them forgets fails here."""
+    scripts = release_tree / "scripts"
+    scripts.mkdir()
+    for name in ("bump-version.sh", "changelog_release.py"):
+        shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
+    changelog = release_tree / "CHANGELOG.md"
+    changelog.write_text(
+        changelog.read_text().replace(
+            "## [Unreleased]\n", "## [Unreleased]\n\n### Fixed\n- Next.\n"
+        )
+    )
+    # bump-version.sh finds the PKGBUILDs through git: tracked ones only.
+    subprocess.run(["git", "init", "-q"], cwd=release_tree, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=release_tree, check=True)
+
+    subprocess.run(
+        [scripts / "bump-version.sh", "patch"],
+        cwd=release_tree,
+        env=os.environ | {"RELEASING": "1"},
+        capture_output=True,
+        check=True,
+    )
+
+    assert release_from_tag.check(release_tree, "v1.2.4") == "### Fixed\n- Next."
 
 
 def test_local_deb_smoke_installs_into_the_images_ci_does():
