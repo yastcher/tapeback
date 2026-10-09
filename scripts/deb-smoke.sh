@@ -21,11 +21,12 @@ scripts/build-deb.sh "dist/tapeback-$version-py3-none-any.whl"
 
 for image in "${SMOKE_IMAGES[@]}"; do
   printf '── %s\n' "$image"
-  docker run --rm -v "$PWD/dist:/dist:ro" "$image" bash -c '
+  docker run --rm -v "$PWD/dist:/dist:ro" -v "$PWD/tests/smoke:/smoke:ro" "$image" bash -c '
     set -e
     apt-get update -qq
     apt-get install -y -qq /dist/tapeback_*.deb >/dev/null
     tapeback --version
     tapeback status
+    /smoke/transcribe.sh
   '
 done

@@ -10,6 +10,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Changed
+- The packaging stands transcribe a short two-voice recording with the installed package instead of stopping at `tapeback --version`, and run daily as well: a dependency release can break a published version with no commit here. Development-only.
+
+### Fixed
+- Fresh installs transcribe again. PyAV 19, out since September 29, broke faster-whisper's audio decoding with `open() got an unexpected keyword argument 'metadata_errors'`, and the 0.9.9 `.deb`, AUR and `pip` installs all took it. PyAV is now held below 19.
+- The `.deb` depends on `ca-certificates`. Without it, on a minimal Ubuntu 22.04, the first model download failed with `CERTIFICATE_VERIFY_FAILED`.
+
 ## [0.9.9] — 2026-10-06
 
 ### Security

@@ -2,6 +2,8 @@
 
 - 2026-10-06. Probe scripts built `Settings()` and silently read the developer's `.env` (a local clustering threshold of 0.85 skewed a whole sweep). Ad-hoc probes outside pytest get no isolation fixture: construct `Settings(_env_file=None)` and pass every knob explicitly.
 - 2026-10-06. A CLI flag was assumed from current docs (`uv lock --check`) and broke on the pinned uv 0.4.30. Verify a tool's flag against the installed version (`--help`, one dry run) before wiring it into a gate script.
+- 2026-10-09. The packaging stands were moved into the gate with the checks they had, `tapeback --version` and `tapeback status`, and nobody asked what those prove. 0.9.9 shipped a `.deb` with PyAV 19 inside, and the stand that installed it passed: neither command decodes audio. A stand has to run the product on real input; importing it proves only that it imports.
+- 2026-10-09. The Arch stand was presented as covering AUR packaging, but it builds only the base package. The first real `yay` upgrade showed what it could not see: the extras' pip rewrote files pacman owns, and `tapeback-cuda` had never been published. A packaging stand should install what users install (base plus extras) and end with `pacman -Qk`.
 
 ## What worked (patterns worth keeping)
 

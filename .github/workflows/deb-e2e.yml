@@ -2,9 +2,9 @@ name: deb-e2e
 
 # End-to-end test for the Debian/Ubuntu packaging path: build the .deb on
 # every PR that touches packaging-relevant files, then `apt install` it in a
-# matrix of containers and verify the wrapper + bundled Python actually run.
-# Catches regressions in build-deb.sh, nfpm configs, or src/ changes that
-# break the bundled venv before they reach a release tag.
+# matrix of containers and transcribe a recording with it (tests/smoke/).
+# Catches regressions in build-deb.sh, nfpm configs, src/ changes, or a
+# dependency release that breaks the bundled venv before they reach a user.
 
 on:
   push:
@@ -16,7 +16,14 @@ on:
       - "scripts/build-deb.sh"
       - "pyproject.toml"
       - "src/**"
+      - "tests/smoke/**"
       - ".github/workflows/deb-e2e.yml"
+  # Daily as well: the venv takes the newest dependencies when it is built, so a
+  # dependency release can break it with no commit here. PyAV 19 did, a week
+  # before 0.9.9 shipped with it.
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -87,6 +94,9 @@ jobs:
           - debian:13
           - debian:12
     steps:
+      # For tests/smoke/: the recording and the script that transcribes it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
       - name: Download .deb artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
@@ -98,7 +108,7 @@ jobs:
 
       - name: Smoke test on ${{ matrix.image }}
         run: |
-          docker run --rm -v "$PWD/dist:/dist" "${{ matrix.image }}" bash -c '
+          docker run --rm -v "$PWD/dist:/dist" -v "$PWD/tests/smoke:/smoke:ro" "${{ matrix.image }}" bash -c '
               set -e
               apt-get update -qq
               apt-get install -y -qq /dist/tapeback_*.deb
@@ -121,4 +131,6 @@ jobs:
               tapeback --version
               echo "=== running tapeback status ==="
               tapeback status
+              echo "=== transcribing tests/smoke/speech.wav ==="
+              /smoke/transcribe.sh
           '
