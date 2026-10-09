@@ -24,9 +24,9 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # The `paths:` of the packaging workflows, plus the local script each stand runs.
-DEB_PATHS=("packaging/**" "scripts/build-deb.sh" "pyproject.toml" "src/**"
+DEB_PATHS=("packaging/**" "scripts/build-deb.sh" "pyproject.toml" "src/**" "tests/smoke/**"
   ".github/workflows/deb-e2e.yml" "scripts/deb-smoke.sh")
-ARCH_PATHS=("packaging/**" "pyproject.toml" "src/**" "scripts/arch-smoke.sh"
+ARCH_PATHS=("packaging/**" "pyproject.toml" "src/**" "scripts/arch-smoke.sh" "tests/smoke/**"
   ".github/workflows/arch-e2e.yml")
 
 all_stands=false

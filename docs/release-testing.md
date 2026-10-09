@@ -22,13 +22,19 @@ layers below are only needed when the cheaper layers have surprises.
 
 Runs `scripts/gate.sh --all` — the CI checks, then every packaging stand whatever
 the diff: the wheel and the .debs built and installed in clean containers on the
-`deb-e2e` images (`scripts/deb-smoke.sh`, `tapeback --version` and `tapeback status`
-in each), and the AUR package built and run in an Arch container
-(`scripts/arch-smoke.sh`) — then the e2e quality suite on real recordings. The same
-stands run in the everyday gate whenever a change touches what they cover.
+`deb-e2e` images (`scripts/deb-smoke.sh`), and the AUR package built and installed
+in an Arch container (`scripts/arch-smoke.sh`) — then the e2e quality suite on real
+recordings. In every container the installed package runs `tapeback --version`,
+`tapeback status` and `tests/smoke/transcribe.sh`, which transcribes a two-voice
+recording through the stereo pipeline with the `tiny` model and checks both
+voices reach the note. The same stands run in the everyday gate whenever a change
+touches what they cover.
 This catches the most common failure modes: broken shebangs, wrong venv paths,
-missing system dependencies, broken hooks. On success it stamps the tree, and
-`scripts/release.sh` tags only a stamped tree.
+missing system dependencies, broken hooks — and a dependency release that breaks
+transcription. CI's own runs install from `uv.lock`; the packages resolve their
+dependencies when they are built, as users get them, so only the stands see such a
+release. `--version` alone did not: the 0.9.9 stands passed with PyAV 19 inside.
+On success it stamps the tree, and `scripts/release.sh` tags only a stamped tree.
 
 Optional extras (these run pip install during postinst, ~30 s + network):
 
@@ -50,11 +56,12 @@ together (`tests/test_release_scripts.py` fails when the two lists differ).
 
 `.github/workflows/deb-e2e.yml` runs the same docker smoke on a 6-image matrix
 (Ubuntu 22.04 / 24.04 / 26.04 / 26.10, Debian 12 / 13) for any PR that touches
-`packaging/`, `scripts/build-deb.sh`, `pyproject.toml`, or `src/`.
+`packaging/`, `scripts/build-deb.sh`, `pyproject.toml`, `src/` or `tests/smoke/`.
 `.github/workflows/arch-e2e.yml` builds `packaging/PKGBUILD` from the PR's tree in
 an Arch container and runs it on the system Python (`scripts/arch-smoke.sh`). A
 regression in either pipeline never reaches a release tag — the PR turns red
-first.
+first. Both also run daily on `main`: a dependency release can break a version
+that is already published, with no PR to turn red.
 
 ### 3. Manual acceptance (run once per minor, or when behavior changes)
 

@@ -19,6 +19,11 @@ classifiers = [
 ]
 dependencies = [
     "faster-whisper>=1.0.0,<2",
+    # Not imported here: faster-whisper decodes audio with it. Its 1.2.1 passes
+    # av.open(metadata_errors=...), which PyAV 19 removed, and asks only for av>=11.
+    # Fixed in SYSTRAN/faster-whisper#1495, not released yet; lift the bound with the
+    # faster-whisper release that carries it.
+    "av>=11,<19",
     "pydantic-settings>=2.0.0,<3",
     "click>=8.0.0,<9",
 ]

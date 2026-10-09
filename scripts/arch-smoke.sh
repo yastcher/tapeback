@@ -36,3 +36,4 @@ sudo -u builder makepkg -si --noconfirm
 
 tapeback --version
 tapeback status
+/src/tests/smoke/transcribe.sh

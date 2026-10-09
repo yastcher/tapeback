@@ -1,8 +1,9 @@
 name: arch-e2e
 
 # End-to-end test for the AUR path: build packaging/PKGBUILD from the PR's tree in a
-# clean Arch container, install it, and run it on Arch's system Python. The script
-# is the same one scripts/pre_release_qa.sh runs before a release.
+# clean Arch container, install it, and transcribe a recording with it on Arch's
+# system Python. The script is the same one scripts/pre_release_qa.sh runs before a
+# release.
 
 on:
   push:
@@ -14,7 +15,14 @@ on:
       - "pyproject.toml"
       - "src/**"
       - "scripts/arch-smoke.sh"
+      - "tests/smoke/**"
       - ".github/workflows/arch-e2e.yml"
+  # Daily as well: the package resolves its dependencies when it is built, so a
+  # dependency release can break it with no commit here. PyAV 19 did, a week
+  # before 0.9.9 shipped with it.
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read

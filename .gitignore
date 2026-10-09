@@ -34,3 +34,4 @@ packaging/tapeback-0*
 # .deb build artifacts
 /build/
 /dist/
+tmp

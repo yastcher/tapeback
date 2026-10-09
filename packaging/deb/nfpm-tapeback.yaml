@@ -16,6 +16,10 @@ license: Apache-2.0
 depends:
   - ffmpeg
   - pulseaudio-utils
+  # The bundled Python trusts the system store in /etc/ssl/certs, and the Whisper
+  # model downloads over HTTPS on first use. Newer releases pull it in through
+  # ffmpeg; Ubuntu 22.04 does not, and the download failed with CERTIFICATE_VERIFY_FAILED.
+  - ca-certificates
 
 recommends:
   - nvidia-utils-560

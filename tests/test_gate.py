@@ -60,9 +60,10 @@ def test_one_failed_check_fails_the_gate_without_skipping_the_rest(run_gate):
         (["packaging/tapeback-llm/PKGBUILD"], [DEB_SMOKE, ARCH_SMOKE]),
         (["scripts/build-deb.sh"], [DEB_SMOKE]),
         (["scripts/arch-smoke.sh"], [ARCH_SMOKE]),
+        (["tests/smoke/speech.wav"], [DEB_SMOKE, ARCH_SMOKE]),
         (["docs/release-testing.md", "tests/test_cli.py"], []),
     ],
-    ids=["source", "packaging", "deb only", "arch only", "neither"],
+    ids=["source", "packaging", "deb only", "arch only", "smoke recording", "neither"],
 )
 def test_stands_run_when_the_diff_touches_their_paths(run_gate, changed, stands):
     result, commands = run_gate(changed=changed)
