@@ -10,6 +10,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+## [0.9.10] — 2026-10-10
+
 ### Changed
 - The packaging stands transcribe a short two-voice recording with the installed package instead of stopping at `tapeback --version`, and run daily as well: a dependency release can break a published version with no commit here. Development-only.
 
