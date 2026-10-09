@@ -15,6 +15,7 @@ No web servers, databases, Docker.
 - Always propose solutions that make sense. No workarounds or hacks unless explicitly asked.
 - Never delete or overwrite files without backup or user confirmation
 - Never delete files not tracked in git. Run `git ls-files <path>` before removing any file. If untracked — ask user.
+- **An agent's working files go to `./tmp`, never to `/tmp`.** Gate logs, PR and commit bodies, probe scripts and what they print, downloaded artifacts: `mkdir -p tmp` at the repo root (git-ignored) and write there. The user opens and edits them by a short path (`gh pr create --body-file tmp/pr.md`), and a meeting's audio or transcript stays in the user's home instead of a world-writable directory. Tests keep pytest's `tmp_path`; shipped code is not affected.
 - Never simplify architecture by removing existing features unless explicitly asked.
 - Any file with API keys, tokens or credentials is read-only.
 - The LLM summarizer is the usual thing that leaves the machine, and a meeting transcript is personal data. `summarizer.summarize()` is the masking seam for *text* (`_mask.py`) — a new outbound *text* call must go through it, never past it. Masking is opt-in (`TAPEBACK_MASK_PII`) because it is the user's data and their call. Opt-in remote STT (`TAPEBACK_STT_BACKEND`, currently `openai`) is a second outbound path that uploads *audio*; masking cannot apply there — document it clearly and keep the default local.
@@ -116,7 +117,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 6. **Always add a CHANGELOG entry** — under `[Unreleased]`, with `scripts/changelog_add.py`; never pick a version number.
 7. **Propose a commit message** (Conventional Commits). `git commit` is blocked, so the user runs it — hand them the exact message. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
 
-**Run the gate bare, into a file:** `scripts/gate.sh > "$log" 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate.
+**Run the gate bare, into a file:** `mkdir -p tmp && scripts/gate.sh > tmp/gate.log 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate.
 
 Do not finish until the gate, security review, and tech lead review pass.
 
