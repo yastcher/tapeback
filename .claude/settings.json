@@ -33,7 +33,6 @@
       "Bash(*uv run pytest*)",
       "Bash(*uv run ruff*)",
       "Bash(uv run ty*)",
-      "Bash(uv sync*)",
       "Bash(uv venv:*)",
       "Bash(python*)",
       "Bash(/opt/tapeback/bin/python:*)",
@@ -42,8 +41,19 @@
       "Bash(nvidia-smi:*)",
       "Bash(pipewire *)"
     ],
+    "ask": [
+      "Bash(uv sync*)"
+    ],
     "deny": [
       "Read(**/.env)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Bash(cat *.env)",
+      "Bash(head *.env)",
+      "Bash(tail *.env)",
+      "Bash(grep * .env)",
+      "Bash(cat *.pem)",
+      "Bash(cat *.key)",
       "Bash(rm -rf*)",
       "Bash(* rm *)",
       "Bash(sudo*)",

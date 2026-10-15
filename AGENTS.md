@@ -15,12 +15,17 @@ No web servers, databases, Docker.
 - Always propose solutions that make sense. No workarounds or hacks unless explicitly asked.
 - Never delete or overwrite files without backup or user confirmation
 - Never delete files not tracked in git. Run `git ls-files <path>` before removing any file. If untracked — ask user.
+- Before deleting a directory, grep its name in this file first: every session reads AGENTS.md, so a pointer here into a deleted path costs more than one in README.
 - **An agent's working files go to `./tmp`, never to `/tmp`.** Gate logs, PR and commit bodies, probe scripts and what they print, downloaded artifacts: `mkdir -p tmp` at the repo root (git-ignored) and write there. The user opens and edits them by a short path (`gh pr create --body-file tmp/pr.md`), and a meeting's audio or transcript stays in the user's home instead of a world-writable directory. Tests keep pytest's `tmp_path`; shipped code is not affected.
 - Never simplify architecture by removing existing features unless explicitly asked.
 - Any file with API keys, tokens or credentials is read-only.
+- **`.env`, certificates and private keys are never opened.** `tapeback status` (`uv run tapeback status` in the repo) shows which keys are set, never their values; `.env.example` is the template.
 - The LLM summarizer is the usual thing that leaves the machine, and a meeting transcript is personal data. `summarizer.summarize()` is the masking seam for *text* (`_mask.py`) — a new outbound *text* call must go through it, never past it. Masking is opt-in (`TAPEBACK_MASK_PII`) because it is the user's data and their call. Opt-in remote STT (`TAPEBACK_STT_BACKEND`, currently `openai`) is a second outbound path that uploads *audio*; masking cannot apply there — document it clearly and keep the default local.
 - When fixing linter/import issues: fix one file at a time, run tests after each change.
 - When renaming or refactoring across the project, grep for ALL old names (module, package, repo, env prefix, URLs) across the entire tree before considering the task done. Don't skip files that seem unimportant (PKGBUILD, .install, flake.nix, demo.tape, etc.).
+- Understand the purpose of a config file before changing it.
+- **Shared state changes only with agreement in the current turn:** `git push`, branches and tags, writes through the GitHub API or `gh`, publishing to PyPI or AUR, `uv sync` in the developer's environment. Print the exact command and wait for a yes.
+- AGENTS.md belongs to the maintainer: its sections are not restructured or removed without a request, and its edits go in a separate commit whose diff the maintainer reads at commit time.
 
 ## Architecture
 
@@ -47,8 +52,7 @@ No web servers, databases, Docker.
 - The existing codebase is not a reference to copy from blindly. Question patterns — if existing code has an antipattern, write better code, don't propagate it.
 - No magic numbers in logic. Thresholds, limits, sizes, ratios — all go into `settings.py` as named settings with `TAPEBACK_` env vars, or into `const.py` as module-level constants. Function parameter defaults are not a substitute for proper settings.
 - Values used in multiple modules go into `const.py`. Values used only in one module stay as module-level constants in that module. Configurable values go into `settings.py`.
-- No local imports inside functions. All imports at the top of the file.
-  Local imports are only acceptable when explicitly required by documentation (e.g. circular dependency workarounds).
+- No local imports inside functions. All imports at the top of the file. Local imports are only acceptable when explicitly required by documentation (e.g. circular dependency workarounds).
 
 ## Code style
 
@@ -67,15 +71,18 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - WAV helpers in `tests/fixtures.py`
 - E2E tests in `tests/test_e2e_quality.py` — run with `TAPEBACK_RUN_E2E=1`
 - Regression tests (bug-fix) in `tests/regressions/`
+- **Assert with a value the code under test cannot produce by accident.** A note that exists does not prove both channels were transcribed; the mic phrase under **You** does (`tests/smoke/transcribe.sh`).
+- **What leaves the machine is asserted on the serialized request body**, not on an object the test built itself; the absence of a secret or personal data is asserted over the whole body, not over a list of fields.
+- **A setup path hides the branch a regression was written for.** Walk the lifecycle, but test every independently required branch on its own as well, without a neighbour that creates its postcondition first.
+- **"Rerun and it passed" reads as "go find the cause".** A test red on one machine and green on another reads the environment: find what it reads (in 2026-10 twelve transcriber tests read the real GPU's free VRAM).
 - **Hardcode expected values in tests**: don't reuse the same constant in test and production code. If `const.SPEAKER_YOU = "You"`, the test should assert `== "You"`, not `== const.SPEAKER_YOU`.
 - **Assert exact values, not ranges**: `assert count == 2`, not `assert count >= 1`. Weak assertions hide bugs. If an assertion has to be loose, the test is measuring the wrong thing — fix the seam instead (e.g. inject a clock) rather than weakening the assert.
 - **Boundary values**: test the exact boundary (`==`), one below and one above. A `>=` in production code must have a test where left equals right.
 - **Test both branches of conditionals**: if code has `if x: A else: B`, test both paths.
 - **Isolation by construction, never by cleanup**: a test must not depend on leftover state from another test. Scope every assertion to what the test itself created. Nothing a test writes may land in the developer's home: the autouse `isolate_user_dirs` points `XDG_STATE_HOME` and `XDG_DATA_HOME` into the test's tmp dir.
-- **Bug fix workflow**: every fix MUST start with a failing test that reproduces the bug.
-  Write the test first, verify it fails, then apply the fix and verify the test passes.
-  This prevents regressions and documents the exact failure scenario.
+- **Bug fix workflow**: every fix MUST start with a failing test that reproduces the bug. Write the test first, verify it fails, then apply the fix and verify the test passes. This prevents regressions and documents the exact failure scenario.
 - **No test may reach a live vendor.** The autouse `isolate_settings_sources` fixture cuts off `.env`, every `TAPEBACK_*` variable, and every provider key in `summarizer._PROVIDER_ENV_VARS` — those are read under their own names (`ANTHROPIC_API_KEY`, ...), so a prefix sweep alone leaves them live. Drive the list off the production mapping, never a copy: a new provider must be isolated when it is added, not when someone remembers. A forgotten mock must then fail, not bill. Live vendors only under `TAPEBACK_RUN_E2E=1`.
+- **Ad-hoc probes and benchmarks get no isolation fixture**: they read the developer's `.env` and every `TAPEBACK_*` variable. Build `Settings(_env_file=None)` and pass every knob the result depends on; a local clustering threshold of 0.85 once skewed a whole sweep.
 
 ## Versioning & releases
 
@@ -97,8 +104,23 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - Conventional commits (feat:, fix:, docs:, refactoring:)
 - Always PR, never push to main. The one exception is `scripts/release.sh`, run by the maintainer: the release commit is mechanical and has nothing to review.
 - **Do not run git commit, checkout, reset, clean, stash, rebase** — these are blocked in settings.json. Ask user if needed.
-- Max ~500 lines of diff per commit — stop and propose a commit before continuing
+- Max ~500 lines of diff and ~15 files per commit — stop and propose a commit before continuing. A separable refactor, its tests and its docs go in separate commits; inseparable code and test travel together, so no knowingly broken commit is born.
 - Always work in the current branch — never switch branches
+- Don't run git network operations you don't need (remote, fetch): work with the local state.
+
+## Workflow
+
+- **Don't report before the proof.** "Done", "passes", "released" only after the command that shows it has finished and its output was read; an unknown cause is "don't know yet" plus what was checked; a PR goes out only after a green gate.
+- **A deny blocks: stop and ask.** Don't split the command to get around it, and don't chain a destructive verb with diagnostics via `&&`: the compound command is refused whole.
+- **A tool's behaviour is checked by experiment, our own code by grep.** Check a flag against the installed version (`--help`, one dry run) before wiring it into a script: `uv lock --check`, taken from current docs, does not exist in the local uv 0.4.30.
+- **The shortest supported path, already described in the repo.** If permissions, the sandbox, docker, credentials or configuration get in the way, stop and ask for them to be fixed; don't build a parallel service, a stand-in or a workaround.
+- **Change only the minimal cone of the current step.** No drive-by refactors, reformatting, renames, rewritten tests or docs "while at it". Before widening the scope, look at `git diff --stat`, say why the extra files are needed, and finish or split off what is already started.
+- **A bug goes first.** A found defect is fixed before the started feature continues; if the fix needs a product decision that does not exist yet, it goes to `docs/spec/BACKLOG.md` marked as such, not silently.
+- **The maintainer's technical proposals are hypotheses, not a spec.** When implementation shows details the proposal lacks (data, migrations, who changes it and how), stop, lay out the options with their consequences and ask. Only a direct "do exactly this" is carried out without question.
+- **A measurement, decision or found defect goes into `docs/spec/` or `docs/spec/BACKLOG.md` right away**, not at the end of the session: the context gets compacted, the files stay.
+- **Read-only work goes to a subagent:** searching, inventory, comparing files, reading logs, waiting for a state. Edits, fixes and writes to external systems stay with whoever owns the result. Model names are not written into rules: they age faster than the rules.
+- **Bash: absolute paths, no `cd`.** `cd` in the same command as a file read hits the `.env` read deny, since the harness cannot prove the path is not the denied one; use `git -C` and `uv run --directory` instead.
+- **Wait for a background task by PID** (`while kill -0 <pid>`), not by `pgrep -f <name>`: the pattern also matches the grep itself and its neighbours.
 
 ## Never do
 
@@ -110,14 +132,15 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 
 0. `git diff --stat` — assess scope of changes
 1. `uv run ruff check --fix` and `uv run ruff format` — the fixers; the gate only checks.
-2. **`scripts/gate.sh`** — CI step for step (`tests/test_gate.py` keeps the two in sync): the checks always, the `.deb` and Arch stands when the diff against `origin/main` touches the paths their workflows filter on — the same minutes CI would spend, spent before the push. The stands need docker and nfpm. The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye.
+2. **`scripts/gate.sh`** — CI step for step (`tests/test_gate.py` keeps the two in sync): the checks always, the `.deb` and Arch stands when the diff against `origin/main` touches the paths their workflows filter on — the same minutes CI would spend, spent before the push. The stands need docker and nfpm. The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye. A "known" failure is not an exemption.
 3. Security review (see checklist below)
 4. **Tech lead review**: re-read your own diff as a strict reviewer. Look for overengineering, antipatterns copied from existing code, unnecessary complexity, and assertions weakened to make a test pass. Fix what you find before finishing.
-5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume.
+5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume. Docs change in the same task, but only those whose facts changed; one fact lives with one owner, and the others link to it instead of retelling it.
 6. **Always add a CHANGELOG entry** — under `[Unreleased]`, with `scripts/changelog_add.py`; never pick a version number.
 7. **Propose a commit message** (Conventional Commits). `git commit` is blocked, so the user runs it — hand them the exact message. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
+8. **Name what you ran**, with what result, and which risks remain open.
 
-**Run the gate bare, into a file:** `mkdir -p tmp && scripts/gate.sh > tmp/gate.log 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate.
+**Run the gate bare, into a file:** `mkdir -p tmp && scripts/gate.sh > tmp/gate.log 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate. Never start a second gate over a running one.
 
 Do not finish until the gate, security review, and tech lead review pass.
 
@@ -125,11 +148,12 @@ Do not finish until the gate, security review, and tech lead review pass.
 
 Before completing any change, verify:
 
-- **P0 (critical)**: No hardcoded secrets/tokens/passwords. No `shell=True` in subprocess. No user input in SQL/commands.
-- **P1 (high)**: File paths validated. Temp files use restrictive permissions. API keys not leaked in logs/errors.
-- **P2 (medium)**: Input validated at system boundaries. Error messages don't expose internals. Dependencies up to date.
+- **P0 (critical)**: No hardcoded secrets/tokens/passwords. No secrets or tokens in logs, output or error messages, ours or another app's: a foreign `.env` once printed its tokens through a validation error. No `shell=True` in subprocess. No user input in SQL/commands.
+- **P1 (high)**: File paths validated. Temp files use restrictive permissions.
+- **P2 (medium)**: Input validated at system boundaries. Error messages don't expose internals. Dependencies up to date. No swallowed exceptions (bare `except`, `pass` in `except`).
 
 ## Gotchas
 
 - **Everything committed to git is in English** — code, comments, logs, README, CHANGELOG, AGENTS.md, specs in `docs/spec/`, commit messages. Chat replies to the user follow the user's language; files do not.
-- At the end of each non-trivial session, suggest 1–3 items for .claude/insights-inbox.md
+- At the end of each non-trivial session, write 1–3 items into `.claude/insights-inbox.md` right away, without asking: only what will improve the next piece of work; with nothing worth it, write nothing.
+- A spec cites code as `file:line`, not from memory. Closing it, run its criteria as measurements, not a checklist of finished phases: a phase closed by reasoning instead of code must become a test.

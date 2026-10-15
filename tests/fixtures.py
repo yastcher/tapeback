@@ -102,6 +102,23 @@ def isolate_settings_sources(monkeypatch):
 
 
 @pytest.fixture
+def real_env_files(tmp_path, monkeypatch):
+    """Settings' two .env files as in production, inside the test's tmp dir.
+
+    The user config and the .env of the directory tapeback runs in, both empty.
+    Returns (user_config, working_dir); the test is already chdir'ed into working_dir.
+    """
+    user_config = tmp_path / "config" / "tapeback" / ".env"
+    user_config.parent.mkdir(parents=True)
+    user_config.touch()
+    working_dir = tmp_path / "project"
+    working_dir.mkdir()
+    monkeypatch.setitem(Settings.model_config, "env_file", (user_config, ".env"))
+    monkeypatch.chdir(working_dir)
+    return user_config, working_dir
+
+
+@pytest.fixture
 def tmp_vault(tmp_path):
     """Temporary Obsidian vault for tests."""
     vault = tmp_path / "vault"

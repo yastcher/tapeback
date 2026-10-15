@@ -170,6 +170,31 @@ def test_status_command(runner, vault_env):
         assert "Recording in progress: 2026-03-20_10-00-00" in result.output
 
 
+def test_status_says_a_key_is_set_without_showing_it(runner, real_env_files):
+    """status answers "is my key configured?", so nobody opens .env to find out."""
+    user_config, _ = real_env_files
+    user_config.write_text(
+        "TAPEBACK_LLM_PROVIDER=gemini\nTAPEBACK_LLM_API_KEY=fake-llm-key-0123\n"
+        "TAPEBACK_HF_TOKEN=fake-hf-token-0123\n"
+    )
+
+    result = runner.invoke(cli, ["status"])
+
+    assert result.exit_code == 0, result.exception
+    assert "LLM: gemini, key set" in result.output
+    assert "HF token: set" in result.output
+    assert "fake-llm-key-0123" not in result.output
+    assert "fake-hf-token-0123" not in result.output
+
+
+def test_status_says_when_no_key_is_set(runner, real_env_files):
+    result = runner.invoke(cli, ["status"])
+
+    assert result.exit_code == 0, result.exception
+    assert "LLM: anthropic, key not set" in result.output
+    assert "HF token: not set" in result.output
+
+
 # --- _stop_and_process (dual-channel pipeline) ---
 
 

@@ -201,12 +201,16 @@ TAPEBACK_HF_TOKEN=hf_your_token_here
 After transcription, tapeback can add a brief summary, action items, and key
 decisions using an LLM.
 
-Set an API key for at least one provider in `~/.config/tapeback/.env`:
+Set the key in `~/.config/tapeback/.env`:
 
 ```bash
 TAPEBACK_LLM_PROVIDER=gemini
-GEMINI_API_KEY=...
+TAPEBACK_LLM_API_KEY=...
 ```
+
+Or export the provider's own variable from the table below in your shell: tapeback
+reads those from the environment, not from the file. `tapeback status` shows
+whether a key is set, never the key.
 
 | Provider | Env var | Default model |
 |---|---|---|
@@ -219,7 +223,7 @@ GEMINI_API_KEY=...
 | `qwen` | `DASHSCOPE_API_KEY` | qwen-turbo |
 
 If the primary provider fails, tapeback automatically tries the next available
-provider (any provider with an API key set).
+provider (any provider whose variable is set in the environment).
 
 ### PII masking
 
@@ -282,7 +286,7 @@ tapeback stop                      Stop recording from another terminal
 tapeback tray                      System tray icon
 tapeback process <FILE> [--name N] Transcribe an existing audio file
 tapeback summarize <FILE>          Add LLM summary to transcript
-tapeback status                    Show recording status and settings
+tapeback status                    Show recording status, settings and which keys are set
 ```
 
 ```bash
@@ -355,7 +359,9 @@ Brief overview of the meeting.
 <summary><h2>Configuration reference</h2></summary>
 
 All settings via environment variables (prefix `TAPEBACK_`) or
-`~/.config/tapeback/.env` file.
+`~/.config/tapeback/.env` file. A `.env` in the directory you run tapeback from is
+read too and wins over the user file. Keys tapeback does not know are ignored
+without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 
 ### Core
 

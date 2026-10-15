@@ -1,15 +1,14 @@
 ## Friction (where the agent went wrong)
 
-- 2026-10-06. Probe scripts built `Settings()` and silently read the developer's `.env` (a local clustering threshold of 0.85 skewed a whole sweep). Ad-hoc probes outside pytest get no isolation fixture: construct `Settings(_env_file=None)` and pass every knob explicitly.
-- 2026-10-06. A CLI flag was assumed from current docs (`uv lock --check`) and broke on the pinned uv 0.4.30. Verify a tool's flag against the installed version (`--help`, one dry run) before wiring it into a gate script.
-- 2026-10-09. The packaging stands were moved into the gate with the checks they had, `tapeback --version` and `tapeback status`, and nobody asked what those prove. 0.9.9 shipped a `.deb` with PyAV 19 inside, and the stand that installed it passed: neither command decodes audio. A stand has to run the product on real input; importing it proves only that it imports.
+- 2026-10-15. The weekly insights review proposed harness edits that did not survive a check against HEAD. Its deny patterns `*.env*` also blocked the tracked `.env.example` (deny beats allow, so only a narrower pattern such as `*.env` works); it called the local uv 0.4.30 "pinned"; its line numbers were off by one or two; it deleted two inbox entries as "already rules" that were not (Arch stand: base plus extras and `pacman -Qk`; stress under CPU load); it read the 43 pytest warnings as noise, though they are one dbus-next deprecation that kills the tray on Python 3.15; and it missed that its own new probes rule is already broken by `scripts/bench_transcribe.py`. A review's proposals are hypotheses: verify each against HEAD before applying it.
 - 2026-10-09. The Arch stand was presented as covering AUR packaging, but it builds only the base package. The first real `yay` upgrade showed what it could not see: the extras' pip rewrote files pacman owns, and `tapeback-cuda` had never been published. A packaging stand should install what users install (base plus extras) and end with `pacman -Qk`.
 
 ## What worked (patterns worth keeping)
 
-- 2026-10-06. Counting a skipped e2e test as a failure in `pre_release_qa.sh` exposed a diarization regression that had been red, unseen, since pyannote 4 landed in v0.9.6.
+- 2026-10-05. Running the suite under CPU load found 2 flaky tests in 25 runs that a quiet machine never showed.
+
+- 2026-10-06. A skipped e2e test counts as a failure: the mechanism lives in `scripts/pre_release_qa.sh`.
 - 2026-10-06. Measuring final speaker counts on recordings with a known answer (four clips, two remote speakers each) located the defect in our own post-processing (a minor cluster bridging two speakers), not in pyannote, before any threshold was touched.
-- 2026-10-05. Switching a protection off and rerunning its flow test showed one test green for the wrong reason (ffmpeg's Popen reaped the zombies); running the suite under CPU load found 2 flaky tests in 25 runs.
 
 ## Doubts (not sure this should become a rule)
 

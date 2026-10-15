@@ -10,6 +10,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Added
+- `tapeback status` shows whether the LLM key and the HF token are set, never their values.
+
+### Fixed
+- tapeback no longer dies in a directory whose `.env` belongs to another app, and no longer prints that file's values, secrets included, in the error. Keys tapeback does not know are ignored.
+
+### Docs
+- The README's LLM setup puts the key in `TAPEBACK_LLM_API_KEY`. The provider's own variable (`GEMINI_API_KEY` and the rest) is read from the environment, never from the config file, so the documented file never gave summarization a key.
+
 ## [0.9.10] — 2026-10-10
 
 ### Changed

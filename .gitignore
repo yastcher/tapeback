@@ -1,5 +1,11 @@
 .idea/
+# Secrets / env: every .env variant, except the committed template
 .env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 venv
 .venv
 /__pycache__/
