@@ -99,6 +99,11 @@ def _resolve_api_key_for_provider(provider: str, settings: Settings) -> str:
     return os.environ.get(env_var, "") if env_var else ""
 
 
+def has_api_key(settings: Settings) -> bool:
+    """Whether the primary provider has a key; the key itself never leaves here."""
+    return bool(_resolve_api_key_for_provider(settings.llm_provider, settings))
+
+
 def _resolve_api_key(settings: Settings) -> str:
     """Resolve API key: TAPEBACK_LLM_API_KEY > provider-specific env var."""
     key = _resolve_api_key_for_provider(settings.llm_provider, settings)

@@ -9,6 +9,7 @@ import click
 from tapeback import const
 from tapeback.recorder import NoActiveRecording, Recorder, detect_devices, session_dir
 from tapeback.settings import Settings, get_settings
+from tapeback.summarizer import has_api_key
 
 
 def _echo_status(msg: str) -> None:
@@ -273,8 +274,8 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
 def status() -> None:
     """Show current recording status and settings.
 
-    Displays whether a recording is in progress, vault path,
-    Whisper model, device, and available audio sources.
+    Displays whether a recording is in progress, vault path, Whisper model,
+    device, which keys are set (never their values), and available audio sources.
     """
     settings = get_settings()
 
@@ -293,6 +294,11 @@ def status() -> None:
     if settings.stt_backend == "local":
         click.echo(f"Device: {settings.device}")
     click.echo(f"Language: {settings.language}")
+    # Whether a key is configured, never the key: the question people open .env for.
+    llm_key = "set" if has_api_key(settings) else "not set"
+    hf_token = "set" if settings.hf_token.get_secret_value() else "not set"
+    click.echo(f"LLM: {settings.llm_provider}, key {llm_key}")
+    click.echo(f"HF token: {hf_token}")
 
     if shutil.which("pactl"):
         click.echo("\nAudio sources:")

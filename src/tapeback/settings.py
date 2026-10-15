@@ -48,6 +48,11 @@ class Settings(BaseSettings):
         env_file=(Path.home() / ".config" / "tapeback" / ".env", ".env"),
         env_file_encoding="utf-8",
         populate_by_name=True,
+        # The second .env is whatever directory tapeback runs in, often another
+        # project's, and the user config may hold provider keys. pydantic-settings'
+        # default, "forbid", made each foreign key a validation error that printed
+        # its value: secrets of an unrelated app ended up in the terminal.
+        extra="ignore",
     )
 
     # Output directory (Obsidian vault or any folder)
