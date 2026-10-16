@@ -285,6 +285,13 @@ class Settings(BaseSettings):
             openai_capabilities_for(model)
         return self
 
+    @field_validator("vault_path", "run_log_dir", "resume_cache_dir", "sessions_dir")
+    @classmethod
+    def _expand_home(cls, value: Path | None) -> Path | None:
+        """`~` is the home directory, as in a shell: README's quick start writes the vault
+        that way, and neither a .env file nor pydantic expands it."""
+        return value.expanduser() if value is not None else None
+
     @field_validator("timezone")
     @classmethod
     def _validate_timezone(cls, value: str | None) -> str | None:
