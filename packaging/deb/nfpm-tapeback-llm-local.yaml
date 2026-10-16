@@ -1,0 +1,35 @@
+name: tapeback-llm-local
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: sound
+priority: optional
+maintainer: "Yast <yastcher@gmail.com>"
+description: |
+  Local LLM summaries for tapeback.
+  Bundles llama.cpp's server (the Vulkan build), which tapeback starts for each
+  summary and stops after it. The model downloads on the first summary. An NVIDIA
+  GPU is reached through its driver's Vulkan ICD; without a GPU the model runs on
+  the CPU.
+homepage: https://github.com/yastcher/tapeback
+license: Apache-2.0 AND MIT
+
+depends:
+  - tapeback-llm (= ${VERSION})
+  # What the release binaries link against: glibc 2.34 and GCC 12's libstdc++ (built on
+  # Ubuntu 22.04), OpenSSL 3 under either name, OpenMP, and the Vulkan loader.
+  - libc6 (>= 2.34)
+  - libstdc++6 (>= 12)
+  - libssl3 | libssl3t64
+  - libgomp1
+  - libvulkan1
+
+contents:
+  - src: ./build/llama.cpp
+    dst: /opt/tapeback/llama.cpp
+  # tapeback looks for llama-server on PATH and next to its own interpreter.
+  - src: /opt/tapeback/llama.cpp/llama-server
+    dst: /opt/tapeback/venv/bin/llama-server
+    type: symlink
+  - src: ./build/llama.cpp/LICENSE
+    dst: /usr/share/doc/tapeback-llm-local/LICENSE.llama.cpp

@@ -28,5 +28,7 @@ for image in "${SMOKE_IMAGES[@]}"; do
     tapeback --version
     tapeback status
     /smoke/transcribe.sh
+    apt-get install -y -qq /dist/tapeback-llm_*.deb /dist/tapeback-llm-local_*.deb >/dev/null
+    /smoke/llm-local.sh /opt/tapeback/venv/bin/llama-server
   '
 done

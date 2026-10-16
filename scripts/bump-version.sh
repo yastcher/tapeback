@@ -85,7 +85,7 @@ done < <(git ls-files -- 'packaging/PKGBUILD' 'packaging/*/PKGBUILD')
 # scripts/release_from_tag.py checks: the release URL and the package file names.
 sed -i -E \
   -e "s#(releases/download/v)[0-9]+\.[0-9]+\.[0-9]+/#\1$NEW/#g" \
-  -e "s#(tapeback(-[a-z]+)?_)[0-9]+\.[0-9]+\.[0-9]+_#\1${NEW}_#g" \
+  -e "s#(tapeback(-[a-z]+)*_)[0-9]+\.[0-9]+\.[0-9]+_#\1${NEW}_#g" \
   README.md
 echo "  README.md → $NEW"
 

@@ -271,6 +271,7 @@ def release_tree(tmp_path):
         "wget https://github.com/yastcher/tapeback/releases/download/v1.2.3/tapeback_1.2.3_amd64.deb\n"
         "sudo apt install ./tapeback_1.2.3_amd64.deb\n"
         "sudo apt install ./tapeback-tray_1.2.3_all.deb   # tray icon\n"
+        "sudo apt install ./tapeback-llm-local_1.2.3_amd64.deb   # local summaries\n"
     )
     return tmp_path
 
