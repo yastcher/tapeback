@@ -1,6 +1,8 @@
-"""The device and compute type a Whisper model runs on, decided again for every stage."""
+"""Where a model runs: the device, chosen again for every stage, and Whisper's compute
+type."""
 
 import sys
+from collections.abc import Callable
 
 from tapeback._gpu import get_free_vram_mib, wait_for_clamp_release
 from tapeback.settings import Settings
@@ -47,16 +49,16 @@ def resolve_compute_type(compute_type: str, device: str) -> str:
     return compute_type
 
 
-def _enough_vram(settings: Settings) -> bool:
-    """False if the card plainly cannot hold a model right now.
+def _enough_vram(floor_mib: int, work: str, report: Callable[[str], None]) -> bool:
+    """False if the card plainly cannot hold the model right now.
 
     This is prevention, not optimisation. A CUDA out-of-memory during model load
     **leaks the allocation**: ctranslate2 builds the model on the C++ side, and when the
     load fails partway the object is never destroyed and never reaches Python, so there
     is no handle to release. Measured, free VRAM went 3674 MiB -> 95 MiB and stayed
     there for the life of the process; neither dropping the exception's traceback nor
-    `CT2_CUDA_ALLOCATOR=cuda_malloc_async` recovers it. Everything afterwards — the
-    diarizer's own VRAM check included — then finds an empty card.
+    `CT2_CUDA_ALLOCATOR=cuda_malloc_async` recovers it. Everything afterwards then finds
+    an empty card.
 
     So the only reliable fix is to not attempt a load that cannot fit. The floor is
     deliberately crude: the smallest configuration measured here (large-v3-turbo in
@@ -65,19 +67,20 @@ def _enough_vram(settings: Settings) -> bool:
     actually recurs, which is a card already occupied by something else.
     """
     free_mib = get_free_vram_mib()
-    if free_mib is None or free_mib >= settings.min_free_vram_mib:
+    if free_mib is None or free_mib >= floor_mib:
         return True
-    print(
-        f"Warning: only {free_mib} MiB VRAM free, below the "
-        f"{settings.min_free_vram_mib} MiB needed to load a model — using CPU. "
-        "A previous CUDA out-of-memory leaks VRAM until the process restarts.",
-        file=sys.stderr,
+    report(
+        f"Warning: only {free_mib} MiB VRAM free, below the {floor_mib} MiB {work} "
+        "needs — using CPU. A previous CUDA out-of-memory leaks VRAM until the process "
+        "restarts."
     )
     return False
 
 
-def resolve_device(settings: Settings) -> str:
-    """Pick the device to actually run on, avoiding a thermally clamped GPU.
+def resolve_device(
+    settings: Settings, *, work: str, vram_floor_mib: int, report: Callable[[str], None]
+) -> str:
+    """Pick the device `work` actually runs on, avoiding a thermally clamped GPU.
 
     On a laptop sharing one heatsink between CPU and GPU, the controller responds to a
     hot *system* by cutting the GPU's power budget — measured here as 50 W dropping to
@@ -85,13 +88,15 @@ def resolve_device(settings: Settings) -> str:
     package at 93 C. It releases only on idle, and after sustained load it stayed
     latched for over 900 s.
 
-    Transcribing on a card in that state is strictly worse than using the CPU: measured
-    on the same clip, CPU 2.39x real time against 0.31x clamped, i.e. the CPU is ~8x
-    faster. Waiting it out is what turned a fifteen-minute job into a multi-hour one.
+    Running on a card in that state is worse than using the CPU: on the same clip,
+    transcription ran at 2.39x real time on the CPU against 0.31x clamped, ~8x faster;
+    diarization took 0.67x the recording's length on the CPU against 0.86-1.18x on the
+    clamped card in real runs. Waiting it out is what turned a fifteen-minute job into
+    a multi-hour one.
     """
     if settings.device != "cuda":
         return settings.device
-    if not _enough_vram(settings):
+    if not _enough_vram(vram_floor_mib, work, report):
         return "cpu"
     if not settings.thermal_clamp_check:
         return settings.device
@@ -103,21 +108,16 @@ def resolve_device(settings: Settings) -> str:
     #
     # Reported, not silent: a wait can legitimately last minutes, and a process that
     # prints nothing while it does is indistinguishable from one that has hung.
-    if wait_for_clamp_release(
-        settings.thermal_clamp_wait,
-        report=lambda message: print(message, file=sys.stderr),
-    ):
+    if wait_for_clamp_release(settings.thermal_clamp_wait, report=report):
         return "cuda"
     if not settings.thermal_clamp_cpu_fallback:
-        print(
-            "Warning: GPU is thermally clamped; transcription will be very slow. "
-            "Set TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK=true to use the CPU instead.",
-            file=sys.stderr,
+        report(
+            f"Warning: GPU is thermally clamped; {work} will be very slow. "
+            "Set TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK=true to use the CPU instead."
         )
         return "cuda"
-    print(
-        "Warning: GPU is thermally clamped and did not release — transcribing on CPU, "
-        "which is faster in this state. Let the machine idle to clear it.",
-        file=sys.stderr,
+    report(
+        f"Warning: GPU is thermally clamped and did not release — {work} runs on the CPU, "
+        "which is faster in this state. Let the machine idle to clear it."
     )
     return "cpu"

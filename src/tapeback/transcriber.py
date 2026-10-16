@@ -10,10 +10,10 @@ from faster_whisper import BatchedInferencePipeline, WhisperModel
 from huggingface_hub.errors import LocalEntryNotFoundError
 
 from tapeback import _resume, const
+from tapeback._device import resolve_compute_type, resolve_device
 from tapeback._gpu import free_gpu_memory, is_cuda_error, preload_cuda_libs
 from tapeback._isolated import transcribe_isolated
 from tapeback._timing import ProgressReporter, stage_timer
-from tapeback._whisper_device import resolve_compute_type, resolve_device
 from tapeback.models import Segment, Word
 from tapeback.settings import Settings
 
@@ -25,6 +25,10 @@ from tapeback.settings import Settings
 # See: https://github.com/PyAV-Org/PyAV — setup.py c_string_encoding directive.
 os.environ["LC_MESSAGES"] = "C"
 locale.setlocale(locale.LC_MESSAGES, "C")
+
+
+def _to_stderr(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 def _noop_status(_message: str) -> None:
@@ -80,7 +84,12 @@ class Transcriber:
             self._model = None
             self._batched = None
             return
-        self._device = resolve_device(settings)
+        self._device = resolve_device(
+            settings,
+            work="transcription",
+            vram_floor_mib=settings.min_free_vram_mib,
+            report=_to_stderr,
+        )
         if self._device == "cuda":
             # Make ctranslate2 (CUDA 12) find cuBLAS/cuDNN on CUDA 13 systems.
             preload_cuda_libs()

@@ -24,8 +24,8 @@ def _segment(start: float, end: float, text: str):
 
 @pytest.fixture
 def gpu_ready(monkeypatch):
-    monkeypatch.setattr("tapeback._whisper_device.wait_for_clamp_release", lambda *_a, **_k: True)
-    monkeypatch.setattr("tapeback._whisper_device.get_free_vram_mib", lambda: 4096)
+    monkeypatch.setattr("tapeback._device.wait_for_clamp_release", lambda *_a, **_k: True)
+    monkeypatch.setattr("tapeback._device.get_free_vram_mib", lambda: 4096)
 
 
 def _interrupting_segments(count_before_interrupt: int):

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from huggingface_hub.errors import LocalEntryNotFoundError
 
-from tapeback._whisper_device import resolve_compute_type
+from tapeback._device import resolve_compute_type
 from tapeback.transcriber import Transcriber
 
 
