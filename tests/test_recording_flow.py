@@ -19,7 +19,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tapeback.cli import cli
-from tests.fixtures import mock_whisper_by_channel, process_state
+from tests.fixtures import (
+    mock_pyannote_annotation,
+    mock_whisper_by_channel,
+    process_state,
+    requires_pyannote,
+)
 
 pytestmark = pytest.mark.usefixtures("cpu_only")
 
@@ -71,6 +76,53 @@ def test_start_then_ctrl_c_records_transcribes_and_cleans_up(
     # Processed, so nothing is left to recover and nothing is still recording.
     assert list(_sessions_root().iterdir()) == []
     assert not (Path(os.environ["XDG_STATE_HOME"]) / "tapeback" / "session.json").exists()
+
+
+@requires_pyannote
+def test_a_diarized_meeting_writes_its_transcript_once(
+    runner, vault_env, fake_parecord, ctrl_c_while_recording, monkeypatch
+):
+    """The note holds the diarized transcript alone. It used to print the raw
+    You/Other transcript first and the same text again with the speakers told apart."""
+    monkeypatch.setenv("TAPEBACK_HF_TOKEN", "hf_fake")
+    # The two remote voices are one synthetic tone, which the spectral merge would fuse.
+    monkeypatch.setenv("TAPEBACK_SPECTRAL_MERGE_THRESHOLD", "0")
+    meeting = mock_whisper_by_channel(
+        mic_segments=[(0.0, 2.0, "I will send the report.")],
+        monitor_segments=[
+            (
+                2.0,
+                4.0,
+                "Thanks a lot. See you Friday.",
+                [
+                    (2.0, 2.4, "Thanks"),
+                    (2.4, 2.6, "a"),
+                    (2.6, 3.0, "lot."),
+                    (3.0, 3.3, "See"),
+                    (3.3, 3.6, "you"),
+                    (3.6, 4.0, "Friday."),
+                ],
+            )
+        ],
+    )
+    # A second each: a shorter turn would join the speech around it.
+    turns = mock_pyannote_annotation([(2.0, 3.0, "SPEAKER_00"), (3.0, 4.0, "SPEAKER_01")])
+
+    with (
+        patch("tapeback.transcriber.WhisperModel", return_value=meeting),
+        patch("pyannote.audio.Pipeline.from_pretrained", return_value=lambda *_a, **_k: turns),
+    ):
+        result = runner.invoke(cli, ["start", SESSION, "--no-summarize", "--no-live"])
+
+    assert result.exit_code == 0, result.output + repr(result.exception)
+    note = (vault_env / "meetings" / f"{SESSION}.md").read_text()
+    assert note.count("See you Friday.") == 1
+    assert note.endswith(
+        "---\n\n"
+        "[00:00:00] **You:** I will send the report.\n\n"
+        "[00:00:02] **Speaker 1:** Thanks a lot.\n\n"
+        "[00:00:03] **Speaker 2:** See you Friday.\n"
+    )
 
 
 def test_failed_processing_keeps_the_recording_for_recovery(

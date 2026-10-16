@@ -6,13 +6,8 @@ import pytest
 from pydantic import SecretStr
 
 from tapeback.models import ActionItem, Summary
-from tapeback.settings import DEFAULT_MODELS, Settings
+from tapeback.settings import Settings
 from tapeback.summarizer import (
-    _PROVIDER_ENV_VARS,
-    _build_provider_chain,
-    _call_llm,
-    _get_model,
-    _resolve_api_key,
     extract_transcript_from_markdown,
     format_summary_markdown,
     inject_summary_into_markdown,
@@ -23,10 +18,37 @@ from tests.fixtures import (
     SAMPLE_MD,
     SAMPLE_MD_WITH_SUMMARY,
     VALID_LLM_RESPONSE,
-    HttpError,
     clear_all_provider_env_vars,
     mock_anthropic_response,
 )
+
+# A diarized note as tapeback wrote it before one transcript per note: the raw
+# You/Other transcript, then the diarized copy of the same text.
+TWO_SECTION_NOTE = """\
+---
+date: 2026-08-06
+---
+
+# Meeting 2026-08-06 12:00
+
+**Duration:** 15s | **Language:** en
+
+---
+
+## Transcript
+
+[00:00:00] **You:** Ship it on Friday.
+
+[00:00:05] **Other:** Then tests come first.
+
+---
+
+## Diarized Transcript
+
+[00:00:00] **You:** Ship it on Friday.
+
+[00:00:05] **Speaker 1:** Then tests come first.
+"""
 
 # --- format_summary_markdown ---
 
@@ -155,116 +177,23 @@ def test_extract_transcript_no_meeting_header():
     assert result == ""
 
 
-# --- API key resolution ---
+def test_extract_transcript_drops_the_raw_half_of_an_older_note():
+    """An older note printed the transcript twice; only the diarized copy is kept."""
+    result = extract_transcript_from_markdown(TWO_SECTION_NOTE)
 
-
-def test_api_key_resolution_tapeback_env(tmp_vault, monkeypatch):
-    """TAPEBACK_LLM_API_KEY takes priority over provider-specific env vars."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "provider-key")
-    settings = Settings(vault_path=tmp_vault, llm_api_key=SecretStr("tapeback-key"))
-
-    assert _resolve_api_key(settings) == "tapeback-key"
-
-
-@pytest.mark.parametrize("provider,env_var", list(_PROVIDER_ENV_VARS.items()))
-def test_api_key_resolution_provider_env(tmp_vault, monkeypatch, provider, env_var):
-    """Falls back to provider-specific env var when TAPEBACK_LLM_API_KEY is empty."""
-    monkeypatch.setenv(env_var, "test-key")
-    settings = Settings(vault_path=tmp_vault, llm_provider=provider, llm_api_key=SecretStr(""))
-
-    assert _resolve_api_key(settings) == "test-key"
-
-
-def test_api_key_missing_raises(tmp_vault, monkeypatch):
-    """No key anywhere → RuntimeError with instructions."""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    settings = Settings(vault_path=tmp_vault, llm_api_key=SecretStr(""))
-
-    with pytest.raises(RuntimeError, match="No API key"):
-        _resolve_api_key(settings)
-
-
-# --- Model defaults ---
-
-
-@pytest.mark.parametrize("provider,expected_model", list(DEFAULT_MODELS.items()))
-def test_get_model_defaults(tmp_vault, provider, expected_model):
-    """Each provider has a sensible default model."""
-    settings = Settings(vault_path=tmp_vault, llm_provider=provider, llm_model="")
-
-    assert _get_model(settings) == expected_model
-
-
-def test_get_model_explicit_override(tmp_vault):
-    """Explicit llm_model overrides provider default."""
-    settings = Settings(vault_path=tmp_vault, llm_provider="groq", llm_model="custom-model")
-
-    assert _get_model(settings) == "custom-model"
-
-
-# --- Provider chain building ---
-
-
-def test_build_provider_chain_primary_first(tmp_vault, monkeypatch):
-    """Primary provider appears first in chain."""
-    clear_all_provider_env_vars(monkeypatch)
-    settings = Settings(
-        vault_path=tmp_vault, llm_provider="groq", llm_api_key=SecretStr("main-key"), llm_model=""
+    assert result == (
+        "# Meeting 2026-08-06 12:00\n\n"
+        "**Duration:** 15s | **Language:** en\n\n"
+        "---\n\n"
+        "[00:00:00] **You:** Ship it on Friday.\n\n"
+        "[00:00:05] **Speaker 1:** Then tests come first.\n"
     )
-
-    chain = _build_provider_chain(settings)
-
-    assert len(chain) == 1
-    assert chain[0] == ("groq", "main-key", DEFAULT_MODELS["groq"])
-
-
-def test_build_provider_chain_includes_fallbacks(tmp_vault, monkeypatch):
-    """Chain includes all providers with available API keys."""
-    clear_all_provider_env_vars(monkeypatch)
-    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
-    settings = Settings(
-        vault_path=tmp_vault, llm_provider="anthropic", llm_api_key=SecretStr("ant-key")
-    )
-
-    chain = _build_provider_chain(settings)
-
-    providers = [p for p, _, _ in chain]
-    assert providers == ["anthropic", "groq", "gemini"]
-
-
-def test_build_provider_chain_skips_providers_without_keys(tmp_vault, monkeypatch):
-    """Providers without API keys are excluded from chain."""
-    clear_all_provider_env_vars(monkeypatch)
-    settings = Settings(vault_path=tmp_vault, llm_provider="anthropic", llm_api_key=SecretStr(""))
-
-    chain = _build_provider_chain(settings)
-
-    assert chain == []
-
-
-def test_build_provider_chain_explicit_model_for_primary_only(tmp_vault, monkeypatch):
-    """Explicit model setting applies only to primary provider."""
-    clear_all_provider_env_vars(monkeypatch)
-    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
-    settings = Settings(
-        vault_path=tmp_vault,
-        llm_provider="anthropic",
-        llm_api_key=SecretStr("ant-key"),
-        llm_model="claude-opus-4-20250514",
-    )
-
-    chain = _build_provider_chain(settings)
-
-    assert chain[0] == ("anthropic", "ant-key", "claude-opus-4-20250514")
-    assert chain[1] == ("groq", "groq-key", DEFAULT_MODELS["groq"])
 
 
 # --- Integration flow tests ---
 # Mock only at SDK boundary (anthropic.Anthropic / openai.OpenAI).
-# Exercises the full chain: _build_provider_chain → _call_llm →
-# _call_provider_with_retry → _call_llm_once → summarize → parse → format → inject.
+# Exercises the full chain: _llm.provider_chain → _llm.call → summarize → parse →
+# format → inject. The transport alone is in tests/test_llm.py.
 
 
 def test_summarize_to_markdown_flow(summarize_settings):
@@ -314,6 +243,7 @@ def test_summarize_openai_compatible_flow(tmp_vault, monkeypatch):
     mock_cls.assert_called_once_with(
         api_key="gsk-test-key",
         base_url="https://api.groq.com/openai/v1",
+        timeout=600.0,
     )
 
 
@@ -344,56 +274,6 @@ def test_summarize_resilience_flow(summarize_settings):
             "still not json"
         )
         summarize("transcript", summarize_settings)
-
-
-def test_provider_retry_and_fallback_flow(tmp_vault, monkeypatch):
-    """Rate limit retry, provider fallback, all-fail, empty chain."""
-    clear_all_provider_env_vars(monkeypatch)
-    monkeypatch.setenv("GROQ_API_KEY", "groq-key")
-    settings = Settings(
-        vault_path=tmp_vault, llm_provider="anthropic", llm_api_key=SecretStr("ant-key")
-    )
-
-    # 429 on anthropic → retry with backoff → succeed on second attempt
-    with (
-        patch("anthropic.Anthropic") as mock_ant,
-        patch("tapeback.summarizer.time.sleep") as mock_sleep,
-    ):
-        mock_ant.return_value.messages.create.side_effect = [
-            HttpError("rate limited", 429),
-            mock_anthropic_response(VALID_LLM_RESPONSE),
-        ]
-        result = _call_llm("system", "user", settings)
-    assert "Discussed the project plan" in result
-    mock_sleep.assert_called_once_with(5)
-
-    # Primary fails (500, non-retryable) → fallback to groq (openai-compatible)
-    groq_response = MagicMock()
-    groq_response.choices = [MagicMock(message=MagicMock(content="fallback ok"))]
-    with (
-        patch("anthropic.Anthropic") as mock_ant,
-        patch("openai.OpenAI") as mock_oai,
-    ):
-        mock_ant.return_value.messages.create.side_effect = HttpError("server error", 500)
-        mock_oai.return_value.chat.completions.create.return_value = groq_response
-        result = _call_llm("system", "user", settings)
-    assert result == "fallback ok"
-
-    # All providers fail → raises last exception
-    with (
-        patch("anthropic.Anthropic") as mock_ant,
-        patch("openai.OpenAI") as mock_oai,
-        pytest.raises(Exception, match="groq error"),
-    ):
-        mock_ant.return_value.messages.create.side_effect = HttpError("anthropic error", 500)
-        mock_oai.return_value.chat.completions.create.side_effect = HttpError("groq error", 500)
-        _call_llm("system", "user", settings)
-
-    # No providers at all → RuntimeError
-    clear_all_provider_env_vars(monkeypatch)
-    no_key_settings = Settings(vault_path=tmp_vault, llm_api_key=SecretStr(""))
-    with pytest.raises(RuntimeError, match="No LLM providers available"):
-        _call_llm("system", "user", no_key_settings)
 
 
 def test_maybe_summarize_end_to_end(tmp_vault, monkeypatch):
@@ -450,3 +330,19 @@ def test_maybe_summarize_end_to_end(tmp_vault, monkeypatch):
         maybe_summarize(md_file, settings_with_key)
     assert "## Summary" not in md_file.read_text()
     assert "Hello there." in md_file.read_text()
+
+
+def test_summary_of_an_older_note_sends_its_transcript_once(tmp_vault, summarize_settings):
+    md_file = tmp_vault / "meetings" / "2026-08-06_12-00-00.md"
+    md_file.parent.mkdir(parents=True)
+    md_file.write_text(TWO_SECTION_NOTE)
+
+    with patch("anthropic.Anthropic") as mock_cls:
+        create = mock_cls.return_value.messages.create
+        create.return_value = mock_anthropic_response(VALID_LLM_RESPONSE)
+        maybe_summarize(md_file, summarize_settings.model_copy(update={"summarize": True}))
+
+    sent = str(create.call_args)
+    assert sent.count("Ship it on Friday.") == 1
+    assert "**Other:**" not in sent
+    assert "**Speaker 1:** Then tests come first." in sent

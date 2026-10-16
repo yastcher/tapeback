@@ -148,16 +148,26 @@ def _strip_hallucinated_text(segment: Segment) -> Segment:
     )
 
 
+def _is_vad_artifact(segment: Segment) -> bool:
+    """Shorter than MIN_SEGMENT_DURATION as Whisper returned it.
+
+    A piece diarization rebuilt from a segment's words is measured by that segment:
+    the words of a longer segment can span less than a second.
+    """
+    duration = max(segment.end - segment.start, segment.source_duration or 0.0)
+    return duration < const.MIN_SEGMENT_DURATION
+
+
 def _format_segments_block(segments: list[Segment]) -> list[str]:
     """Format a list of segments into timecoded markdown lines.
 
     Low-confidence words (probability < 0.5) are marked with *italics*.
     """
-    long_enough = [s for s in segments if s.end - s.start >= const.MIN_SEGMENT_DURATION]
-    long_enough = [_strip_hallucinated_text(s) for s in long_enough]
-    long_enough = [s for s in long_enough if has_speech(s.text)]
-    long_enough = [_mark_low_confidence_words(s) for s in long_enough]
-    merged = _merge_consecutive_speakers(long_enough)
+    kept = [s for s in segments if not _is_vad_artifact(s)]
+    kept = [_strip_hallucinated_text(s) for s in kept]
+    kept = [s for s in kept if has_speech(s.text)]
+    kept = [_mark_low_confidence_words(s) for s in kept]
+    merged = _merge_consecutive_speakers(kept)
 
     lines: list[str] = []
     for start_time, speaker, text in merged:
@@ -170,35 +180,6 @@ def _format_segments_block(segments: list[Segment]) -> list[str]:
         lines.append("")
 
     return lines
-
-
-def _speaker_labels(block: list[str]) -> list[str]:
-    """Speaker labels in order of appearance, one per timecoded line."""
-    return [line.split("**")[1] for line in block if line.startswith("[") and "**" in line]
-
-
-def _adds_speaker_information(raw_block: list[str], diarized_block: list[str]) -> bool:
-    """True if the diarized rendering says something the raw one does not.
-
-    Diarization that only renames "Other" to "Speaker 1" produces a byte-for-byte
-    duplicate of the transcript — every file that carried the section was twice the
-    size for no extra information. It is worth a second section only when it actually
-    splits the conversation between speakers, i.e. when the run of labels differs in
-    shape rather than in wording.
-    """
-    if len(raw_block) != len(diarized_block):
-        return True
-    raw_labels = _speaker_labels(raw_block)
-    diarized_labels = _speaker_labels(diarized_block)
-    # Compare the grouping, not the names: "Other/Other" vs "Speaker 1/Speaker 1" is
-    # the same information, while "Other/Other" vs "Speaker 1/Speaker 2" is not.
-    return _label_shape(raw_labels) != _label_shape(diarized_labels)
-
-
-def _label_shape(labels: list[str]) -> list[int]:
-    """Map labels to the order they first appear, so naming does not matter."""
-    seen: dict[str, int] = {}
-    return [seen.setdefault(label, len(seen)) for label in labels]
 
 
 @dataclass(frozen=True)
@@ -220,19 +201,11 @@ class TranscriptMeta:
     partial: bool = False
 
 
-def format_markdown(
-    segments: list[Segment],
-    meta: TranscriptMeta,
-    raw_segments: list[Segment] | None = None,
-) -> str:
-    """Generate markdown with YAML front matter.
+def format_markdown(segments: list[Segment], meta: TranscriptMeta) -> str:
+    """Generate markdown with YAML front matter and one transcript.
 
-    Segments shorter than 1 second are filtered out (VAD artifacts).
+    Segments Whisper returned shorter than 1 second are filtered out (VAD artifacts).
     Each segment starts with [HH:MM:SS] timecode.
-
-    When raw_segments is provided, outputs two sections:
-    - "## Transcript" with raw (pre-diarization) segments
-    - "## Diarized Transcript" with diarized segments
     """
     # Parse date and time from session name (format: YYYY-MM-DD_HH-MM-SS)
     parts = meta.session_name.split("_")
@@ -275,21 +248,7 @@ def format_markdown(
         )
         lines.append("")
     lines += ["---", ""]
-
-    diarized_block = _format_segments_block(segments)
-    raw_block = _format_segments_block(raw_segments) if raw_segments is not None else None
-
-    if raw_block is not None and _adds_speaker_information(raw_block, diarized_block):
-        lines.append("## Transcript")
-        lines.append("")
-        lines.extend(raw_block)
-        lines.append("---")
-        lines.append("")
-        lines.append("## Diarized Transcript")
-        lines.append("")
-        lines.extend(diarized_block)
-    else:
-        lines.extend(diarized_block)
+    lines.extend(_format_segments_block(segments))
 
     return "\n".join(lines)
 
@@ -299,7 +258,7 @@ def format_live_markdown(
     session_name: str,
     language: str,
 ) -> str:
-    """Generate a simplified live markdown transcript (no duration, no raw_segments).
+    """Generate a simplified live markdown transcript (no duration).
 
     Updated atomically during recording so the user can open it mid-meeting.
     Replaced by the final polished transcript after recording stops.

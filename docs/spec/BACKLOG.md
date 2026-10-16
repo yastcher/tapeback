@@ -240,3 +240,53 @@ merge of real speakers is too weak a signal to rely on; diarization runs at roug
 the recording's length because it meets the thermal clamp with no check, no telemetry
 and warnings that bypass the run record. 0.9.9 fixed only the bridging defect; the
 rest belongs with pluggable diarization models, chosen from a bench table.
+
+---
+
+## 7. Found 2026-10-15, not fixed yet
+
+- **The tray dies on Python 3.15.** `dbus_next/service.py:9` imports
+  `typing.no_type_check_decorator`, which CPython 3.15 removed (gh-133601). dbus-next's
+  last release is 0.2.3 (2021); `dbus-fast` is the maintained fork. All 43 pytest
+  warnings are this one deprecation, so `filterwarnings = ["error"]` would need exactly
+  one filter until the move. Python 3.15 in CI: not yet (decided 2026-10-15).
+- **The bench measures the developer's `.env`.** `scripts/bench_transcribe.py:265`
+  builds `Settings(...)` without `_env_file=None`, against the AGENTS.md rule for probes.
+- **Packaging resolves dependencies at build time and lets extras rewrite the base.**
+  The AUR and `.deb` venvs are not built from `uv.lock`, the extras' scriptlets pip into
+  the pacman-owned `/opt/tapeback`, and the AUR venv borrows undeclared system
+  packages through `--system-site-packages`. `tapeback-cuda` has a PKGBUILD but was
+  never published to AUR. Redesign undecided: build from the lock, or create the venv
+  in `post_install`.
+- **The user's own short replies are dropped.** The VAD-artifact rule
+  (`formatter.py:151`, under a second) measures diarization's pieces by the segment
+  they were cut from, but not the mic's: pause splitting (`channel.py:226`) and the
+  trim to loud words (`channel.py:32`) leave a "Да." between the other side's turns
+  shorter than a second, and it is dropped. Needs a decision, not a fix: shown as lines
+  of their own, the user's backchannels cut the other side's speech into more blocks,
+  and noise Whisper took for a word would show as well.
+- **A note can open with Speaker 2.** Labels are numbered as diarization assigns them
+  (`diarizer.py:301`), before the formatter drops artifacts under a second, so an
+  artifact that carried a new voice first takes "Speaker 1" with it. Numbering by first
+  appearance in the note would fix it.
+- The setup and local-LLM work and the defects it turned up: `2026-10-15-setup-and-local-llm.md`.
+
+## 8. Found 2026-10-16: the new default LLM models
+
+- **They all reason by default, and nothing measures it.** anthropic thinks
+  adaptively, gemini 3 cannot turn thinking off, groq's `openai/gpt-oss-120b` always
+  reasons, `deepseek-flash` thinks by default, openai's `reasoning_effort` defaults to
+  medium: slower and costlier than the old defaults. On anthropic the thinking shares
+  `max_tokens=4096` (`_llm.py:245`), so a long meeting can cut the JSON off, and the
+  parse retry (`summarizer.py:148`) resends the whole transcript under the same cap.
+  No test or QA step summarizes through a live vendor (the e2e suite passes
+  `--no-summarize`): one `tapeback summarize` per provider on a long note is the check.
+- **qwen's address is moving.** Alibaba tells Singapore users to move from
+  `dashscope-intl.aliyuncs.com` to
+  `https://{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`. The
+  workspace id is the user's, so it cannot be a constant in `const.py`. No retirement
+  date for the old host is given.
+- **The data policy of OpenRouter's free models is unknown.** Their model data has
+  no policy fields, and a free model may keep or train on prompts
+  (`poolside/laguna-s-2.1` says it trains on inputs). The README warns; the default's
+  own policy is not checked. The free tier allows 50 requests a day.

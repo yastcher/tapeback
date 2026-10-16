@@ -3,23 +3,27 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 import wave
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from anthropic.types import TextBlock, ThinkingBlock
 from click.testing import CliRunner
 from pydantic import SecretStr
 
+from tapeback import _gpu
 from tapeback import cli as cli_module
+from tapeback._llm import PROVIDERS
 from tapeback.recorder import Recorder
 from tapeback.settings import Settings
-from tapeback.summarizer import _PROVIDER_ENV_VARS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -72,6 +76,17 @@ def isolate_user_dirs(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def isolate_gpu(monkeypatch, tmp_path_factory):
+    """No test reads the developer's GPU: nvidia-smi is out of reach, as on CI.
+
+    Transcriber tests read the real card's free VRAM and failed whenever something
+    else held it, tapeback itself included. A test that needs a GPU state fakes the
+    query or the reading.
+    """
+    monkeypatch.setattr(_gpu, "NVIDIA_SMI", str(tmp_path_factory.mktemp("gpu") / "nvidia-smi"))
+
+
+@pytest.fixture(autouse=True)
 def isolate_settings_sources(monkeypatch):
     """Cut Settings off from the developer's real configuration.
 
@@ -87,10 +102,10 @@ def isolate_settings_sources(monkeypatch):
     # Provider keys are read under their own names, not the TAPEBACK_ prefix, so the
     # sweep above never touched them: a developer with ANTHROPIC_API_KEY exported gave
     # every test a live provider chain, and one forgotten mock would bill the vendor.
-    # Driven off the production mapping on purpose — a new provider must be isolated
+    # Driven off the production table on purpose — a new provider must be isolated
     # the moment it is added, not the next time someone remembers this list.
-    for env_var in _PROVIDER_ENV_VARS.values():
-        monkeypatch.delenv(env_var, raising=False)
+    for provider in PROVIDERS.values():
+        monkeypatch.delenv(provider.env_var, raising=False)
     # Same rule applied to the machine's thermal state: without this every test that
     # builds a Transcriber on "cuda" polls the real GPU and can sit in the clamp wait,
     # so the suite's runtime would depend on how hot the developer's laptop is.
@@ -627,15 +642,104 @@ def clear_all_provider_env_vars(monkeypatch) -> None:
     Redundant since isolate_settings_sources does the same for every test; kept because
     call sites read as an explicit statement of what the test depends on.
     """
-    for env_var in _PROVIDER_ENV_VARS.values():
-        monkeypatch.delenv(env_var, raising=False)
+    for provider in PROVIDERS.values():
+        monkeypatch.delenv(provider.env_var, raising=False)
 
 
-def mock_anthropic_response(text: str) -> MagicMock:
-    """Create a mock anthropic Messages.create response."""
+def mock_anthropic_response(text: str, *, thinking: str | None = None) -> MagicMock:
+    """A Messages.create response made of the SDK's own blocks: a text block, after a
+    thinking block when `thinking` is given."""
     response = MagicMock()
-    response.content = [MagicMock(text=text)]
+    blocks: list[TextBlock | ThinkingBlock] = [TextBlock(type="text", text=text)]
+    if thinking is not None:
+        blocks.insert(0, ThinkingBlock(type="thinking", thinking=thinking, signature="sig"))
+    response.content = blocks
     return response
+
+
+@dataclass
+class EndpointRequest:
+    """One request as it reached the fake endpoint."""
+
+    method: str
+    path: str
+    headers: bytes
+    body: bytes
+
+    @property
+    def raw(self) -> bytes:
+        return self.headers + self.body
+
+
+@dataclass
+class LlmEndpoint:
+    """The fake endpoint as its test sees it."""
+
+    url: str
+    requests: list[EndpointRequest] = field(default_factory=list)
+    status: int = 200  # what /chat/completions answers with
+
+
+def _endpoint_handler(endpoint: LlmEndpoint) -> type[BaseHTTPRequestHandler]:
+    class Handler(BaseHTTPRequestHandler):
+        def _record(self) -> None:
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            endpoint.requests.append(
+                EndpointRequest(self.command, self.path, bytes(self.headers), body)
+            )
+
+        def _reply(self, status: int, payload: dict) -> None:
+            data = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self) -> None:
+            self._record()
+            if endpoint.status != 200:
+                self._reply(endpoint.status, {"error": {"message": "endpoint failure"}})
+                return
+            message = {"role": "assistant", "content": VALID_LLM_RESPONSE}
+            self._reply(
+                200,
+                {
+                    "id": "chatcmpl-1",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "local",
+                    "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
+                },
+            )
+
+        def do_GET(self) -> None:
+            self._record()
+            model = {"id": "local", "object": "model", "created": 0, "owned_by": "local"}
+            self._reply(200, {"object": "list", "data": [model]})
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass  # the test output stays the test's
+
+    return Handler
+
+
+@pytest.fixture
+def llm_endpoint():
+    """An OpenAI-compatible server on 127.0.0.1, standing in for the API a user names.
+
+    It answers /v1/chat/completions with VALID_LLM_RESPONSE (or `status`) and /v1/models
+    with one model, and keeps every request as the bytes that arrived: a test asserts on
+    what crossed the wire, not on an object it built itself.
+    """
+    endpoint = LlmEndpoint(url="")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _endpoint_handler(endpoint))
+    endpoint.url = f"http://127.0.0.1:{server.server_address[1]}/v1"
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield endpoint
+    server.shutdown()
+    server.server_close()
 
 
 def voice_signal(duration: float, sr: int, fundamental: float) -> np.ndarray:
@@ -672,7 +776,8 @@ def create_session_file(session_file, **overrides):
 def mock_whisper_transcribe(segments_data):
     """Create a mock WhisperModel that returns given segments.
 
-    segments_data: list of (start, end, text) tuples
+    segments_data: (start, end, text) tuples, or (start, end, text, words) with words
+    as (start, end, word) tuples for a test that needs word timestamps.
     """
     mock_model = MagicMock()
 
@@ -682,12 +787,17 @@ def mock_whisper_transcribe(segments_data):
     mock_info.duration = 10.0
 
     mock_segments = []
-    for start, end, text in segments_data:
+    for start, end, text, *rest in segments_data:
         seg = MagicMock()
         seg.start = start
         seg.end = end
         seg.text = f" {text} "
-        seg.words = []
+        # faster-whisper words carry their leading space; probability stays clear of
+        # the italic threshold.
+        seg.words = [
+            SimpleNamespace(start=w_start, end=w_end, word=f" {word}", probability=0.9)
+            for w_start, w_end, word in (rest[0] if rest else [])
+        ]
         mock_segments.append(seg)
 
     # Each call to transcribe() returns a fresh iterator

@@ -9,18 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from tapeback._stt_caps import openai_capabilities_for
 from tapeback.glossary import DEFAULT_HOTWORDS
 
-# Default models per provider — used when TAPEBACK_LLM_MODEL is not set.
-# Update here when providers deprecate models.
-DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-sonnet-4-20250514",
-    "openai": "gpt-4o",
-    "groq": "llama-3.3-70b-versatile",
-    "gemini": "gemini-2.5-flash",
-    "openrouter": "google/gemini-2.5-flash:free",
-    "deepseek": "deepseek-chat",
-    "qwen": "qwen-turbo",
-}
-
+# The cloud providers _llm.PROVIDERS describes, and "openai_compatible": a server named
+# by TAPEBACK_LLM_BASE_URL (_llm.ENDPOINT). A test holds the lists equal.
 type LLMProvider = Literal[
     "anthropic",
     "openai",
@@ -29,6 +19,7 @@ type LLMProvider = Literal[
     "openrouter",
     "deepseek",
     "qwen",
+    "openai_compatible",
 ]
 
 # "local" = faster-whisper on this machine; other values are remote STT backends.
@@ -243,6 +234,12 @@ class Settings(BaseSettings):
     llm_provider: LLMProvider = "anthropic"
     llm_api_key: SecretStr = SecretStr("")
     llm_model: str = ""
+    # openai_compatible only: the API's OpenAI-compatible address, such as
+    # https://api.example.com/v1.
+    llm_base_url: str = ""
+    # Seconds to wait for one answer. 600 is the SDKs' own default, so calls that set
+    # nothing keep it.
+    llm_timeout: float = Field(default=600.0, gt=0.0)
 
     @model_validator(mode="after")
     def _resolve_stt_settings(self) -> Self:

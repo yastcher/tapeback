@@ -120,7 +120,7 @@ To save to your Obsidian vault instead:
 
 ```bash
 mkdir -p ~/.config/tapeback
-echo 'TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault' > ~/.config/tapeback/.env
+echo 'TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault' >> ~/.config/tapeback/.env
 ```
 
 **Tip:** if you always meet in one language, pin it — auto-detection can misfire on a
@@ -214,16 +214,37 @@ whether a key is set, never the key.
 
 | Provider | Env var | Default model |
 |---|---|---|
-| `anthropic` | `ANTHROPIC_API_KEY` | claude-sonnet-4-20250514 |
-| `openai` | `OPENAI_API_KEY` | gpt-4o |
-| `groq` | `GROQ_API_KEY` | llama-3.3-70b-versatile |
-| `gemini` | `GEMINI_API_KEY` | gemini-2.5-flash |
-| `openrouter` | `OPENROUTER_API_KEY` | google/gemini-2.5-flash:free |
-| `deepseek` | `DEEPSEEK_API_KEY` | deepseek-chat |
-| `qwen` | `DASHSCOPE_API_KEY` | qwen-turbo |
+| `anthropic` | `ANTHROPIC_API_KEY` | claude-sonnet-5-5 |
+| `openai` | `OPENAI_API_KEY` | gpt-6-luna |
+| `groq` | `GROQ_API_KEY` | openai/gpt-oss-120b |
+| `gemini` | `GEMINI_API_KEY` | gemini-3.8-flash |
+| `openrouter` | `OPENROUTER_API_KEY` | nvidia/nemotron-3-super-120b-a12b:free |
+| `deepseek` | `DEEPSEEK_API_KEY` | deepseek-flash |
+| `qwen` | `DASHSCOPE_API_KEY` | qwen-plus |
 
 If the primary provider fails, tapeback automatically tries the next available
 provider (any provider whose variable is set in the environment).
+
+The `openrouter` default is a free model. Free models may keep or train on what they
+receive, and a meeting is personal data: check the model's data policy first, or set
+`TAPEBACK_LLM_MODEL` to a paid one.
+
+### Any OpenAI-compatible API
+
+A provider missing from the table is reached through its OpenAI-compatible API:
+
+```bash
+TAPEBACK_LLM_PROVIDER=openai_compatible
+TAPEBACK_LLM_BASE_URL=https://api.example.com/v1   # the API's address
+TAPEBACK_LLM_MODEL=model-name                      # required: there is no default
+TAPEBACK_LLM_API_KEY=...
+```
+
+The key comes from `TAPEBACK_LLM_API_KEY` only. This provider never falls back to the
+ones above, and they never fall back to it. Masking applies as with any provider. An
+address with credentials in it is refused, and plain `http` to another machine works
+but warns. `TAPEBACK_LLM_TIMEOUT` (600 s) bounds one answer. `tapeback status` shows
+the host and port, never the rest of the address.
 
 ### PII masking
 
@@ -287,6 +308,7 @@ tapeback tray                      System tray icon
 tapeback process <FILE> [--name N] Transcribe an existing audio file
 tapeback summarize <FILE>          Add LLM summary to transcript
 tapeback status                    Show recording status, settings and which keys are set
+tapeback setup                     Turn diarization and the summary on or off
 ```
 
 ```bash
@@ -296,15 +318,15 @@ tapeback start --no-summarize      # skip LLM summary
 tapeback process meeting.mp3 --name "weekly-standup"
 tapeback summarize notes.md --provider gemini --model gemini-2.5-pro
 tapeback summarize notes.md --show-masked   # print what would be sent, send nothing
+tapeback setup                     # in a terminal, asks; then says where each setting comes from
+tapeback setup --no-diarize --summarize     # writes ~/.config/tapeback/.env, other lines kept
 ```
 
 ## Output format
 
-Stereo recordings produce two transcript sections:
-- **Transcript** — raw Whisper output with channel-based labels (You / Other)
-- **Diarized Transcript** — speaker-identified output (You / Speaker 1 / Speaker 2 / ...)
+The note holds one transcript. The mic is **You**; the other side is **Speaker 1**, **Speaker 2** and so on when diarized, **Other** when not.
 
-Words where Whisper is uncertain (probability < 0.5) are shown in *italics*.
+Words where Whisper is uncertain (probability < 0.35) are shown in *italics*.
 
 ```markdown
 ---
@@ -338,16 +360,6 @@ Brief overview of the meeting.
 
 ---
 
-## Transcript
-
-[00:00:01] **You:** Hello, let's start with the *backend* changes.
-
-[00:01:23] **Other:** Sure, I have the slides ready.
-
----
-
-## Diarized Transcript
-
 [00:00:01] **You:** Hello, let's start with the *backend* changes.
 
 [00:01:23] **Speaker 1:** Sure, I have the slides ready.
@@ -355,12 +367,14 @@ Brief overview of the meeting.
 [00:02:45] **Speaker 1:** Can we move on to the frontend?
 ```
 
+<a name="configuration"></a>
 <details>
 <summary><h2>Configuration reference</h2></summary>
 
 All settings via environment variables (prefix `TAPEBACK_`) or
 `~/.config/tapeback/.env` file. A `.env` in the directory you run tapeback from is
-read too and wins over the user file. Keys tapeback does not know are ignored
+read too and wins over the user file; the environment wins over both. `tapeback setup`
+says which of them a setting comes from. Keys tapeback does not know are ignored
 without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 
 ### Core
@@ -448,9 +462,11 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 | `TAPEBACK_SUMMARIZE` | `true` | Enable LLM summarization |
 | `TAPEBACK_MASK_PII` | `false` | Mask emails and phone numbers before sending ([details](#pii-masking)) |
 | `TAPEBACK_MASK_TERMS` | *(empty)* | Comma-separated names/terms to mask too (needs `MASK_PII`) |
-| `TAPEBACK_LLM_PROVIDER` | `anthropic` | Primary provider ([list](#llm-summarization)) |
+| `TAPEBACK_LLM_PROVIDER` | `anthropic` | Primary provider ([list](#llm-summarization)), or `openai_compatible` for [any OpenAI-compatible API](#any-openai-compatible-api) |
 | `TAPEBACK_LLM_API_KEY` | *(empty)* | API key (or use provider-specific env var) |
-| `TAPEBACK_LLM_MODEL` | *(provider default)* | Override model name |
+| `TAPEBACK_LLM_MODEL` | *(provider default)* | Override model name; required for `openai_compatible` |
+| `TAPEBACK_LLM_BASE_URL` | *(empty)* | `openai_compatible` only: the API's address |
+| `TAPEBACK_LLM_TIMEOUT` | `600` | Seconds to wait for one answer |
 
 </details>
 

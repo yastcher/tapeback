@@ -119,57 +119,6 @@ def test_segment_that_is_only_a_hallucination_is_dropped_entirely():
     assert "pipeline" in lines[0]
 
 
-def test_diarized_section_omitted_when_it_only_relabels_speakers():
-    """A "Diarized Transcript" that says the same thing twice must not be emitted.
-
-    Bug: all 16 transcripts carrying the section duplicated the whole transcript —
-    same timecodes, same text, same recognition errors — differing only in
-    "**Other:**" becoming "**Speaker 1:**". It doubled the file for no information.
-    """
-    raw = [_said("Первая реплика.", 0.0, 5.0), _said("Вторая реплика.", 6.0, 11.0)]
-    diarized = [
-        Segment(start=0.0, end=5.0, text="Первая реплика.", words=None, speaker="Speaker 1"),
-        Segment(start=6.0, end=11.0, text="Вторая реплика.", words=None, speaker="Speaker 1"),
-    ]
-
-    markdown = format_markdown(
-        segments=diarized,
-        meta=TranscriptMeta(
-            session_name="2026-08-06_12-00-00",
-            audio_rel_path="attachments/audio/x.wav",
-            duration_seconds=15.0,
-            language="ru",
-        ),
-        raw_segments=raw,
-    )
-
-    assert markdown.count("Первая реплика") == 1
-    assert "## Diarized Transcript" not in markdown
-
-
-def test_diarized_section_kept_when_it_adds_speaker_information():
-    """Real diarization splits a block between speakers — that is worth showing."""
-    raw = [_said("Первая реплика.", 0.0, 5.0), _said("Вторая реплика.", 6.0, 11.0)]
-    diarized = [
-        Segment(start=0.0, end=5.0, text="Первая реплика.", words=None, speaker="Speaker 1"),
-        Segment(start=6.0, end=11.0, text="Вторая реплика.", words=None, speaker="Speaker 2"),
-    ]
-
-    markdown = format_markdown(
-        segments=diarized,
-        meta=TranscriptMeta(
-            session_name="2026-08-06_12-00-00",
-            audio_rel_path="attachments/audio/x.wav",
-            duration_seconds=15.0,
-            language="ru",
-        ),
-        raw_segments=raw,
-    )
-
-    assert "## Diarized Transcript" in markdown
-    assert "**Speaker 2:**" in markdown
-
-
 def test_speaker_change_still_splits_regardless_of_length():
     segments = [_speech(0.0, 5.0, "You"), _speech(5.0, 10.0, "Other")]
 

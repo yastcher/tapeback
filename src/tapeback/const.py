@@ -49,8 +49,6 @@ READ_CHUNK_FRAMES = 1_000_000
 
 # Audio channel layout
 STEREO_CHANNELS = 2
-# Minimum kept sub-segment duration when splitting on silence without word timings
-MIN_SUB_SEGMENT_DURATION_SEC = 0.5
 
 # FFmpeg loudnorm parameters (EBU R128)
 LOUDNORM_PARAMS = "I=-16:TP=-1.5:LRA=11"
@@ -108,9 +106,17 @@ WAV_HEADER_FALLBACK = 44
 WAV_CHUNK_HEADER_BYTES = 4  # RIFF chunk id / size fields are 4 bytes each
 RESAMPLE_FACTOR = 3  # 48000 / 16000
 
-# API base URLs for LLM providers
+# LLM providers (_llm.PROVIDERS): the OpenAI-compatible addresses, and the model each
+# provider uses when TAPEBACK_LLM_MODEL is not set. Vendors retire models; update here.
 API_BASE_GROQ = "https://api.groq.com/openai/v1"
 API_BASE_GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai/"
 API_BASE_OPENROUTER = "https://openrouter.ai/api/v1"
 API_BASE_DEEPSEEK = "https://api.deepseek.com"
 API_BASE_QWEN = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+LLM_DEFAULT_MODEL_ANTHROPIC = "claude-sonnet-5-5"
+LLM_DEFAULT_MODEL_OPENAI = "gpt-6-luna"
+LLM_DEFAULT_MODEL_GROQ = "openai/gpt-oss-120b"
+LLM_DEFAULT_MODEL_GEMINI = "gemini-3.8-flash"
+LLM_DEFAULT_MODEL_OPENROUTER = "nvidia/nemotron-3-super-120b-a12b:free"
+LLM_DEFAULT_MODEL_DEEPSEEK = "deepseek-flash"
+LLM_DEFAULT_MODEL_QWEN = "qwen-plus"

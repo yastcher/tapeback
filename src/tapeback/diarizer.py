@@ -1,6 +1,7 @@
 import contextlib
 import sys
 import wave
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,7 @@ import numpy as np
 from tapeback import const
 from tapeback._gpu import get_free_vram_mib, is_cuda_error
 from tapeback.channel import classify_segment_by_channel, load_stereo_channels
-from tapeback.models import DiarizationSegment, Segment
+from tapeback.models import DiarizationSegment, Segment, Word
 from tapeback.settings import Settings
 from tapeback.speaker_merge import merge_similar_speakers
 
@@ -177,12 +178,14 @@ def consolidate_segments(segments: list[Segment]) -> list[Segment]:
                 words = prev.words + seg.words
             elif prev.words or seg.words:
                 words = prev.words or seg.words
+            sources = [d for d in (prev.source_duration, seg.source_duration) if d is not None]
             result[-1] = Segment(
                 start=prev.start,
                 end=max(prev.end, seg.end),
                 text=prev.text + " " + seg.text,
                 words=words,
                 speaker=prev.speaker,
+                source_duration=max(sources, default=None),
             )
         else:
             result.append(seg)
@@ -224,47 +227,75 @@ def _resegment_by_words(
 ) -> list[tuple[Segment, str | None]]:
     """Split a segment into sub-segments at diarization speaker boundaries.
 
-    Each word is assigned to its pyannote speaker.  Consecutive words from the
-    same speaker are grouped into one sub-segment.  Returns list of
-    (sub_segment, pyannote_speaker) tuples.
+    Each word is assigned to its pyannote speaker, and consecutive words from the
+    same speaker form a run; a run shorter than a second joins the speech around it
+    (`_fold_short_runs`). Returns list of (sub_segment, pyannote_speaker) tuples.
     """
     if not segment.words:
         speaker = _find_speaker_for_time(segment.start, segment.end, diarization_segments)
         return [(segment, speaker)]
 
-    # Assign each word to a pyannote speaker
-    word_speakers: list[tuple[str | None, int]] = []
-    for i, word in enumerate(segment.words):
+    runs: list[tuple[str | None, list[Word]]] = []
+    for word in segment.words:
         speaker = _find_speaker_for_time(word.start, word.end, diarization_segments)
-        word_speakers.append((speaker, i))
+        if runs and runs[-1][0] == speaker:
+            runs[-1][1].append(word)
+        else:
+            runs.append((speaker, [word]))
 
-    # Group consecutive same-speaker words into sub-segments
     result: list[tuple[Segment, str | None]] = []
-    group_start = 0
-
-    for i in range(1, len(word_speakers) + 1):
-        if i < len(word_speakers) and word_speakers[i][0] == word_speakers[group_start][0]:
-            continue
-
-        # Flush group [group_start, i)
-        group_words = segment.words[group_start:i]
-        speaker = word_speakers[group_start][0]
-        text = "".join(w.word for w in group_words).strip()
+    for speaker, words in _fold_short_runs(runs):
+        text = "".join(w.word for w in words).strip()
         if text:
             result.append(
                 (
                     Segment(
-                        start=group_words[0].start,
-                        end=group_words[-1].end,
+                        start=words[0].start,
+                        end=words[-1].end,
                         text=text,
-                        words=group_words,
+                        words=words,
+                        source_duration=segment.source_duration or segment.end - segment.start,
                     ),
                     speaker,
                 )
             )
-        group_start = i
 
     return result if result else [(segment, None)]
+
+
+def _run_seconds(words: list[Word]) -> float:
+    return words[-1].end - words[0].start
+
+
+def _fold_short_runs(
+    runs: list[tuple[str | None, list[Word]]],
+) -> list[tuple[str | None, list[Word]]]:
+    """Give a run of words shorter than a second to the speech around it.
+
+    pyannote's turns are not word-accurate: under a second, another speaker is mostly a
+    boundary placed a word or two off, or a cluster made of such words. Kept on its own
+    line, it added a speaker who was not in the meeting. The words stay, with the run
+    before them, or with the one after when they open the segment. A segment of short
+    runs only stays whole, under the speaker of its longest run.
+    """
+    if all(_run_seconds(words) < const.MIN_SEGMENT_DURATION for _, words in runs):
+        speaker = max(runs, key=lambda run: _run_seconds(run[1]))[0]
+        return [(speaker, [word for _, words in runs for word in words])]
+
+    folded: list[tuple[str | None, list[Word]]] = []
+    opening: list[Word] = []
+    for speaker, words in runs:
+        if _run_seconds(words) < const.MIN_SEGMENT_DURATION:
+            if folded:
+                folded[-1][1].extend(words)
+            else:
+                opening.extend(words)
+        elif folded and folded[-1][0] == speaker:
+            folded[-1][1].extend(words)
+        else:
+            folded.append((speaker, opening + words))
+            opening = []
+    return folded
 
 
 def _resolve_speaker_label(
@@ -351,14 +382,6 @@ def assign_speakers(
             else:
                 label = _label_from_channel_only(channel)
 
-            result.append(
-                Segment(
-                    start=sub_seg.start,
-                    end=sub_seg.end,
-                    text=sub_seg.text,
-                    words=sub_seg.words,
-                    speaker=label,
-                )
-            )
+            result.append(replace(sub_seg, speaker=label))
 
     return result

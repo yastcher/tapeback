@@ -10,11 +10,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from tapeback._llm import PROVIDERS
 from tapeback.cli import cli
 from tapeback.models import Segment
 from tapeback.pipeline import _maybe_diarize_segments, process_stereo_file, stop_and_process
 from tapeback.settings import Settings
-from tapeback.summarizer import _PROVIDER_ENV_VARS
 from tests.fixtures import (
     SAMPLE_TRANSCRIPT_MD,
     VALID_LLM_RESPONSE_MINIMAL,
@@ -265,7 +265,7 @@ def test_process_stereo_file_function(tmp_path, tmp_vault):
     mock_model = mock_whisper_transcribe([(0.0, 1.0, "Speech.")])
 
     with patch("tapeback.transcriber.WhisperModel", return_value=mock_model):
-        segments, _info, _raw = process_stereo_file(stereo, output_dir, settings, diarize=False)
+        segments, _info = process_stereo_file(stereo, output_dir, settings, diarize=False)
 
     assert len(segments) > 0
     # Mic segments get "You" from transcribe_stereo
@@ -329,7 +329,7 @@ def test_summarize_command_rewrites_file(runner, tmp_path, monkeypatch, vault_en
     md_file = tmp_path / "transcript.md"
     md_file.write_text(SAMPLE_TRANSCRIPT_MD)
 
-    with patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE_MINIMAL):
+    with patch("tapeback._llm.call", return_value=VALID_LLM_RESPONSE_MINIMAL):
         result = runner.invoke(cli, ["summarize", str(md_file)])
 
     assert result.exit_code == 0, result.output
@@ -342,13 +342,13 @@ def test_summarize_command_rewrites_file(runner, tmp_path, monkeypatch, vault_en
 def test_summarize_command_no_api_key(runner, tmp_path, monkeypatch, vault_env):
     """No API key → error, file unchanged."""
     monkeypatch.delenv("TAPEBACK_LLM_API_KEY", raising=False)
-    for env_var in _PROVIDER_ENV_VARS.values():
-        monkeypatch.delenv(env_var, raising=False)
+    for provider in PROVIDERS.values():
+        monkeypatch.delenv(provider.env_var, raising=False)
 
     md_file = tmp_path / "transcript.md"
     md_file.write_text(SAMPLE_TRANSCRIPT_MD)
 
-    with patch("tapeback.summarizer._build_provider_chain", return_value=[]):
+    with patch("tapeback._llm.provider_chain", return_value=[]):
         result = runner.invoke(cli, ["summarize", str(md_file)])
 
     assert result.exit_code != 0
@@ -368,7 +368,7 @@ def test_process_with_summarization(runner, tmp_path, monkeypatch, vault_env):
 
     with (
         patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
-        patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE_MINIMAL),
+        patch("tapeback._llm.call", return_value=VALID_LLM_RESPONSE_MINIMAL),
     ):
         result = runner.invoke(cli, ["process", str(audio), "--no-diarize"])
 
@@ -390,7 +390,7 @@ def test_process_no_summarize_flag(runner, tmp_path, monkeypatch, vault_env):
 
     with (
         patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
-        patch("tapeback.summarizer._call_llm") as mock_llm,
+        patch("tapeback._llm.call") as mock_llm,
     ):
         result = runner.invoke(cli, ["process", str(audio), "--no-diarize", "--no-summarize"])
 
@@ -413,7 +413,7 @@ def test_stop_and_process_summarization_failure(tmp_vault, session_wavs):
     with (
         patch("tapeback.transcriber.WhisperModel", return_value=mock_model),
         patch("pyannote.audio.Pipeline"),
-        patch("tapeback.summarizer._call_llm", side_effect=RuntimeError("API error")),
+        patch("tapeback._llm.call", side_effect=RuntimeError("API error")),
     ):
         stop_and_process(mock_recorder, settings, diarize=False, do_summarize=True)
 
@@ -433,7 +433,7 @@ def test_summarize_command_with_provider_and_model_overrides(
     md_file = tmp_path / "transcript.md"
     md_file.write_text(SAMPLE_TRANSCRIPT_MD)
 
-    with patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE_MINIMAL):
+    with patch("tapeback._llm.call", return_value=VALID_LLM_RESPONSE_MINIMAL):
         result = runner.invoke(
             cli,
             ["summarize", str(md_file), "--provider", "groq", "--model", "custom-model"],
