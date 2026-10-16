@@ -117,6 +117,7 @@ def test_a_diarized_meeting_writes_its_transcript_once(
         result = runner.invoke(cli, ["start", SESSION, "--no-summarize", "--no-live"])
 
     assert result.exit_code == 0, result.output + repr(result.exception)
+    assert "Diarization: pyannote/speaker-diarization-3.1 on cpu" in result.output
     note = (vault_env / "meetings" / f"{SESSION}.md").read_text()
     assert note.count("See you Friday.") == 1
     assert note.endswith(

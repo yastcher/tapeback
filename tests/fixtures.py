@@ -744,6 +744,37 @@ def llm_endpoint():
     server.server_close()
 
 
+@pytest.fixture
+def fake_nvidia_smi(tmp_path, monkeypatch):
+    """nvidia-smi as tapeback queries it, reporting the free VRAM and the throttle
+    reasons a test sets; other queries fail, as for a driver that does not report them.
+    Call it with (free_mib, reasons, ...): the reasons answer in order, the last one
+    for good, so a clamp can release between two looks."""
+
+    def report(free_mib: int, *reasons: str) -> None:
+        looks = tmp_path / "fake-nvidia-smi-looks"
+        script = tmp_path / "fake-nvidia-smi"
+        script.write_text(
+            f"#!{sys.executable}\n"
+            "import pathlib, sys\n"
+            "query = ' '.join(sys.argv[1:])\n"
+            "if 'memory.free' in query:\n"
+            f"    print({free_mib})\n"
+            "elif 'clocks_event_reasons.active' in query:\n"
+            f"    looks = pathlib.Path({str(looks)!r})\n"
+            "    seen = int(looks.read_text()) if looks.exists() else 0\n"
+            "    looks.write_text(str(seen + 1))\n"
+            f"    answers = {list(reasons)!r}\n"
+            "    print(answers[min(seen, len(answers) - 1)])\n"
+            "else:\n"
+            "    sys.exit(1)\n"
+        )
+        script.chmod(0o755)
+        monkeypatch.setattr(_gpu, "NVIDIA_SMI", str(script))
+
+    return report
+
+
 FAKE_LLAMA_SERVER = Path(__file__).parent / "fake_llama_server.py"
 
 

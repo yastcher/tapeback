@@ -254,7 +254,7 @@ def process_stereo_file(
         else:
             on_status("Diarizing speakers...")
             with stage_timer("diarize", on_status):
-                diarization_segments = _diarize(settings, monitor_16k)
+                diarization_segments = _diarize(settings, monitor_16k, on_status)
                 if settings.spectral_merge_threshold > 0:
                     diarization_segments = merge_similar_speakers(
                         diarization_segments,
@@ -359,7 +359,7 @@ def _maybe_diarize_segments(
 
     on_status("Diarizing speakers...")
     with stage_timer("diarize", on_status):
-        diarization_segments = _diarize(settings, mono_16k_path)
+        diarization_segments = _diarize(settings, mono_16k_path, on_status)
 
         user_speaker = None
         if stereo_path is not None:
@@ -369,8 +369,10 @@ def _maybe_diarize_segments(
     return result
 
 
-def _diarize(settings: Settings, audio_path: Path) -> list[DiarizationSegment]:
-    """Run pyannote, then give its VRAM back before returning.
+def _diarize(
+    settings: Settings, audio_path: Path, on_status: StatusCallback
+) -> list[DiarizationSegment]:
+    """Run pyannote, with the GPU sampled as for Whisper, then give its VRAM back.
 
     The Diarizer is the only reference to the pyannote pipeline, so it is garbage as
     soon as diarize() returns, but torch's caching allocator keeps its memory until
@@ -378,7 +380,8 @@ def _diarize(settings: Settings, audio_path: Path) -> list[DiarizationSegment]:
     Whisper would find too little VRAM and fall back to the CPU.
     """
     try:
-        return Diarizer(settings).diarize(audio_path)
+        with sample_gpu(on_status, enabled=_gpu_telemetry_enabled(settings)):
+            return Diarizer(settings, on_status).diarize(audio_path)
     finally:
         free_gpu_memory()
 
