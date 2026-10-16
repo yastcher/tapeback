@@ -1,15 +1,19 @@
 import shutil
 import subprocess
+import sys
 import time
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
+from typing import get_args
 
 import click
 
-from tapeback import const
+from tapeback import _user_env, const
+from tapeback._llama_server import find_binary, model_name
+from tapeback._llm import ENDPOINT, LOCAL, endpoint_address, has_api_key
+from tapeback._stt_caps import allows_local_diarize, openai_capabilities_for
 from tapeback.recorder import NoActiveRecording, Recorder, detect_devices, session_dir
-from tapeback.settings import Settings, get_settings
-from tapeback.summarizer import has_api_key
+from tapeback.settings import LLMProvider, Settings, get_settings
 
 
 def _echo_status(msg: str) -> None:
@@ -50,6 +54,7 @@ def cli() -> None:
     \b
     Configuration:
       All settings via TAPEBACK_* env vars or ~/.config/tapeback/.env or .env file.
+      tapeback setup turns diarization and the summary on or off.
       See: https://github.com/yastcher/tapeback#configuration
     """
 
@@ -198,11 +203,15 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
 @click.argument("file", type=click.Path(exists=True))
 @click.option(
     "--provider",
-    type=click.Choice(["anthropic", "openai", "groq", "gemini", "openrouter", "deepseek", "qwen"]),
+    type=click.Choice(get_args(LLMProvider.__value__)),
     default=None,
     help="Override LLM provider",
 )
-@click.option("--model", default=None, help="Override LLM model")
+@click.option(
+    "--model",
+    default=None,
+    help="Override LLM model; with --provider local, TAPEBACK_LLM_LOCAL_MODEL names it",
+)
 @click.option(
     "--show-masked",
     is_flag=True,
@@ -215,9 +224,11 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
     brief overview, action items, and key decisions.
 
     \b
-    Requires the llm extra: uv pip install tapeback[llm]
-    and an API key — set TAPEBACK_LLM_API_KEY or a provider-specific
-    env var (ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.).
+    Requires the llm extra: uv pip install tapeback[llm]. A cloud
+    provider needs its key: TAPEBACK_LLM_API_KEY or its own variable
+    (ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.). openai_compatible needs
+    TAPEBACK_LLM_BASE_URL and TAPEBACK_LLM_MODEL; local needs llama.cpp's
+    llama-server and no key.
 
     \b
     Examples:
@@ -240,6 +251,7 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
         format_summary_markdown,
         inject_summary_into_markdown,
         masked_preview,
+        note_language,
     )
     from tapeback.summarizer import summarize as do_summarize
 
@@ -263,7 +275,7 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
         return
 
     click.echo("Summarizing...", err=True)
-    summary = do_summarize(transcript, settings)
+    summary = do_summarize(transcript, settings, language=note_language(md_content))
     summary_md = format_summary_markdown(summary)
     new_content = inject_summary_into_markdown(md_content, summary_md)
     path.write_text(new_content)
@@ -274,8 +286,9 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
 def status() -> None:
     """Show current recording status and settings.
 
-    Displays whether a recording is in progress, vault path, Whisper model,
-    device, which keys are set (never their values), and available audio sources.
+    Displays whether a recording is in progress, the vault, the STT backend and
+    model, the LLM (whether its key is set, never the key; an endpoint's host and
+    port; the local server and model), the HF token, and the audio sources.
     """
     settings = get_settings()
 
@@ -295,9 +308,19 @@ def status() -> None:
         click.echo(f"Device: {settings.device}")
     click.echo(f"Language: {settings.language}")
     # Whether a key is configured, never the key: the question people open .env for.
-    llm_key = "set" if has_api_key(settings) else "not set"
     hf_token = "set" if settings.hf_token.get_secret_value() else "not set"
-    click.echo(f"LLM: {settings.llm_provider}, key {llm_key}")
+    if settings.llm_provider == ENDPOINT:
+        # Host and port only: a path or query can carry a token too.
+        model = settings.llm_model or "not set"
+        click.echo(f"LLM: {ENDPOINT} at {endpoint_address(settings)}, model {model}")
+    elif settings.llm_provider == LOCAL:
+        server = find_binary(settings.llm_local_server) or (
+            f"{settings.llm_local_server} not found"
+        )
+        click.echo(f"LLM: {LOCAL}, model {model_name(settings)}, server {server}")
+    else:
+        llm_key = "set" if has_api_key(settings) else "not set"
+        click.echo(f"LLM: {settings.llm_provider}, key {llm_key}")
     click.echo(f"HF token: {hf_token}")
 
     if shutil.which("pactl"):
@@ -310,6 +333,97 @@ def status() -> None:
         )
         if result.returncode == 0:
             click.echo(result.stdout)
+
+
+def _stdin_is_terminal() -> bool:
+    """Whether a person is there to answer, not a script or a pipe."""
+    return sys.stdin.isatty()
+
+
+def _env_name(field: str) -> str:
+    return f"{Settings.model_config['env_prefix']}{field.upper()}"
+
+
+def _speakers_elsewhere(settings: Settings) -> str | None:
+    """Why local diarization does not run with the STT model in use; None if it does."""
+    if allows_local_diarize(settings.stt_backend, settings.stt_model):
+        return None
+    model = settings.stt_model
+    if settings.stt_backend == "openai" and openai_capabilities_for(model).remote_diarize:
+        return f"speakers come from the STT model {model}"
+    return f"the STT model {model} gives no timings to tell speakers apart"
+
+
+def _switch(settings: Settings, field: str) -> str:
+    """ "on (source)" for a switch, naming whatever its source overrides."""
+    origin = _user_env.origin(_env_name(field))
+    where = ", ".join([origin.source, *(f"overriding {other}" for other in origin.overrides)])
+    return f"{'on' if getattr(settings, field) else 'off'} ({where})"
+
+
+@cli.command()
+@click.option("--diarize/--no-diarize", default=None, help="Turn speaker diarization on or off.")
+@click.option("--summarize/--no-summarize", default=None, help="Turn the LLM summary on or off.")
+def setup(diarize: bool | None, summarize: bool | None) -> None:
+    """Turn diarization and the summary on or off in your settings file.
+
+    With no options in a terminal, asks. Then reports where each setting comes from:
+    the environment, ./.env, ~/.config/tapeback/.env or the default.
+    """
+    settings = get_settings()
+    speakers_elsewhere = _speakers_elsewhere(settings)
+    flags = {"diarize": diarize, "summarize": summarize}
+    wanted = {field: value for field, value in flags.items() if value is not None}
+    if not wanted and _stdin_is_terminal():
+        if speakers_elsewhere is None:
+            wanted["diarize"] = click.confirm("Diarize speakers?", default=settings.diarize)
+        wanted["summarize"] = click.confirm(
+            "Summarize meetings with an LLM?", default=settings.summarize
+        )
+        # Enter keeps the value in effect: only a changed answer is written.
+        wanted = {
+            field: value for field, value in wanted.items() if value != getattr(settings, field)
+        }
+
+    lines = {_env_name(field): str(value).lower() for field, value in wanted.items()}
+    target = _user_env.display(_user_env.user_file())
+    try:
+        written = _user_env.write(lines)
+    except OSError as exc:
+        click.echo(f"Cannot write {target}: {exc.strerror or exc}. Add by hand:", err=True)
+        for key, value in lines.items():
+            click.echo(f"{key}={value}")
+        raise SystemExit(1) from exc
+    for key in written:
+        click.echo(f"Wrote {key}={lines[key]} to {target}")
+
+    settings = get_settings()
+    click.echo(f"Diarization: {speakers_elsewhere or _switch(settings, 'diarize')}")
+    click.echo(f"Summary: {_switch(settings, 'summarize')}")
+    if settings.diarize and speakers_elsewhere is None and not settings.hf_token.get_secret_value():
+        click.echo(
+            "Hint: diarization needs TAPEBACK_HF_TOKEN; see Speaker diarization in the README."
+        )
+    if (
+        settings.summarize
+        and settings.llm_provider == LOCAL
+        and find_binary(settings.llm_local_server) is None
+    ):
+        click.echo(
+            f"Hint: local summaries need {settings.llm_local_server}; "
+            "see Local summaries in the README."
+        )
+    if (
+        settings.summarize
+        and settings.llm_provider not in (ENDPOINT, LOCAL)
+        and not has_api_key(settings)
+    ):
+        click.echo(
+            "Hint: summaries need an LLM key in TAPEBACK_LLM_API_KEY; "
+            "see LLM summarization in the README."
+        )
+    if written:
+        click.echo("Hint: a running tray keeps its old settings until it is restarted.")
 
 
 @cli.command()

@@ -49,8 +49,14 @@ def test_anything_but_vXYZ_is_not_a_release_tag(release_tree, tag):
             "tapeback-tray_1.2.2_all",
             r"README\.md \(1\.2\.2, 1\.2\.3\)",
         ),
+        (
+            "README.md",
+            "tapeback-llm-local_1.2.3_amd64",
+            "tapeback-llm-local_1.2.2_amd64",
+            r"README\.md \(1\.2\.2, 1\.2\.3\)",
+        ),
     ],
-    ids=["pyproject", "uv.lock", "PKGBUILD", "README"],
+    ids=["pyproject", "uv.lock", "PKGBUILD", "README", "README two-part name"],
 )
 def test_one_stale_copy_of_the_version_refuses_the_tag(release_tree, path, old, new, message):
     target = release_tree / path

@@ -9,18 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from tapeback._stt_caps import openai_capabilities_for
 from tapeback.glossary import DEFAULT_HOTWORDS
 
-# Default models per provider — used when TAPEBACK_LLM_MODEL is not set.
-# Update here when providers deprecate models.
-DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-sonnet-4-20250514",
-    "openai": "gpt-4o",
-    "groq": "llama-3.3-70b-versatile",
-    "gemini": "gemini-2.5-flash",
-    "openrouter": "google/gemini-2.5-flash:free",
-    "deepseek": "deepseek-chat",
-    "qwen": "qwen-turbo",
-}
-
+# The cloud providers _llm.PROVIDERS describes, and two that stand alone:
+# "openai_compatible", an API named by TAPEBACK_LLM_BASE_URL (_llm.ENDPOINT), and
+# "local", a llama-server tapeback starts itself (_llm.LOCAL). A test holds the lists
+# equal.
 type LLMProvider = Literal[
     "anthropic",
     "openai",
@@ -29,6 +21,8 @@ type LLMProvider = Literal[
     "openrouter",
     "deepseek",
     "qwen",
+    "openai_compatible",
+    "local",
 ]
 
 # "local" = faster-whisper on this machine; other values are remote STT backends.
@@ -143,9 +137,9 @@ class Settings(BaseSettings):
     # None → XDG data dir (~/.local/share/tapeback/runs).
     run_log_dir: Path | None = None
 
-    # Sample GPU clocks/temperature during transcription and report a one-line summary
-    # per stage. Observation only — tapeback never changes clock or power caps (that
-    # needs root). No-op when nvidia-smi is unavailable.
+    # Sample GPU clocks/temperature during transcription and diarization and report a
+    # one-line summary per stage. Observation only — tapeback never changes clock or
+    # power caps (that needs root). No-op when nvidia-smi is unavailable.
     gpu_telemetry: bool = True
 
     # Reuse a channel that was already transcribed with the same audio and the same
@@ -163,15 +157,16 @@ class Settings(BaseSettings):
 
     # Refuse to load a model on CUDA below this much free VRAM, and use the CPU instead.
     # A CUDA out-of-memory during load leaks the allocation on ctranslate2's C++ side
-    # for the life of the process (see transcriber._enough_vram), so the only reliable
+    # for the life of the process (see _device._enough_vram), so the only reliable
     # cure is not to trigger it. The smallest configuration measured needs ~1115 MiB.
     min_free_vram_mib: int = Field(default=1200, ge=0)
 
-    # Look for a GPU thermal clamp before each transcription stage. On laptops that
-    # share one heatsink between CPU and GPU, the controller can cut the GPU's power
-    # budget (measured: 50 W -> 5 W, clocks pinned to 300 MHz) and hold it there while
-    # the CPU stays hot. The check is one nvidia-smi query and is retaken per stage, so
-    # a clamp that clears between channels returns the run to the GPU by itself.
+    # Look for a GPU thermal clamp before each transcription stage and before
+    # diarization, and let a local summary wait for it. On laptops that share one
+    # heatsink between CPU and GPU, the controller can cut the GPU's power budget
+    # (measured: 50 W -> 5 W, clocks pinned to 300 MHz) and hold it there while the CPU
+    # stays hot. The check is one nvidia-smi query and is retaken per stage, so a clamp
+    # that clears between channels returns the run to the GPU by itself.
     thermal_clamp_check: bool = True
     # Seconds to wait for the clamp to release before giving up on the GPU for this
     # stage. Default 0 — do not wait. The clamp clears on system idle, and the shortest
@@ -243,6 +238,27 @@ class Settings(BaseSettings):
     llm_provider: LLMProvider = "anthropic"
     llm_api_key: SecretStr = SecretStr("")
     llm_model: str = ""
+    # openai_compatible only: the API's OpenAI-compatible address, such as
+    # https://api.example.com/v1.
+    llm_base_url: str = ""
+    # Seconds to wait for one answer. 600 is the SDKs' own default, so calls that set
+    # nothing keep it.
+    llm_timeout: float = Field(default=600.0, gt=0.0)
+    # local only: the llama-server to start, a name on PATH or a path, and the GGUF it
+    # loads. An empty model is the pinned default, downloaded on first use.
+    llm_local_server: str = "llama-server"
+    llm_local_model: str = ""
+    # local only: the context in tokens. An hour of Russian conversation is about 12k;
+    # an out-of-memory while the model loads halves it once.
+    llm_local_context: int = Field(default=16384, gt=0)
+    # local only: seconds to wait, before the server starts, for a GPU thermal clamp to
+    # release. The summary is the last stage, so waiting costs only time: a clamped card
+    # processed an hour's prompt at 13-17 tok/s, and the clamp releases after about six
+    # minutes of idle.
+    llm_local_clamp_wait: float = Field(default=600.0, ge=0.0)
+    # local only: seconds to wait for one answer. An hour's prompt is about 12k tokens,
+    # some 15 minutes on a clamped card; TAPEBACK_LLM_TIMEOUT stays the cloud's.
+    llm_local_timeout: float = Field(default=1800.0, gt=0.0)
 
     @model_validator(mode="after")
     def _resolve_stt_settings(self) -> Self:
@@ -269,6 +285,13 @@ class Settings(BaseSettings):
         if self.stt_backend == "openai":
             openai_capabilities_for(model)
         return self
+
+    @field_validator("vault_path", "run_log_dir", "resume_cache_dir", "sessions_dir")
+    @classmethod
+    def _expand_home(cls, value: Path | None) -> Path | None:
+        """`~` is the home directory, as in a shell: README's quick start writes the vault
+        that way, and neither a .env file nor pydantic expands it."""
+        return value.expanduser() if value is not None else None
 
     @field_validator("timezone")
     @classmethod

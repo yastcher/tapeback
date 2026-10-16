@@ -1,15 +1,19 @@
 import contextlib
 import sys
 import wave
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from tapeback import const
-from tapeback._gpu import get_free_vram_mib, is_cuda_error
+from tapeback._device import resolve_device
+from tapeback._gpu import is_cuda_error
+from tapeback._timing import ProgressReporter
 from tapeback.channel import classify_segment_by_channel, load_stereo_channels
-from tapeback.models import DiarizationSegment, Segment
+from tapeback.models import DiarizationSegment, Segment, Word
 from tapeback.settings import Settings
 from tapeback.speaker_merge import merge_similar_speakers
 
@@ -36,6 +40,48 @@ def diarization_available() -> bool:
         return False
 
 
+def _to_stderr(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def _wav_seconds(path: Path) -> float:
+    """The recording's length, for progress lines; 0, and so no lines, if unreadable."""
+    try:
+        with wave.open(str(path), "rb") as wav:
+            return wav.getnframes() / wav.getframerate()
+    except (OSError, EOFError, wave.Error):
+        return 0.0
+
+
+class _Progress:
+    """pyannote's progress hook, reported as each step's position in the recording.
+
+    pyannote counts batches per step (segmentation, then embeddings), and a batch is a
+    stretch of the recording, so completed/total reads as how far into it the step
+    is. Lines go through the stage's status callback, throttled as Whisper's are.
+    """
+
+    def __init__(self, duration: float, report: Callable[[str], None]) -> None:
+        self._duration = duration
+        self._report = report
+        self._steps: dict[str, ProgressReporter] = {}
+
+    def __call__(
+        self,
+        step: str,
+        _artifact: object = None,
+        *,
+        file: object = None,
+        total: int | None = None,
+        completed: int | None = None,
+    ) -> None:
+        if not total or completed is None:
+            return
+        if step not in self._steps:
+            self._steps[step] = ProgressReporter(f"diarize {step}", self._duration, self._report)
+        self._steps[step].update(completed / total * self._duration)
+
+
 def _unwrap_diarization(result: Any) -> Any:
     """Extract Annotation from pyannote output.
 
@@ -48,11 +94,11 @@ def _unwrap_diarization(result: Any) -> Any:
 
 
 class Diarizer:
-    def __init__(self, settings: Settings) -> None:
-        """Initialize pyannote pipeline.
+    def __init__(self, settings: Settings, on_status: Callable[[str], None] = _to_stderr) -> None:
+        """Initialize pyannote pipeline on the device `resolve_device` picks: the CPU
+        when the GPU is thermally clamped or short of VRAM, as for Whisper.
 
         Raises RuntimeError if hf_token is empty.
-        Falls back to CPU if CUDA is not available.
         """
         hf_token = settings.hf_token.get_secret_value()
         if not hf_token:
@@ -64,6 +110,7 @@ class Diarizer:
         from pyannote.audio import Pipeline
 
         self._settings = settings
+        self._report = on_status
         pipeline = Pipeline.from_pretrained(
             const.PYANNOTE_MODEL,
             token=hf_token,
@@ -77,30 +124,30 @@ class Diarizer:
             params["clustering"]["threshold"] = settings.clustering_threshold
             self._pipeline.instantiate(params)
 
-        if settings.device == "cuda":
-            free_mib = get_free_vram_mib()
-            if free_mib is not None and free_mib < DIARIZATION_VRAM_MIN_MIB:
-                print(
-                    f"Warning: Not enough VRAM for diarization "
-                    f"({free_mib} MiB free < {DIARIZATION_VRAM_MIN_MIB} MiB), using CPU",
-                    file=sys.stderr,
-                )
-            else:
-                try:
-                    import torch
+        device = resolve_device(
+            settings,
+            work="diarization",
+            vram_floor_mib=DIARIZATION_VRAM_MIN_MIB,
+            report=on_status,
+        )
+        if device == "cuda":
+            try:
+                import torch
 
-                    self._pipeline.to(torch.device("cuda"))
-                except RuntimeError:
-                    print(
-                        "Warning: CUDA not available for diarization, using CPU",
-                        file=sys.stderr,
-                    )
+                self._pipeline.to(torch.device("cuda"))
+            except RuntimeError:
+                on_status("Warning: CUDA not available for diarization, using CPU")
+                device = "cpu"
+        on_status(f"Diarization: {const.PYANNOTE_MODEL} on {device}")
 
     def _run_pipeline(self, audio_path: Path) -> Any:
-        """Run pyannote pipeline with optional max_speakers."""
+        """Run pyannote pipeline with optional max_speakers, reporting progress."""
+        progress = _Progress(_wav_seconds(audio_path), self._report)
         if self._settings.max_speakers is not None:
-            return self._pipeline(audio_path, max_speakers=self._settings.max_speakers)
-        return self._pipeline(audio_path)
+            return self._pipeline(
+                audio_path, max_speakers=self._settings.max_speakers, hook=progress
+            )
+        return self._pipeline(audio_path, hook=progress)
 
     def diarize(self, audio_path: Path) -> list[DiarizationSegment]:
         """Run diarization on audio file.
@@ -113,9 +160,8 @@ class Diarizer:
         except RuntimeError as exc:
             if not is_cuda_error(exc):
                 raise
-            print(
-                f"Warning: CUDA out of memory during diarization, falling back to CPU: {exc}",
-                file=sys.stderr,
+            self._report(
+                f"Warning: CUDA out of memory during diarization, falling back to CPU: {exc}"
             )
             self._fallback_to_cpu()
             diarization = self._run_pipeline(audio_path)
@@ -177,12 +223,14 @@ def consolidate_segments(segments: list[Segment]) -> list[Segment]:
                 words = prev.words + seg.words
             elif prev.words or seg.words:
                 words = prev.words or seg.words
+            sources = [d for d in (prev.source_duration, seg.source_duration) if d is not None]
             result[-1] = Segment(
                 start=prev.start,
                 end=max(prev.end, seg.end),
                 text=prev.text + " " + seg.text,
                 words=words,
                 speaker=prev.speaker,
+                source_duration=max(sources, default=None),
             )
         else:
             result.append(seg)
@@ -224,47 +272,75 @@ def _resegment_by_words(
 ) -> list[tuple[Segment, str | None]]:
     """Split a segment into sub-segments at diarization speaker boundaries.
 
-    Each word is assigned to its pyannote speaker.  Consecutive words from the
-    same speaker are grouped into one sub-segment.  Returns list of
-    (sub_segment, pyannote_speaker) tuples.
+    Each word is assigned to its pyannote speaker, and consecutive words from the
+    same speaker form a run; a run shorter than a second joins the speech around it
+    (`_fold_short_runs`). Returns list of (sub_segment, pyannote_speaker) tuples.
     """
     if not segment.words:
         speaker = _find_speaker_for_time(segment.start, segment.end, diarization_segments)
         return [(segment, speaker)]
 
-    # Assign each word to a pyannote speaker
-    word_speakers: list[tuple[str | None, int]] = []
-    for i, word in enumerate(segment.words):
+    runs: list[tuple[str | None, list[Word]]] = []
+    for word in segment.words:
         speaker = _find_speaker_for_time(word.start, word.end, diarization_segments)
-        word_speakers.append((speaker, i))
+        if runs and runs[-1][0] == speaker:
+            runs[-1][1].append(word)
+        else:
+            runs.append((speaker, [word]))
 
-    # Group consecutive same-speaker words into sub-segments
     result: list[tuple[Segment, str | None]] = []
-    group_start = 0
-
-    for i in range(1, len(word_speakers) + 1):
-        if i < len(word_speakers) and word_speakers[i][0] == word_speakers[group_start][0]:
-            continue
-
-        # Flush group [group_start, i)
-        group_words = segment.words[group_start:i]
-        speaker = word_speakers[group_start][0]
-        text = "".join(w.word for w in group_words).strip()
+    for speaker, words in _fold_short_runs(runs):
+        text = "".join(w.word for w in words).strip()
         if text:
             result.append(
                 (
                     Segment(
-                        start=group_words[0].start,
-                        end=group_words[-1].end,
+                        start=words[0].start,
+                        end=words[-1].end,
                         text=text,
-                        words=group_words,
+                        words=words,
+                        source_duration=segment.source_duration or segment.end - segment.start,
                     ),
                     speaker,
                 )
             )
-        group_start = i
 
     return result if result else [(segment, None)]
+
+
+def _run_seconds(words: list[Word]) -> float:
+    return words[-1].end - words[0].start
+
+
+def _fold_short_runs(
+    runs: list[tuple[str | None, list[Word]]],
+) -> list[tuple[str | None, list[Word]]]:
+    """Give a run of words shorter than a second to the speech around it.
+
+    pyannote's turns are not word-accurate: under a second, another speaker is mostly a
+    boundary placed a word or two off, or a cluster made of such words. Kept on its own
+    line, it added a speaker who was not in the meeting. The words stay, with the run
+    before them, or with the one after when they open the segment. A segment of short
+    runs only stays whole, under the speaker of its longest run.
+    """
+    if all(_run_seconds(words) < const.MIN_SEGMENT_DURATION for _, words in runs):
+        speaker = max(runs, key=lambda run: _run_seconds(run[1]))[0]
+        return [(speaker, [word for _, words in runs for word in words])]
+
+    folded: list[tuple[str | None, list[Word]]] = []
+    opening: list[Word] = []
+    for speaker, words in runs:
+        if _run_seconds(words) < const.MIN_SEGMENT_DURATION:
+            if folded:
+                folded[-1][1].extend(words)
+            else:
+                opening.extend(words)
+        elif folded and folded[-1][0] == speaker:
+            folded[-1][1].extend(words)
+        else:
+            folded.append((speaker, opening + words))
+            opening = []
+    return folded
 
 
 def _resolve_speaker_label(
@@ -351,14 +427,6 @@ def assign_speakers(
             else:
                 label = _label_from_channel_only(channel)
 
-            result.append(
-                Segment(
-                    start=sub_seg.start,
-                    end=sub_seg.end,
-                    text=sub_seg.text,
-                    words=sub_seg.words,
-                    speaker=label,
-                )
-            )
+            result.append(replace(sub_seg, speaker=label))
 
     return result

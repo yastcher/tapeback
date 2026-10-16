@@ -2552,6 +2552,7 @@ dependencies = [
     { name = "click" },
     { name = "faster-whisper" },
     { name = "pydantic-settings" },
+    { name = "python-dotenv" },
 ]
 
 [package.optional-dependencies]
@@ -2596,6 +2597,7 @@ requires-dist = [
     { name = "openai", marker = "extra == 'stt'", specifier = ">=1.50.0,<3" },
     { name = "pyannote-audio", marker = "extra == 'diarize'", specifier = ">=3.1.0,<5" },
     { name = "pydantic-settings", specifier = ">=2.0.0,<3" },
+    { name = "python-dotenv", specifier = ">=1.2.2,<2" },
     { name = "torch", marker = "extra == 'diarize'", specifier = ">=2.0.0,<3" },
     { name = "torchaudio", marker = "extra == 'diarize'", specifier = ">=2.0.0,<3" },
 ]

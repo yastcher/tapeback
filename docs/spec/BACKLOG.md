@@ -232,11 +232,113 @@ without warning, so whatever is built has to measure and refuse rather than trun
 
 ---
 
-## 6. Diarization: quality, and the clamp it ignores
+## 6. Diarization: quality, and models to choose from
 
 Found by the 0.9.9 pre-release QA; full numbers in `2026-10-06-diarization.md`. In
 short: pyannote reports the real speakers plus a small third cluster; the spectral
-merge of real speakers is too weak a signal to rely on; diarization runs at roughly
-the recording's length because it meets the thermal clamp with no check, no telemetry
-and warnings that bypass the run record. 0.9.9 fixed only the bridging defect; the
-rest belongs with pluggable diarization models, chosen from a bench table.
+merge of real speakers is too weak a signal to rely on; diarization ran at roughly the
+recording's length because it met the thermal clamp with no check, no telemetry and
+warnings that bypassed the run record. 0.9.9 fixed only the bridging defect; the clamp
+check, the telemetry and the warnings came on 2026-10-16. The rest belongs with
+pluggable diarization models, chosen from a bench table.
+
+Measured on 2026-10-16 with a recording of about an hour, before that check: the clamp
+latched three minutes into the first channel's transcription and held for the next
+90 minutes, idle CPU-only stages included. Diarization ran clamped for 3522 s, 1.20x
+the recording. A check made before a stage cannot see a clamp that latches during it.
+
+---
+
+## 7. Found 2026-10-15, not fixed yet
+
+- **The tray dies on Python 3.15.** `dbus_next/service.py:9` imports
+  `typing.no_type_check_decorator`, which CPython 3.15 removed (gh-133601). dbus-next's
+  last release is 0.2.3 (2021); `dbus-fast` is the maintained fork. All 43 pytest
+  warnings are this one deprecation, so `filterwarnings = ["error"]` would need exactly
+  one filter until the move. Python 3.15 in CI: not yet (decided 2026-10-15).
+- **The bench measures the developer's `.env`.** `scripts/bench_transcribe.py:265`
+  builds `Settings(...)` without `_env_file=None`, against the AGENTS.md rule for probes.
+- **Packaging resolves dependencies at build time and lets extras rewrite the base.**
+  The AUR and `.deb` venvs are not built from `uv.lock`, the extras' scriptlets pip into
+  the pacman-owned `/opt/tapeback`, and the AUR venv borrows undeclared system
+  packages through `--system-site-packages`. `tapeback-cuda` has a PKGBUILD but was
+  never published to AUR. Redesign undecided: build from the lock, or create the venv
+  in `post_install`.
+- **The user's own short replies are dropped.** The VAD-artifact rule
+  (`formatter.py:151`, under a second) measures diarization's pieces by the segment
+  they were cut from, but not the mic's: pause splitting (`channel.py:226`) and the
+  trim to loud words (`channel.py:32`) leave a "Да." between the other side's turns
+  shorter than a second, and it is dropped. Needs a decision, not a fix: shown as lines
+  of their own, the user's backchannels cut the other side's speech into more blocks,
+  and noise Whisper took for a word would show as well.
+- **A note can open with Speaker 2.** Labels are numbered as diarization assigns them
+  (`diarizer.py:346`), before the formatter drops artifacts under a second, so an
+  artifact that carried a new voice first takes "Speaker 1" with it. Numbering by first
+  appearance in the note would fix it.
+- The setup and local-LLM work and the defects it turned up: `2026-10-15-setup-and-local-llm.md`.
+- **`tapeback tray` without its extra names the wrong packages.** The ImportError hint
+  (`cli.py:444`) says "requires pystray and Pillow"; the tray extra is dbus-next.
+
+## 8. Found 2026-10-16: the new default LLM models
+
+- **They all reason by default, and nothing measures it.** anthropic thinks
+  adaptively, gemini 3 cannot turn thinking off, groq's `openai/gpt-oss-120b` always
+  reasons, `deepseek-flash` thinks by default, openai's `reasoning_effort` defaults to
+  medium: slower and costlier than the old defaults. On anthropic the thinking shares
+  `max_tokens=4096` (`_llm.py:275`), so a long meeting can cut the JSON off, and the
+  parse retry (`summarizer.py:161`) resends the whole transcript under the same cap.
+  No test or QA step summarizes through a live vendor (the e2e suite passes
+  `--no-summarize`): one `tapeback summarize` per provider on a long note is the check.
+- **qwen's address is moving.** Alibaba tells Singapore users to move from
+  `dashscope-intl.aliyuncs.com` to
+  `https://{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`. The
+  workspace id is the user's, so it cannot be a constant in `const.py`. No retirement
+  date for the old host is given.
+- **The data policy of OpenRouter's free models is unknown.** Their model data has
+  no policy fields, and a free model may keep or train on prompts
+  (`poolside/laguna-s-2.1` says it trains on inputs). The README warns; the default's
+  own policy is not checked. The free tier allows 50 requests a day.
+
+## 9. Found 2026-10-16: the local LLM
+
+- **`-ngl 99` switches llama.cpp's `--fit` off.** With an explicit layer count, fit
+  only warns, and a model that does not fit fails to load instead of leaving layers on
+  the CPU; `auto` keeps a 1 GiB margin, which on a 4 GB card may move layers off the
+  GPU. A row for the bench, not a guess.
+- **JSON from the local model is not enforced.** llama-server enforces
+  `response_format` only with a non-empty schema; `json_object` alone is ignored for
+  this model's template. Measured earlier outside this repo, Qwen3.5-4B with thinking
+  off answered valid JSON 10 times in 10 under a `json_schema` grammar, and without
+  bounds on arrays and strings a 4B model looped to its token limit. The JSON retry it
+  would spare reprocesses the whole transcript: its system prompt differs, so nothing
+  is reused. The bench's "valid JSON on the first try" column decides.
+- **The local request sets no `max_tokens` and no temperature, and ignores
+  `finish_reason`.** The server's default temperature is 0.8, and a truncated answer
+  reads as "not JSON" and costs a second full pass. For the bench.
+- **Halving the context frees little for the default model.** Qwen3.5-4B is hybrid:
+  measured earlier, it took 3090 MiB at a 12288-token context, and 24576 ran on the
+  same card, while 8192 tokens do not hold an hour of Russian. An out-of-memory more
+  likely means another program holds the card, so the message reports free VRAM; the
+  halving stays for other models a user names.
+- **The summary's clamp wait may be held up by tapeback's own CUDA context.** On a
+  shorter meeting the clamp cleared by itself between transcription and
+  diarization, when no process held a CUDA context. After diarization the main
+  process kept torch's 106 MiB context, and the clamp held through the whole 600 s
+  wait (64-72 °C, 300 MHz) and the summary after it. One run, so a correlation; if it
+  holds, diarization in a worker process of its own, as transcription runs, would let
+  the card idle before the summary.
+- **A local summary on the CPU was ruled out on the test machine**: the model needs
+  2.7 GB of RAM where about 2.3 GB are free. A summary deferred to a cooler moment
+  (`summary: pending`, `tapeback summarize --pending`) stays open, if the wait for
+  the clamp (spec, defect 7) proves too long in practice.
+- **Vulkan against CUDA on a GTX 1650 Ti is not measured on the same input.** Each
+  build was run once, on different prompts (spec, "The convenient package"). The
+  `.deb` carries the Vulkan build for its reach (Ubuntu 22.04+, 30 MB).
+- **The pinned GGUF's Hugging Face scan reads "safe" with the code PAIT-GGUF-100**,
+  whose meaning is not public. Its chat template differs from Qwen's in two places: the
+  tool-call arguments and the thinking default.
+- **`tests/fixtures.py` has 920 lines**, over the 500-line limit. AGENTS.md keeps every
+  fixture there, so a split needs a decision on the layout first.
+- **The diarize, tray and cuda companions never run on a stand.** They are built, and
+  released as `.deb`s, but only `tapeback-llm-local` (with `tapeback-llm`) is installed
+  and run.

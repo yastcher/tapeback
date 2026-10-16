@@ -17,6 +17,8 @@ from pathlib import Path
 # card throttle during this run") does not need fine resolution.
 GPU_SAMPLE_INTERVAL_SEC = 5.0
 
+# The one binary every GPU query goes through (query_nvidia_smi).
+NVIDIA_SMI = "nvidia-smi"
 # nvidia-smi must never hold up the pipeline; a hung driver query is not worth waiting on.
 NVIDIA_SMI_TIMEOUT_SEC = 5
 
@@ -100,7 +102,7 @@ def query_nvidia_smi(fields: str) -> list[str] | None:
     """
     try:
         result = subprocess.run(
-            ["nvidia-smi", f"--query-gpu={fields}", "--format=csv,noheader,nounits"],
+            [NVIDIA_SMI, f"--query-gpu={fields}", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
             timeout=NVIDIA_SMI_TIMEOUT_SEC,

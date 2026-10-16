@@ -1,6 +1,7 @@
 """Stereo channel analysis — RMS energy, silence detection, speaker identification."""
 
 import wave
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -173,8 +174,30 @@ def _find_split_points(
     return split_points
 
 
+def _pause_points(
+    seg: Segment,
+    mic_samples: np.ndarray,
+    sample_rate: int,
+    pause_threshold: float,
+    monitor_samples: np.ndarray | None,
+) -> list[float]:
+    """Midpoints of the mic's pauses inside seg that last pause_threshold or longer."""
+    window_samples = int(const.SILENCE_WINDOW_SEC * sample_rate)
+    sf = max(0, min(int(seg.start * sample_rate), len(mic_samples)))
+    ef = max(0, min(int(seg.end * sample_rate), len(mic_samples)))
+    if ef - sf < window_samples:
+        return []
+
+    mic_rms_values, monitor_rms_values = _compute_window_rms(
+        mic_samples, monitor_samples, sf, ef, sample_rate, window_samples
+    )
+    if not mic_rms_values:
+        return []
+    return _find_split_points(mic_rms_values, monitor_rms_values, pause_threshold, seg.end)
+
+
 def _build_sub_segments(seg: Segment, split_points: list[float]) -> list[Segment]:
-    """Build sub-segments from a segment and its internal split points."""
+    """Build sub-segments from a segment's words and its internal split points."""
     boundaries = [seg.start, *split_points, seg.end]
     result: list[Segment] = []
 
@@ -182,31 +205,20 @@ def _build_sub_segments(seg: Segment, split_points: list[float]) -> list[Segment
         sub_start = boundaries[i]
         sub_end = boundaries[i + 1]
 
-        if seg.words:
-            sub_words = [
-                w for w in seg.words if w.start >= sub_start - 0.05 and w.end <= sub_end + 0.05
-            ]
-            if not sub_words:
-                continue
-            result.append(
-                Segment(
-                    start=sub_words[0].start,
-                    end=sub_words[-1].end,
-                    text=" ".join(w.word.strip() for w in sub_words),
-                    words=sub_words,
-                    speaker=seg.speaker,
-                )
+        sub_words = [
+            w for w in seg.words or [] if w.start >= sub_start - 0.05 and w.end <= sub_end + 0.05
+        ]
+        if not sub_words:
+            continue
+        result.append(
+            Segment(
+                start=sub_words[0].start,
+                end=sub_words[-1].end,
+                text=" ".join(w.word.strip() for w in sub_words),
+                words=sub_words,
+                speaker=seg.speaker,
             )
-        elif sub_end - sub_start >= const.MIN_SUB_SEGMENT_DURATION_SEC:
-            result.append(
-                Segment(
-                    start=sub_start,
-                    end=sub_end,
-                    text=seg.text,
-                    words=None,
-                    speaker=seg.speaker,
-                )
-            )
+        )
 
     return result
 
@@ -227,37 +239,73 @@ def split_on_silence(
     speaker is active.
 
     A contiguous silent region >= pause_threshold seconds triggers a split.
+
+    A segment without word timestamps (a text-only remote upload) is returned whole:
+    nothing says which of its text falls on which side of a pause, and every piece
+    used to get all of it, repeating the user's words once per pause.
     """
-    window_samples = int(const.SILENCE_WINDOW_SEC * sample_rate)
     result: list[Segment] = []
-
     for seg in segments:
-        sf = max(0, min(int(seg.start * sample_rate), len(mic_samples)))
-        ef = max(0, min(int(seg.end * sample_rate), len(mic_samples)))
-
-        if ef - sf < window_samples:
-            result.append(seg)
-            continue
-
-        mic_rms_values, monitor_rms_values = _compute_window_rms(
-            mic_samples, monitor_samples, sf, ef, sample_rate, window_samples
+        split_points = (
+            _pause_points(seg, mic_samples, sample_rate, pause_threshold, monitor_samples)
+            if seg.words
+            else []
         )
-
-        if not mic_rms_values:
-            result.append(seg)
-            continue
-
-        split_points = _find_split_points(
-            mic_rms_values, monitor_rms_values, pause_threshold, seg.end
-        )
-
-        if not split_points:
-            result.append(seg)
-            continue
-
-        result.extend(_build_sub_segments(seg, split_points))
-
+        result.extend(_build_sub_segments(seg, split_points) if split_points else [seg])
     return result
+
+
+def _user_speaks(
+    start: float,
+    end: float,
+    mic_samples: np.ndarray,
+    monitor_samples: np.ndarray,
+    sample_rate: int,
+) -> bool:
+    """The mic is loud enough over [start, end], and the monitor does not drown it."""
+    if _rms_for_range(start, end, mic_samples, sample_rate) < const.SILENCE_RMS_THRESHOLD:
+        return False
+    verdict = classify_segment_by_channel(start, end, mic_samples, monitor_samples, sample_rate)
+    return verdict != "monitor"
+
+
+def filter_mic_segments(
+    segments: list[Segment],
+    mic_samples: np.ndarray,
+    monitor_samples: np.ndarray,
+    sample_rate: int,
+    pause_threshold: float,
+) -> list[Segment]:
+    """Keep the mic segments that carry the user's voice, dropping silence and the
+    monitor heard through the mic (headphone bleed).
+
+    A segment with word timestamps has its silent words dropped, then what is left is
+    compared with the monitor once: pause splitting has already cut it at the mic's
+    pauses. One without (a text-only remote upload) spans minutes. Judged whole, its
+    energy is diluted, and it goes to whichever side talked more: a 600 s chunk of a
+    real meeting came out "monitor". It is judged stretch by stretch between the
+    pauses, and kept whole if the user speaks in any stretch.
+    """
+    kept: list[Segment] = []
+    for seg in segments:
+        if seg.words:
+            kept.extend(
+                s
+                for s in filter_silent_segments([seg], mic_samples, sample_rate)
+                if classify_segment_by_channel(
+                    s.start, s.end, mic_samples, monitor_samples, sample_rate
+                )
+                != "monitor"
+            )
+            continue
+        points = _pause_points(seg, mic_samples, sample_rate, pause_threshold, monitor_samples)
+        bounds = [seg.start, *points, seg.end]
+        if any(
+            _user_speaks(a, b, mic_samples, monitor_samples, sample_rate)
+            for a, b in pairwise(bounds)
+        ):
+            kept.append(seg)
+    return kept
 
 
 def load_stereo_channels(stereo_wav: Path) -> tuple[np.ndarray, np.ndarray, int]:

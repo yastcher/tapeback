@@ -2,11 +2,11 @@
 
 import os
 
+from tapeback._llm import provider_chain
 from tapeback._resume import default_resume_dir
 from tapeback._runlog import default_run_log_dir
 from tapeback.recorder import Recorder
 from tapeback.settings import Settings, get_settings
-from tapeback.summarizer import _build_provider_chain
 
 
 def test_settings_ignore_user_env_file():
@@ -41,8 +41,8 @@ def test_provider_api_keys_cannot_reach_a_test():
     """A developer's real ANTHROPIC_API_KEY must not survive into the suite.
 
     Bug: isolation swept TAPEBACK_* only, but provider keys are read straight from
-    their own names (ANTHROPIC_API_KEY, GROQ_API_KEY, ...) in _resolve_api_key_for_provider.
-    On a machine with any of them exported, _build_provider_chain returned a live key,
+    their own names (ANTHROPIC_API_KEY, GROQ_API_KEY, ...) in _llm.api_key.
+    On a machine with any of them exported, provider_chain returned a live key,
     so one summarizer test with a forgotten mock would have billed the real vendor.
     """
     for env_var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"):
@@ -51,7 +51,7 @@ def test_provider_api_keys_cannot_reach_a_test():
 
 def test_no_provider_chain_can_be_built_without_an_explicit_key(tmp_path):
     """The end state that matters: nothing to call, so a forgotten mock fails loudly."""
-    assert _build_provider_chain(Settings(vault_path=tmp_path)) == []
+    assert provider_chain(Settings(vault_path=tmp_path)) == []
 
 
 def test_env_var_set_inside_a_test_still_applies(monkeypatch):

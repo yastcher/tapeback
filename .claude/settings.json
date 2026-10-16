@@ -58,7 +58,6 @@
       "Bash(* rm *)",
       "Bash(sudo*)",
       "Bash(git push*)",
-      "Bash(git commit*)",
       "Bash(git checkout*)",
       "Bash(git switch*)",
       "Bash(git reset*)",

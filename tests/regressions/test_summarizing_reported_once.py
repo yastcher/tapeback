@@ -26,7 +26,7 @@ def test_summarizing_is_reported_once(runner, tmp_path, monkeypatch, vault_env):
             "tapeback.transcriber.WhisperModel",
             return_value=mock_whisper_transcribe([(0.0, 2.0, "Hello from the meeting.")]),
         ),
-        patch("tapeback.summarizer._call_llm", return_value=VALID_LLM_RESPONSE_MINIMAL),
+        patch("tapeback._llm.call", return_value=VALID_LLM_RESPONSE_MINIMAL),
     ):
         result = runner.invoke(cli, ["process", str(audio), "--no-diarize"])
 

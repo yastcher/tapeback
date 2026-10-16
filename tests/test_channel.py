@@ -5,6 +5,7 @@ import pytest
 
 from tapeback.channel import (
     classify_segment_by_channel,
+    filter_mic_segments,
     filter_silent_segments,
     gate_inactive_regions,
     identify_user_speaker,
@@ -67,16 +68,94 @@ def test_stereo_channel_pipeline_flow(stereo_wav):
     assert identify_user_speaker(dsegs, wav) == "SPEAKER_00"
 
 
-def test_split_on_silence_without_words_splits_by_duration(stereo_wav):
-    """A wordless segment still splits on a real pause; sub-segments keep the text."""
+def test_split_on_silence_keeps_a_segment_without_words_whole(stereo_wav):
+    """Nothing places a wordless segment's text on either side of a pause."""
     wav = stereo_wav([(1.5, 0.8, 0.0), (1.5, 0.0, 0.0), (1.5, 0.8, 0.0)])
     mic_raw, _monitor_raw, sr = load_stereo_channels(wav)
 
     seg = Segment(start=0.0, end=4.5, text="no word timings", words=None, speaker="You")
-    result = split_on_silence([seg], mic_raw, sr, pause_threshold=1.0)
 
-    assert len(result) >= 2
-    assert all(s.text == "no word timings" for s in result)
+    assert split_on_silence([seg], mic_raw, sr, pause_threshold=1.0) == [seg]
+
+
+def test_mic_filter_keeps_a_wordless_segment_the_user_spoke_in(stereo_wav):
+    """Judged whole, the segment is the other side's: the user spoke two seconds of
+    twelve. Judged stretch by stretch between the mic's pauses, it is the user's."""
+    wav = stereo_wav([(2.0, 0.8, 0.0), (10.0, 0.0, 0.8)])
+    mic_raw, monitor_raw, sr = load_stereo_channels(wav)
+    seg = Segment(start=0.0, end=12.0, text="Budget first.", words=None, speaker="You")
+
+    assert classify_segment_by_channel(0.0, 12.0, mic_raw, monitor_raw, sr) == "monitor"
+    assert filter_mic_segments([seg], mic_raw, monitor_raw, sr, pause_threshold=1.0) == [seg]
+
+
+def test_mic_filter_drops_a_wordless_segment_that_is_bleed_throughout(stereo_wav):
+    wav = stereo_wav([(6.0, 0.05, 0.8)])
+    mic_raw, monitor_raw, sr = load_stereo_channels(wav)
+    seg = Segment(start=0.0, end=6.0, text="Heard through the mic.", words=None, speaker="You")
+
+    assert filter_mic_segments([seg], mic_raw, monitor_raw, sr, pause_threshold=1.0) == []
+
+
+def test_mic_filter_does_not_count_silence_as_the_user(stereo_wav):
+    """Bleed, then quiet on both channels: the quiet stretch is nobody's."""
+    wav = stereo_wav([(3.0, 0.05, 0.8), (3.0, 0.0, 0.0)])
+    mic_raw, monitor_raw, sr = load_stereo_channels(wav)
+    seg = Segment(start=0.0, end=6.0, text="Heard through the mic.", words=None, speaker="You")
+
+    assert filter_mic_segments([seg], mic_raw, monitor_raw, sr, pause_threshold=1.0) == []
+
+
+def test_mic_filter_judges_a_segment_with_words_whole(stereo_wav):
+    """Pause splitting already cut it at the pauses: one comparison decides."""
+    wav = stereo_wav([(2.0, 0.8, 0.0), (2.0, 0.05, 0.8)])
+    mic_raw, monitor_raw, sr = load_stereo_channels(wav)
+    own = Segment(
+        start=0.0,
+        end=2.0,
+        text="Hi",
+        words=[Word(start=0.0, end=2.0, word=" Hi", probability=0.9)],
+        speaker="You",
+    )
+    bleed = Segment(
+        start=2.0,
+        end=4.0,
+        text="Hi",
+        words=[Word(start=2.0, end=4.0, word=" Hi", probability=0.9)],
+        speaker="You",
+    )
+
+    result = filter_mic_segments([own, bleed], mic_raw, monitor_raw, sr, pause_threshold=1.0)
+
+    assert result == [own]
+
+
+def test_mic_filter_drops_silent_words(stereo_wav):
+    """Quiet on both channels: the word was never said into the mic."""
+    wav = stereo_wav([(2.0, 0.0, 0.0)])
+    mic_raw, monitor_raw, sr = load_stereo_channels(wav)
+    seg = Segment(
+        start=0.0,
+        end=2.0,
+        text="Hi",
+        words=[Word(start=0.0, end=2.0, word=" Hi", probability=0.9)],
+        speaker="You",
+    )
+
+    assert filter_mic_segments([seg], mic_raw, monitor_raw, sr, pause_threshold=1.0) == []
+
+
+def test_mic_filter_judges_a_wordless_segment_by_stretches_not_its_average(stereo_wav):
+    """Two seconds of the user in thirty: the average is below the silence threshold,
+    the stretch between the other side's two remarks is not."""
+    wav = stereo_wav(
+        [(10.0, 0.0, 0.0), (2.0, 0.0, 0.02), (2.0, 0.02, 0.0), (2.0, 0.0, 0.02), (14.0, 0.0, 0.0)]
+    )
+    mic_raw, monitor_raw, sr = load_stereo_channels(wav)
+    seg = Segment(start=0.0, end=30.0, text="Agreed.", words=None, speaker="You")
+
+    assert filter_silent_segments([seg], mic_raw, sr) == []
+    assert filter_mic_segments([seg], mic_raw, monitor_raw, sr, pause_threshold=1.0) == [seg]
 
 
 def test_split_on_silence_segment_shorter_than_window_unchanged():

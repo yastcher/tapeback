@@ -11,13 +11,34 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
 ### Added
-- `tapeback status` shows whether the LLM key and the HF token are set, never their values.
+- `TAPEBACK_LLM_PROVIDER=local` writes the summary on this machine. Once transcription and diarization have given the GPU back, tapeback starts llama.cpp's `llama-server`, and stops it after the answer. The model, Qwen3.5-4B in 4 bits, downloads once on the first summary; `TAPEBACK_LLM_LOCAL_MODEL` names another GGUF. A model that does not fit in VRAM is retried once with half the context, the server waits up to ten minutes for a GPU thermal clamp to release before it starts, and one answer may take up to 30 minutes. A local summary never falls back to a cloud provider. The `tapeback-llm-local` package brings the server: on AUR it depends on `llama-cpp` from [extra], and the `.deb` carries a pinned llama.cpp release.
+- `TAPEBACK_LLM_PROVIDER=openai_compatible` reaches any OpenAI-compatible API named by `TAPEBACK_LLM_BASE_URL` and `TAPEBACK_LLM_MODEL`, with its key in `TAPEBACK_LLM_API_KEY`. It never falls back to the other providers, nor they to it, and masking applies as with any provider. An address with credentials in it is refused, plain http to another host warns, and the request asks for one answer, not a stream. `TAPEBACK_LLM_TIMEOUT` (600 s) bounds one answer from it or from a cloud provider.
+- `tapeback status` shows whether the LLM key and the HF token are set, never their values; for `openai_compatible` the endpoint's host and port, for `local` the model and the server it found.
+- `tapeback setup` turns diarization and the summary on or off: flags for scripts, questions in a terminal. It edits `~/.config/tapeback/.env` in place, keeping its other lines, its mode and a symlink, and says when the environment or `./.env` overrides what it wrote.
+
+### Changed
+- Diarization looks for a thermal clamp on the GPU before it starts, as transcription does: a clamped card sends it to the CPU, which diarizes faster in that state, under the same `TAPEBACK_THERMAL_CLAMP_*` settings. It also reports its progress through the recording, the device it runs on and the GPU's clocks for the stage, and its warnings reach the run record.
+- `tapeback summarize --provider` accepts every provider, `local` and `openai_compatible` included.
+- A diarized note holds one transcript. It used to print the raw You/Other transcript and then the same text again with the speakers told apart, and the summary read both. `tapeback summarize` on an older note sends only its diarized half.
+- The test-coverage floor rises from 90% to 94.5% and from now on only moves up. It used to be checked against the total rounded to a whole percent, so 93.6% would have passed a floor of 94; it is now checked to two decimals. Development-only.
+- The LLM transport (providers, keys, the fallback chain, retries) moves from `summarizer.py` to `_llm.py`, and the five tables that described a provider become one. Development-only.
+- Whisper's choice of device and compute type moves from `transcriber.py` to `_device.py`, under the 500-line limit; diarization takes its device from there too. Development-only.
 
 ### Fixed
+- A `~` in a path setting is the home directory. README's quick start writes `TAPEBACK_VAULT_PATH=~/...`, and nothing expanded it: the vault became a directory named `~` inside wherever tapeback was started.
+- A summary is written in the note's language. The prompt asked for "the same language as the transcript", and a small local model followed its English instructions instead and summarised a Russian meeting in English; it now names the language Whisper detected.
+- The default LLM models are replaced: vendors had retired most of them or closed them to new keys, so a summary without `TAPEBACK_LLM_MODEL` failed. The defaults are now `claude-sonnet-5-5` (anthropic), `gpt-6-luna` (openai), `openai/gpt-oss-120b` (groq), `gemini-3.8-flash` (gemini), `nvidia/nemotron-3-super-120b-a12b:free` (openrouter), `deepseek-flash` (deepseek) and `qwen-plus` (qwen). An anthropic reply that opens with the model's reasoning no longer fails the summary.
 - tapeback no longer dies in a directory whose `.env` belongs to another app, and no longer prints that file's values, secrets included, in the error. Keys tapeback does not know are ignored.
+- Diarization gives its GPU memory back when it finishes. A long-running tray kept it reserved between recordings, leaving the next transcription too little VRAM for the GPU.
+- Diarization no longer drops the words of a short piece. It cuts a segment wherever it hears another voice, and a piece under a second was dropped as a speech-detection artifact. It now joins the speech around it: pyannote's turns are not word-accurate, and on a line of its own such a piece gave a meeting a speaker who was not there.
+- A text-only remote model (`gpt-transcribe`) no longer repeats the user's words once per pause. Its transcript has no word timestamps, yet the mic's was cut at every pause and each piece kept the whole text.
+- The test suite no longer reads the machine's GPU. Transcriber tests compared the real card's free VRAM with the 1200 MiB floor and failed whenever something else held it. Development-only.
+- The release check and the version bump see a package name with two parts, such as `tapeback-llm-local_X.Y.Z_`: its README line would have kept the old version. Development-only.
 
 ### Docs
 - The README's LLM setup puts the key in `TAPEBACK_LLM_API_KEY`. The provider's own variable (`GEMINI_API_KEY` and the rest) is read from the environment, never from the config file, so the documented file never gave summarization a key.
+- `.env.example` no longer suggests `TAPEBACK_CHUNK_LENGTH=2`, which the README measures as much slower; it shows the default, 30.
+- The README warns that free models, OpenRouter's default among them, may keep or train on what they receive, and gives ollama.com's and anyapi.ai's addresses for `openai_compatible`.
 
 ## [0.9.10] — 2026-10-10
 

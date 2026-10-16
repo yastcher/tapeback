@@ -18,6 +18,9 @@ class Segment:
     text: str
     words: list[Word] | None = None
     speaker: str | None = None  # None in phase 1, filled in phase 2
+    # Length of the Whisper segment diarization rebuilt this one from; None if it was
+    # not rebuilt. Its words can span less than that segment, which was speech.
+    source_duration: float | None = None
 
 
 @dataclass

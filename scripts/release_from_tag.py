@@ -36,7 +36,7 @@ _PKGVER = re.compile(r"^pkgver=(?P<version>\S+)$", re.M)
 # The version in README's install commands: the release URL and the package file names.
 # The same two patterns scripts/bump-version.sh rewrites.
 _README_VERSION = re.compile(
-    r"releases/download/v(?P<url>\d+\.\d+\.\d+)/|tapeback(?:-[a-z]+)?_(?P<file>\d+\.\d+\.\d+)_"
+    r"releases/download/v(?P<url>\d+\.\d+\.\d+)/|tapeback(?:-[a-z]+)*_(?P<file>\d+\.\d+\.\d+)_"
 )
 
 

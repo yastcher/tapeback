@@ -28,7 +28,7 @@ scripts/gate.sh
 ```
 
 The gate has passed only when its last line reads `all gates passed`. Coverage is
-enforced at 90% by `pyproject.toml`, so new code needs tests. When the branch touches
+enforced by `fail_under` in `pyproject.toml`, so new code needs tests. When the branch touches
 `src/`, `packaging/` or `pyproject.toml`, the gate also builds and installs the `.deb`
 and Arch packages in containers, as CI does — that needs docker and
 [nfpm](https://nfpm.goreleaser.com/), and some minutes.
@@ -60,7 +60,7 @@ and Arch packages in containers, as CI does — that needs docker and
 - **No magic numbers.** Thresholds, limits and ratios belong in `settings.py` as a
   `TAPEBACK_` setting, or in `const.py` — not as an inline literal or a default argument.
 - **No local imports inside functions**, except where an optional extra requires it
-  (see `diarizer.py` and `summarizer.py` for the pattern and the `noqa` that documents it).
+  (see `diarizer.py` and `_llm.py` for the pattern and the `noqa` that documents it).
 - Everything committed is in English — code, comments, logs, docs, commit messages.
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`,
   `docs:`, `refactor:`.
@@ -79,9 +79,9 @@ changes have been reverted after measurement contradicted them;
 ## CI on pull requests
 
 Every commit pushed to a PR re-runs lint, format, types and tests, on Python 3.13 and
-3.14. Changes to `src/`, `packaging/` or `pyproject.toml` additionally build the `.deb`
-and install it in six Ubuntu and Debian containers, and build the AUR package in an
-Arch container.
+3.14. Changes to `src/`, `packaging/` or `pyproject.toml` additionally build the `.debs`
+and install them in six Ubuntu and Debian containers, and build the AUR packages in an
+Arch container; both run the package and its local LLM companion.
 
 ## Reporting a bug
 

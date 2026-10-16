@@ -116,6 +116,11 @@ def test_query_nvidia_smi_returns_none_on_nonzero_exit(monkeypatch):
     assert query_nvidia_smi("memory.free") is None
 
 
+def test_the_suite_never_reads_the_real_gpu():
+    """isolate_gpu keeps nvidia-smi out of reach, so no result depends on the card."""
+    assert query_nvidia_smi("memory.free") is None
+
+
 def test_get_free_vram_mib(monkeypatch):
     monkeypatch.setattr(_gpu.subprocess, "run", _fake_run("1620\n"))
     assert get_free_vram_mib() == 1620

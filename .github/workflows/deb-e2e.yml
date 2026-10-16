@@ -133,4 +133,7 @@ jobs:
               tapeback status
               echo "=== transcribing tests/smoke/speech.wav ==="
               /smoke/transcribe.sh
+              echo "=== the local LLM companion ==="
+              apt-get install -y -qq /dist/tapeback-llm_*.deb /dist/tapeback-llm-local_*.deb
+              /smoke/llm-local.sh /opt/tapeback/venv/bin/llama-server
           '

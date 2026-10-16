@@ -25,7 +25,7 @@ from tapeback.audio import (
     split_channels_16k,
 )
 from tapeback.channel import (
-    classify_segment_by_channel,
+    filter_mic_segments,
     filter_silent_segments,
     identify_user_speaker,
     load_stereo_channels,
@@ -39,7 +39,7 @@ from tapeback.diarizer import (
     merge_similar_speakers,
 )
 from tapeback.formatter import TranscriptMeta, format_markdown
-from tapeback.models import Segment
+from tapeback.models import DiarizationSegment, Segment
 from tapeback.recorder import Recorder, validate_session_name
 from tapeback.settings import Settings
 from tapeback.summarizer import maybe_summarize
@@ -91,7 +91,7 @@ def stop_and_process(
         audio_dest = save_audio_to_vault(stereo_path, settings, session_name)
         report(f"Audio saved: {audio_dest}")
 
-        segments, info, raw_segments = process_stereo_file(
+        segments, info = process_stereo_file(
             stereo_path, output_dir, settings, diarize=diarize, on_status=report
         )
 
@@ -106,7 +106,6 @@ def stop_and_process(
                 language=str(info.get("language", settings.language)),
                 partial=bool(info.get("partial")),
             ),
-            raw_segments=raw_segments,
         )
 
         md_path = save_markdown_to_vault(markdown, settings, session_name)
@@ -144,11 +143,11 @@ def process_file(
 
         if is_stereo(audio_path):
             report("Stereo file detected, using dual-channel pipeline...")
-            segments, info, raw_segments = process_stereo_file(
+            segments, info = process_stereo_file(
                 audio_path, tmp_dir, settings, diarize=diarize, on_status=report
             )
         else:
-            segments, info, raw_segments = process_mono_file(
+            segments, info = process_mono_file(
                 audio_path, tmp_dir, settings, diarize=diarize, on_status=report
             )
 
@@ -163,7 +162,6 @@ def process_file(
                 language=str(info.get("language", settings.language)),
                 partial=bool(info.get("partial")),
             ),
-            raw_segments=raw_segments,
         )
 
         md_path = save_markdown_to_vault(markdown, settings, name)
@@ -192,11 +190,11 @@ def process_stereo_file(
     *,
     diarize: bool,
     on_status: StatusCallback = _noop_status,
-) -> tuple[list[Segment], dict[str, str | float], list[Segment] | None]:
+) -> tuple[list[Segment], dict[str, str | float]]:
     """Process a stereo WAV through the dual-channel pipeline.
 
-    Returns (diarized_segments, info, raw_segments).
-    raw_segments have basic You/Other attribution (channel-based, no diarization).
+    Returns (segments, info): the mic is "You"; the monitor is "Speaker N" when
+    diarized, "Other" when not.
     """
     with stage_timer("load channels", on_status):
         mic_raw, monitor_raw, raw_sr = load_stereo_channels(stereo_path)
@@ -233,22 +231,10 @@ def process_stereo_file(
         monitor_samples=monitor_raw,
     )
 
-    mic_segments = filter_silent_segments(mic_segments, mic_raw, raw_sr)
+    mic_segments = filter_mic_segments(
+        mic_segments, mic_raw, monitor_raw, raw_sr, settings.pause_threshold
+    )
     monitor_segments = filter_silent_segments(monitor_segments, monitor_raw, raw_sr)
-
-    # Drop mic segments where monitor is louder (headphone bleed, not real speech)
-    mic_segments = [
-        s
-        for s in mic_segments
-        if classify_segment_by_channel(s.start, s.end, mic_raw, monitor_raw, raw_sr) != "monitor"
-    ]
-
-    # Raw transcript: basic channel attribution only (You vs Other)
-    raw_monitor = [
-        Segment(start=s.start, end=s.end, text=s.text, words=s.words, speaker=const.SPEAKER_OTHER)
-        for s in monitor_segments
-    ]
-    raw_segments = merge_channel_segments(mic_segments, raw_monitor)
 
     want_diarize = diarize and settings.diarize
     if want_diarize and not allows_local_diarize(settings.stt_backend, settings.stt_model):
@@ -268,8 +254,7 @@ def process_stereo_file(
         else:
             on_status("Diarizing speakers...")
             with stage_timer("diarize", on_status):
-                diarizer = Diarizer(settings)
-                diarization_segments = diarizer.diarize(monitor_16k)
+                diarization_segments = _diarize(settings, monitor_16k, on_status)
                 if settings.spectral_merge_threshold > 0:
                     diarization_segments = merge_similar_speakers(
                         diarization_segments,
@@ -293,9 +278,7 @@ def process_stereo_file(
             for s in monitor_segments
         ]
 
-    segments = merge_channel_segments(mic_segments, monitor_segments)
-    # Without diarization, raw_segments == segments — skip the duplicate section.
-    return segments, info, raw_segments if diarized else None
+    return merge_channel_segments(mic_segments, monitor_segments), info
 
 
 def process_mono_file(
@@ -305,10 +288,10 @@ def process_mono_file(
     *,
     diarize: bool,
     on_status: StatusCallback = _noop_status,
-) -> tuple[list[Segment], dict[str, str | float], list[Segment] | None]:
+) -> tuple[list[Segment], dict[str, str | float]]:
     """Process a mono/non-stereo audio file through the single-channel pipeline.
 
-    Returns (diarized_segments, info, raw_segments).
+    Returns (segments, info), diarized when diarization ran.
     """
     on_status("Converting audio...")
     with stage_timer("convert", on_status):
@@ -329,24 +312,15 @@ def process_mono_file(
         del transcriber
         free_gpu_memory()
 
-    # Raw transcript before diarization
-    raw_segments = list(segments)
-
-    stereo_for_attribution = _get_stereo_source(audio_path)
-    segments_before = segments
     segments = _maybe_diarize_segments(
         segments,
         settings,
         mono_16k_path,
-        stereo_for_attribution,
+        _get_stereo_source(audio_path),
         diarize=diarize,
         on_status=on_status,
     )
-
-    # _maybe_diarize_segments returns the same list reference when it skips
-    # diarization — use identity to tell whether the raw section is a duplicate.
-    diarized = segments is not segments_before
-    return segments, info, raw_segments if diarized else None
+    return segments, info
 
 
 def _maybe_diarize_segments(
@@ -385,8 +359,7 @@ def _maybe_diarize_segments(
 
     on_status("Diarizing speakers...")
     with stage_timer("diarize", on_status):
-        diarizer = Diarizer(settings)
-        diarization_segments = diarizer.diarize(mono_16k_path)
+        diarization_segments = _diarize(settings, mono_16k_path, on_status)
 
         user_speaker = None
         if stereo_path is not None:
@@ -394,6 +367,23 @@ def _maybe_diarize_segments(
 
         result = assign_speakers(segments, diarization_segments, user_speaker, stereo_path)
     return result
+
+
+def _diarize(
+    settings: Settings, audio_path: Path, on_status: StatusCallback
+) -> list[DiarizationSegment]:
+    """Run pyannote, with the GPU sampled as for Whisper, then give its VRAM back.
+
+    The Diarizer is the only reference to the pyannote pipeline, so it is garbage as
+    soon as diarize() returns, but torch's caching allocator keeps its memory until
+    asked. A long-lived process, the tray, would sit on it, and the next recording's
+    Whisper would find too little VRAM and fall back to the CPU.
+    """
+    try:
+        with sample_gpu(on_status, enabled=_gpu_telemetry_enabled(settings)):
+            return Diarizer(settings, on_status).diarize(audio_path)
+    finally:
+        free_gpu_memory()
 
 
 def _get_stereo_source(audio_path: Path) -> Path | None:

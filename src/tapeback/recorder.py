@@ -35,7 +35,7 @@ _SESSION_NAME_RE = re.compile(r"^[\w-]+$")
 _SESSIONS_DIR_NAME = "sessions"
 
 
-def _state_dir() -> Path:
+def default_state_dir() -> Path:
     """tapeback's XDG state directory — ~/.local/state/tapeback unless XDG_STATE_HOME
     says otherwise. Holds session.json and, under `sessions/`, the recordings it points
     at. A relative XDG_STATE_HOME is ignored, as the XDG spec requires: it would put the
@@ -47,7 +47,7 @@ def _state_dir() -> Path:
     return base / "tapeback"
 
 
-def _ensure_private_dir(path: Path) -> None:
+def ensure_private_dir(path: Path) -> None:
     """Create the directory as 0700, or refuse one that is not privately ours.
 
     `mkdir(mode=...)` sets the mode only when it actually creates the directory, so an
@@ -92,8 +92,8 @@ def session_root(settings: Settings) -> Path:
     the runtime directory was, without its size limit or its lifetime. A session is
     removed once it has been processed; one that failed stays to be recovered.
     """
-    root = settings.sessions_dir or _state_dir() / _SESSIONS_DIR_NAME
-    _ensure_private_dir(root)
+    root = settings.sessions_dir or default_state_dir() / _SESSIONS_DIR_NAME
+    ensure_private_dir(root)
     return root
 
 
@@ -300,7 +300,7 @@ class Recorder:
         state_dir: Path | None = None,
         clock: Callable[[], datetime.datetime] = _utc_now,
     ) -> None:
-        self._state_dir = state_dir or _state_dir()
+        self._state_dir = state_dir or default_state_dir()
         self._session_file = self._state_dir / const.FILE_SESSION
         # The current instant; a test fixes it to name a session deterministically.
         self._clock = clock
@@ -333,7 +333,7 @@ class Recorder:
             validate_session_name(session_name)
 
         tmp_dir = session_dir(settings, session_name)
-        _ensure_private_dir(tmp_dir)
+        ensure_private_dir(tmp_dir)
 
         monitor_path = tmp_dir / const.FILE_MONITOR
         mic_path = tmp_dir / const.FILE_MIC

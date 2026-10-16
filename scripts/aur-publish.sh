@@ -52,6 +52,14 @@ cp "$REPO_ROOT/packaging/tapeback-llm/tapeback-llm.install" "$AUR_DIR/tapeback-l
 (cd "$AUR_DIR/tapeback-llm" && makepkg --printsrcinfo > .SRCINFO)
 (cd "$AUR_DIR/tapeback-llm" && git add PKGBUILD .SRCINFO tapeback-llm.install && git commit -m "Update to $VERSION" && git push)
 
+# --- tapeback-llm-local ---
+echo ""
+echo "==> Updating tapeback-llm-local..."
+git clone ssh://aur@aur.archlinux.org/tapeback-llm-local.git "$AUR_DIR/tapeback-llm-local"
+cp "$REPO_ROOT/packaging/tapeback-llm-local/PKGBUILD" "$AUR_DIR/tapeback-llm-local/PKGBUILD"
+(cd "$AUR_DIR/tapeback-llm-local" && makepkg --printsrcinfo > .SRCINFO)
+(cd "$AUR_DIR/tapeback-llm-local" && git add PKGBUILD .SRCINFO && git commit -m "Update to $VERSION" && git push)
+
 # --- tapeback-diarize ---
 echo ""
 echo "==> Updating tapeback-diarize..."

@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from huggingface_hub.errors import LocalEntryNotFoundError
 
-from tapeback.transcriber import Transcriber, _resolve_compute_type
+from tapeback._device import resolve_compute_type
+from tapeback.transcriber import Transcriber
 
 
 @pytest.mark.parametrize(
@@ -30,9 +31,9 @@ from tapeback.transcriber import Transcriber, _resolve_compute_type
         pytest.param("float16", "cpu", "int8", id="float16_on_cpu"),
     ],
 )
-def test_resolve_compute_type(requested, device, expected):
+def testresolve_compute_type(requested, device, expected):
     """Pure compute-type resolution: explicit passthrough, auto + device branching."""
-    assert _resolve_compute_type(requested, device) == expected
+    assert resolve_compute_type(requested, device) == expected
 
 
 def test_lc_messages_set_for_pyav_locale_workaround():

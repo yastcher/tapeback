@@ -90,7 +90,7 @@ def test_diarize_cuda_init_fallback(tmp_vault, capsys):
         # Isolation by construction: without this the test reads the machine's real
         # free VRAM, so anything else using the GPU sends Diarizer down the
         # not-enough-VRAM branch and this assertion fails for an unrelated reason.
-        patch("tapeback.diarizer.get_free_vram_mib", return_value=4096),
+        patch("tapeback._device.get_free_vram_mib", return_value=4096),
     ):
         mock_pipeline = MagicMock()
         mock_pipeline_cls.from_pretrained.return_value = mock_pipeline
@@ -131,7 +131,7 @@ def test_diarize_cuda_oom_fallback(tmp_vault, capsys):
         patch("pyannote.audio.Pipeline") as mock_pipeline_cls,
         # The assertion below requires the CUDA branch to be taken, which depends on
         # free VRAM — do not let another process on the GPU decide this test's result.
-        patch("tapeback.diarizer.get_free_vram_mib", return_value=4096),
+        patch("tapeback._device.get_free_vram_mib", return_value=4096),
     ):
         mock_pipeline = MagicMock()
         mock_pipeline_cls.from_pretrained.return_value = mock_pipeline

@@ -1,5 +1,6 @@
 """Diarizer tests — speaker identification, assignment, channel analysis, silence splitting."""
 
+import itertools
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -24,8 +25,10 @@ from tapeback.diarizer import (
 from tapeback.models import DiarizationSegment, Segment, Word
 from tapeback.settings import Settings
 from tests.fixtures import (
+    create_mono_wav,
     create_stereo_wav,
     create_stereo_wav_segments,
+    mock_pyannote_annotation,
     requires_pyannote,
     voice_signal,
 )
@@ -155,6 +158,106 @@ def test_diarize_propagates_non_cuda_error(tmp_vault):
             diarizer.diarize(Path("/fake/audio.wav"))
 
         assert mock_pipeline.call_count == 1
+
+
+IDLE = "0x0000000000000001"
+CLAMPED = "0x0000000000000024"  # SwPowerCap + SwThermalSlowdown, as caught live
+
+
+def _on_gpu(tmp_vault, **overrides) -> Settings:
+    return Settings(
+        vault_path=tmp_vault,
+        hf_token=SecretStr("hf_fake"),
+        device="cuda",
+        thermal_clamp_check=True,
+        thermal_clamp_wait=0.0,
+        **overrides,
+    )
+
+
+@requires_pyannote
+@pytest.mark.parametrize(
+    ("reasons", "cpu_fallback", "device", "warning"),
+    [
+        (IDLE, True, "cuda", None),
+        (
+            CLAMPED,
+            True,
+            "cpu",
+            "Warning: GPU is thermally clamped and did not release — diarization runs on "
+            "the CPU, which is faster in this state. Let the machine idle to clear it.",
+        ),
+        (
+            CLAMPED,
+            False,
+            "cuda",
+            "Warning: GPU is thermally clamped; diarization will be very slow. "
+            "Set TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK=true to use the CPU instead.",
+        ),
+    ],
+    ids=["cool", "clamped", "clamped without the CPU fallback"],
+)
+def test_diarization_leaves_a_clamped_gpu_as_transcription_does(
+    tmp_vault, fake_nvidia_smi, reasons, cpu_fallback, device, warning
+):
+    fake_nvidia_smi(4096, reasons)
+    reported: list[str] = []
+
+    with patch("pyannote.audio.Pipeline") as pipeline_cls:
+        pipeline = pipeline_cls.from_pretrained.return_value
+        Diarizer(_on_gpu(tmp_vault, thermal_clamp_cpu_fallback=cpu_fallback), reported.append)
+
+    assert reported[-1] == f"Diarization: pyannote/speaker-diarization-3.1 on {device}"
+    assert pipeline.to.called is (device == "cuda")
+    assert (warning in reported) if warning else not any("Warning" in r for r in reported)
+
+
+@requires_pyannote
+@pytest.mark.parametrize(("free_mib", "device"), [(1499, "cpu"), (1500, "cuda"), (1501, "cuda")])
+def test_diarization_needs_1500_mib_of_free_vram_for_the_gpu(
+    tmp_vault, fake_nvidia_smi, free_mib, device
+):
+    fake_nvidia_smi(free_mib, IDLE)
+    reported: list[str] = []
+
+    with patch("pyannote.audio.Pipeline"):
+        Diarizer(_on_gpu(tmp_vault), reported.append)
+
+    assert reported[-1] == f"Diarization: pyannote/speaker-diarization-3.1 on {device}"
+    shortage = (
+        f"Warning: only {free_mib} MiB VRAM free, below the 1500 MiB diarization needs — "
+        "using CPU. A previous CUDA out-of-memory leaks VRAM until the process restarts."
+    )
+    assert (shortage in reported) is (device == "cpu")
+
+
+@requires_pyannote
+def test_diarization_reports_how_far_into_the_recording_each_step_is(tmp_vault, tmp_path):
+    audio = tmp_path / "monitor.wav"
+    create_mono_wav(audio, duration=10.0, sample_rate=16000)
+
+    def pyannote(_audio, *, hook, **_kwargs):
+        hook("segmentation", None, file={}, total=4, completed=0)
+        hook("segmentation", None, file={}, total=4, completed=2)
+        hook("segmentation", "the step's result", file={})  # no counts: not progress
+        hook("embeddings", None, file={}, total=10, completed=5)
+        return mock_pyannote_annotation([(0.0, 10.0, "SPEAKER_00")])
+
+    reported: list[str] = []
+    ticks = itertools.count(0.0, 100.0)  # every update is past the throttle
+    settings = Settings(vault_path=tmp_vault, hf_token=SecretStr("hf_fake"), device="cpu")
+    with (
+        patch("pyannote.audio.Pipeline") as pipeline_cls,
+        patch("tapeback._timing.time.monotonic", side_effect=lambda: next(ticks)),
+    ):
+        pipeline_cls.from_pretrained.return_value = MagicMock(side_effect=pyannote)
+        Diarizer(settings, reported.append).diarize(audio)
+
+    assert [line for line in reported if "%" in line] == [
+        "  diarize segmentation: 0% (0:00 / 0:10)",
+        "  diarize segmentation: 50% (0:05 / 0:10)",
+        "  diarize embeddings: 50% (0:05 / 0:10)",
+    ]
 
 
 # --- identify_user_speaker ---

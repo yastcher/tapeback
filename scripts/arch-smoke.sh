@@ -37,3 +37,12 @@ sudo -u builder makepkg -si --noconfirm
 tapeback --version
 tapeback status
 /src/tests/smoke/transcribe.sh
+
+# The local LLM: tapeback-llm brings the OpenAI SDK, tapeback-llm-local Arch's llama-cpp.
+for companion in tapeback-llm tapeback-llm-local; do
+  install -d -o builder "$work/$companion"
+  cp /src/packaging/"$companion"/* "$work/$companion/"
+  chown -R builder "$work/$companion"
+  (cd "$work/$companion" && sudo -u builder makepkg -si --noconfirm)
+done
+/src/tests/smoke/llm-local.sh /usr/bin/llama-server

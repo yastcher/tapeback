@@ -26,6 +26,9 @@ dependencies = [
     "av>=11,<19",
     "pydantic-settings>=2.0.0,<3",
     "click>=8.0.0,<9",
+    # `tapeback setup` writes the user's .env with set_key(follow_symlinks=...): the
+    # version tested, not the oldest that might work.
+    "python-dotenv>=1.2.2,<2",
 ]
 
 [project.optional-dependencies]
@@ -103,7 +106,7 @@ max-args = 6  # Settings + 5 domain args is a common shape in this codebase
 # so users without the extra don't get ImportError on module load.
 "src/tapeback/diarizer.py" = ["PLC0415"]
 # anthropic/openai are `[llm]` extras — same lazy-import rationale as diarizer.
-"src/tapeback/summarizer.py" = ["PLC0415"]
+"src/tapeback/_llm.py" = ["PLC0415"]
 "src/tapeback/_stt_openai.py" = ["PLC0415"]
 # D-Bus method/signal signatures live in string annotations (e.g. `-> "u(ia{sv}av)"`)
 # that dbus-next reads at runtime. ruff F821/F722 cannot tell these strings apart
@@ -128,7 +131,11 @@ omit = ["src/tapeback/tray.py"]  # GUI module, requires X display — tested loc
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 90
+# A ratchet: raised as coverage grows, never lowered to let a change in (AGENTS.md, Testing).
+fail_under = 94.5
+# The floor is compared with the total rounded to this many places: at the default 0,
+# 93.6% rounds to 94 and passes a floor of 94.
+precision = 2
 exclude_lines = [
     "if TYPE_CHECKING:",
     "pragma: no cover",

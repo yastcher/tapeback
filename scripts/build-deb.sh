@@ -12,6 +12,7 @@
 #   /opt/tapeback/python/         standalone CPython (~75 MB, RPATH-relative)
 #   /opt/tapeback/venv/           virtualenv with tapeback + deps installed
 #   /usr/bin/tapeback             wrapper that exec's /opt/tapeback/venv/bin/tapeback
+#   /opt/tapeback/llama.cpp/      tapeback-llm-local: llama.cpp's server, linked into venv/bin
 #
 # Usage:
 #   ./scripts/build-deb.sh                 # install tapeback from PyPI
@@ -41,7 +42,18 @@ PYBS_VERSION="${PYBS_VERSION:-3.13.13}"
 PYBS_TARBALL="cpython-${PYBS_VERSION}+${PYBS_DATE}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
 PYBS_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PYBS_DATE}/${PYBS_TARBALL}"
 
+# Pinned llama.cpp release for tapeback-llm-local. The Vulkan build: it runs on Ubuntu
+# 22.04+ and Debian 12+, and reaches an NVIDIA GPU through the driver's Vulkan ICD; the
+# CUDA builds need Ubuntu 24.04+ and weigh 25 times more. llama.cpp publishes no
+# SHA256SUMS; the checksum is the asset digest GitHub's release API reports.
+# Browse: https://github.com/ggml-org/llama.cpp/releases
+LLAMA_CPP_BUILD="${LLAMA_CPP_BUILD:-b11669}"
+LLAMA_CPP_SHA256="${LLAMA_CPP_SHA256:-e8709e5ba6c1b093dea7f3de57f4aba842f9a188fba6b465782d65d6fcfa4d9f}"
+LLAMA_CPP_TARBALL="llama-${LLAMA_CPP_BUILD}-bin-ubuntu-vulkan-x64.tar.gz"
+LLAMA_CPP_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_BUILD}/${LLAMA_CPP_TARBALL}"
+
 BUILD_ROOT="$REPO_ROOT/build/opt/tapeback"
+LLAMA_DEST="$REPO_ROOT/build/llama.cpp"
 PY_DEST="$BUILD_ROOT/python"
 VENV_DEST="$BUILD_ROOT/venv"
 DIST_DIR="$REPO_ROOT/dist"
@@ -55,6 +67,7 @@ WHEEL_SPEC="${1:-tapeback==$VERSION}"
 
 echo "==> Building tapeback $VERSION .deb packages"
 echo "    Python:     cpython-${PYBS_VERSION}+${PYBS_DATE} (python-build-standalone)"
+echo "    llama.cpp:  ${LLAMA_CPP_BUILD} (Vulkan)"
 echo "    Wheel/spec: $WHEEL_SPEC"
 
 # Clean previous venv build but keep dist/ (wheel artifact may live there)
@@ -99,12 +112,27 @@ sed -i "s|$PY_DEST|/opt/tapeback/python|g" "$VENV_DEST/pyvenv.cfg"
 echo "==> Trimming bytecode caches"
 find "$VENV_DEST" -type d -name __pycache__ -prune -exec rm -rf {} +
 
+echo "==> Downloading llama.cpp ${LLAMA_CPP_BUILD} for tapeback-llm-local"
+mkdir -p "$LLAMA_DEST"
+curl -fsSL -o "$REPO_ROOT/build/$LLAMA_CPP_TARBALL" "$LLAMA_CPP_URL"
+echo "$LLAMA_CPP_SHA256  $REPO_ROOT/build/$LLAMA_CPP_TARBALL" | sha256sum --check --quiet
+# One flat directory: the server, its libraries and the backends it loads at run time,
+# all found through RUNPATH=$ORIGIN.
+tar -xzf "$REPO_ROOT/build/$LLAMA_CPP_TARBALL" -C "$LLAMA_DEST" --strip-components=1
+rm "$REPO_ROOT/build/$LLAMA_CPP_TARBALL"
+if [ ! -x "$LLAMA_DEST/llama-server" ] || [ ! -f "$LLAMA_DEST/LICENSE" ]; then
+    echo "Error: llama-server or its LICENSE missing after extract." >&2
+    ls -la "$LLAMA_DEST" || true
+    exit 1
+fi
+
 echo "==> Running nfpm"
 for cfg in \
     packaging/deb/nfpm-tapeback.yaml \
     packaging/deb/nfpm-tapeback-diarize.yaml \
     packaging/deb/nfpm-tapeback-cuda.yaml \
     packaging/deb/nfpm-tapeback-llm.yaml \
+    packaging/deb/nfpm-tapeback-llm-local.yaml \
     packaging/deb/nfpm-tapeback-tray.yaml
 do
     echo "    - $cfg"

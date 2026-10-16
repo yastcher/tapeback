@@ -1,31 +1,25 @@
 """Meeting summarization via LLM — extract summary, action items, key decisions."""
 
 import json
-import os
 import re
-import time
 from pathlib import Path
 
 import click
 
-from tapeback import const
+from tapeback import _llm
 from tapeback._mask import Masker
 from tapeback.models import ActionItem, Summary
-from tapeback.settings import DEFAULT_MODELS, Settings
+from tapeback.settings import Settings
 
 _SYSTEM_PROMPT = """\
 You analyze meeting transcripts and extract structured information.
 
 You MUST respond with valid JSON only. No markdown, no explanation, no preamble.
 
-The transcript may contain two sections:
-- "## Transcript" — raw speech recognition output with basic You/Other channel attribution. \
-This text is more reliable.
-- "## Diarized Transcript" — same text with detailed speaker identification \
-(Speaker 1, Speaker 2, etc.), but speaker labels may be inaccurate due to audio crosstalk.
-
-Use the raw transcript for accurate text content. \
-Use the diarized transcript for speaker attribution when it seems consistent.
+Each transcript line is a timecode, a speaker label and what was said. "You" is the \
+person who recorded the meeting. The others are "Speaker 1", "Speaker 2" and so on, \
+or "Other" when their voices were not told apart. These labels come from audio \
+analysis and may be wrong where voices overlap.
 
 JSON schema:
 {
@@ -54,210 +48,22 @@ Rules:
 
 _RETRY_PROMPT = "Respond with valid JSON only. No other text."
 
+# "The same language as the transcript" was not enough: a 4B local model followed the
+# language of these English instructions and summarised a Russian meeting in English.
+# The note knows its language (Whisper's code), so the prompt names it.
+_LANGUAGE_RULE = (
+    "- The transcript is in {language} (ISO 639-1): write the brief, the actions and the "
+    "decisions in that language, whatever the language of these instructions"
+)
+_FRONTMATTER = re.compile(r"\A---\n(.*?)^---\n", re.MULTILINE | re.DOTALL)
+# A language code as Whisper writes it; anything else in the field is not passed on.
+_LANGUAGE_CODE = re.compile(r"^language: ([a-z]{2,3})$", re.MULTILINE)
 
-_PROVIDER_ENV_VARS: dict[str, str] = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "deepseek": "DEEPSEEK_API_KEY",
-    "qwen": "DASHSCOPE_API_KEY",
-}
-
-_OPENAI_COMPATIBLE_BASE_URLS: dict[str, str] = {
-    "groq": const.API_BASE_GROQ,
-    "gemini": const.API_BASE_GEMINI,
-    "openrouter": const.API_BASE_OPENROUTER,
-    "deepseek": const.API_BASE_DEEPSEEK,
-    "qwen": const.API_BASE_QWEN,
-}
-
-_FALLBACK_CHAIN: list[str] = [
-    "anthropic",
-    "groq",
-    "openrouter",
-    "gemini",
-    "deepseek",
-    "qwen",
-    "openai",
-]
-
-
-def _resolve_api_key_for_provider(provider: str, settings: Settings) -> str:
-    """Resolve API key for a specific provider. Returns empty string if unavailable.
-
-    For the primary provider (settings.llm_provider), checks TAPEBACK_LLM_API_KEY first.
-    For all providers, checks provider-specific env var.
-    """
-    if provider == settings.llm_provider:
-        key = settings.llm_api_key.get_secret_value()
-        if key:
-            return key
-
-    env_var = _PROVIDER_ENV_VARS.get(provider, "")
-    return os.environ.get(env_var, "") if env_var else ""
-
-
-def has_api_key(settings: Settings) -> bool:
-    """Whether the primary provider has a key; the key itself never leaves here."""
-    return bool(_resolve_api_key_for_provider(settings.llm_provider, settings))
-
-
-def _resolve_api_key(settings: Settings) -> str:
-    """Resolve API key: TAPEBACK_LLM_API_KEY > provider-specific env var."""
-    key = _resolve_api_key_for_provider(settings.llm_provider, settings)
-    if key:
-        return key
-
-    env_var = _PROVIDER_ENV_VARS.get(settings.llm_provider, "")
-    raise RuntimeError(
-        f"No API key for {settings.llm_provider}. "
-        f"Set TAPEBACK_LLM_API_KEY or {env_var} environment variable."
-    )
-
-
-def _get_model(settings: Settings) -> str:
-    """Return model name: explicit setting or provider default."""
-    if settings.llm_model:
-        return settings.llm_model
-    return DEFAULT_MODELS[settings.llm_provider]
-
-
-_MAX_RETRIES = 3
-_RETRY_BASE_DELAY = 5  # seconds, doubles each retry: 5, 10, 20
-
-
-def _build_provider_chain(settings: Settings) -> list[tuple[str, str, str]]:
-    """Build ordered list of (provider, api_key, model) to try.
-
-    Starts with configured primary provider, then adds available fallbacks.
-    Skips providers without API keys. Explicit llm_model applies only to primary.
-    """
-    chain: list[tuple[str, str, str]] = []
-
-    primary = settings.llm_provider
-    primary_key = _resolve_api_key_for_provider(primary, settings)
-    if primary_key:
-        model = settings.llm_model or DEFAULT_MODELS[primary]
-        chain.append((primary, primary_key, model))
-
-    for provider in _FALLBACK_CHAIN:
-        if provider == primary:
-            continue
-        key = _resolve_api_key_for_provider(provider, settings)
-        if key:
-            chain.append((provider, key, DEFAULT_MODELS[provider]))
-
-    return chain
-
-
-def _call_llm(system_prompt: str, user_message: str, settings: Settings) -> str:
-    """Call LLM with provider fallback chain.
-
-    Tries configured provider first, then falls back through available providers.
-    Each provider is retried on rate limits before moving to the next.
-    """
-    chain = _build_provider_chain(settings)
-    if not chain:
-        raise RuntimeError(
-            "No LLM providers available. "
-            "Set TAPEBACK_LLM_API_KEY or a provider-specific API key environment variable."
-        )
-
-    last_exc: Exception = RuntimeError("No providers attempted")
-    for i, (provider, api_key, model) in enumerate(chain):
-        try:
-            return _call_provider_with_retry(system_prompt, user_message, provider, api_key, model)
-        except Exception as exc:
-            last_exc = exc
-            if i < len(chain) - 1:
-                click.echo(
-                    f"Provider {provider} failed: {exc}. Trying next provider...",
-                    err=True,
-                )
-
-    raise last_exc
-
-
-def _call_provider_with_retry(
-    system_prompt: str,
-    user_message: str,
-    provider: str,
-    api_key: str,
-    model: str,
-) -> str:
-    """Call a single provider with retry on rate limits (429/529)."""
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            return _call_llm_once(system_prompt, user_message, provider, api_key, model)
-        except Exception as exc:
-            status = _get_http_status(exc)
-            if status not in (429, 529) or attempt == _MAX_RETRIES:
-                raise
-            delay = _RETRY_BASE_DELAY * (2**attempt)
-            click.echo(
-                f"Rate limited (HTTP {status}), retrying in {delay}s "
-                f"(attempt {attempt + 1}/{_MAX_RETRIES})...",
-                err=True,
-            )
-            time.sleep(delay)
-
-    raise RuntimeError("Unreachable")  # pragma: no cover
-
-
-def _get_http_status(exc: Exception) -> int | None:
-    """Extract HTTP status code from provider SDK exceptions."""
-    return getattr(exc, "status_code", None) or getattr(exc, "status", None)
-
-
-def _call_llm_once(
-    system_prompt: str,
-    user_message: str,
-    provider: str,
-    api_key: str,
-    model: str,
-) -> str:
-    """Single LLM call without retry."""
-    if provider == "anthropic":
-        try:
-            import anthropic
-        except ImportError:
-            raise RuntimeError(
-                "anthropic package not installed. Install with: uv pip install tapeback[llm]"
-            ) from None
-
-        ant_client = anthropic.Anthropic(api_key=api_key)
-        ant_response = ant_client.messages.create(
-            model=model,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        block = ant_response.content[0]
-        if not hasattr(block, "text"):
-            raise RuntimeError(f"Unexpected anthropic response block type: {type(block).__name__}")
-        return str(block.text)
-
-    # All other providers use OpenAI-compatible Chat Completions API
-    try:
-        import openai
-    except ImportError:
-        raise RuntimeError(
-            "openai package not installed. Install with: uv pip install tapeback[llm]"
-        ) from None
-
-    base_url = _OPENAI_COMPATIBLE_BASE_URLS.get(provider)
-    oai_client = openai.OpenAI(api_key=api_key, base_url=base_url)
-    oai_response = oai_client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-    )
-    content = oai_response.choices[0].message.content
-    return content or ""
+# A diarized note used to print the raw You/Other transcript and then the diarized
+# copy of the same text. Only the copy is sent: the raw half doubled the input.
+_RAW_TRANSCRIPT = re.compile(
+    r"^## Transcript\n.*?^## Diarized Transcript\n+", re.MULTILINE | re.DOTALL
+)
 
 
 def _strip_markdown_fences(raw: str) -> str:
@@ -337,26 +143,30 @@ def masked_preview(transcript: str, settings: Settings) -> tuple[str, dict[str, 
     return masker.mask(transcript), masker.counts
 
 
-def summarize(transcript: str, settings: Settings) -> Summary:
+def summarize(transcript: str, settings: Settings, *, language: str | None = None) -> Summary:
     """Send transcript to LLM, parse structured response, return Summary.
 
     With `mask_pii` on, the transcript is masked once and every provider in the fallback
     chain — and the JSON retry — receives that same masked text; the real values are
-    restored in the returned Summary. The system prompt is a static constant with no user
-    data in it, so it is not masked.
+    restored in the returned Summary. The system prompt holds no user data, only the
+    note's language code when it has one, so it is not masked.
     """
     masker = Masker(enabled=settings.mask_pii, terms=settings.mask_terms)
     masked = masker.mask(transcript)
-    try:
-        raw = _call_llm(_SYSTEM_PROMPT, masked, settings)
-        summary = _parse_response(raw)
-    except (json.JSONDecodeError, KeyError):
-        # Retry once with shorter prompt
-        raw = _call_llm(_RETRY_PROMPT, masked, settings)
+    rule = "\n" + _LANGUAGE_RULE.format(language=language) if language else ""
+    with _llm.connected(settings) as ask:
         try:
+            raw = ask(_SYSTEM_PROMPT + rule, masked)
             summary = _parse_response(raw)
-        except (json.JSONDecodeError, KeyError) as exc:
-            raise RuntimeError(f"Failed to parse LLM response after retry: {raw[:500]}") from exc
+        except (json.JSONDecodeError, KeyError):
+            # Retry once with shorter prompt
+            raw = ask(_RETRY_PROMPT + rule, masked)
+            try:
+                summary = _parse_response(raw)
+            except (json.JSONDecodeError, KeyError) as exc:
+                raise RuntimeError(
+                    f"Failed to parse LLM response after retry: {raw[:500]}"
+                ) from exc
     return _unmask_summary(summary, masker)
 
 
@@ -382,15 +192,25 @@ def format_summary_markdown(summary: Summary) -> str:
     return "\n".join(lines)
 
 
+def note_language(md_content: str) -> str | None:
+    """The language code in a note's frontmatter, or None."""
+    frontmatter = _FRONTMATTER.match(md_content)
+    if frontmatter is None:
+        return None
+    code = _LANGUAGE_CODE.search(frontmatter.group(1))
+    return code.group(1) if code else None
+
+
 def extract_transcript_from_markdown(md_content: str) -> str:
     """Extract the transcript portion (from '# Meeting ...' onward).
 
-    Skips YAML frontmatter and any existing summary section.
+    Skips YAML frontmatter, any existing summary section, and the raw half of an
+    older diarized note.
     """
     # Find the transcript header
     match = re.search(r"^# Meeting .+", md_content, re.MULTILINE)
     if match:
-        return md_content[match.start() :]
+        return _RAW_TRANSCRIPT.sub("", md_content[match.start() :], count=1)
     return ""
 
 
@@ -435,7 +255,7 @@ def maybe_summarize(md_path: Path | str | None, settings: Settings) -> None:
     if not settings.summarize:
         return
 
-    if not _build_provider_chain(settings):
+    if not _llm.provider_chain(settings):
         click.echo(
             "Warning: No LLM API key set, skipping summarization. "
             "Set TAPEBACK_LLM_API_KEY or a provider-specific API key environment variable.",
@@ -452,7 +272,7 @@ def maybe_summarize(md_path: Path | str | None, settings: Settings) -> None:
 
         # No "Summarizing..." here: the pipeline reports the stage through its status
         # callback, which is what reaches the run record; printing it again doubled it.
-        summary = summarize(transcript, settings)
+        summary = summarize(transcript, settings, language=note_language(md_content))
         summary_md = format_summary_markdown(summary)
         new_content = inject_summary_into_markdown(md_content, summary_md)
         path.write_text(new_content)
