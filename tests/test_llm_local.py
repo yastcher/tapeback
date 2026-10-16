@@ -178,6 +178,61 @@ def test_out_of_memory_at_half_the_context_gives_up(tmp_vault, fake_llama_server
     assert not (default_state_dir() / "llama-server" / "pid").exists()
 
 
+CLAMPED = "0x0000000000000024"  # SwPowerCap + SwThermalSlowdown, as caught live
+IDLE = "0x0000000000000001"
+
+
+def test_the_server_starts_once_a_thermal_clamp_releases(
+    tmp_vault, tmp_path, fake_llama_server, fake_nvidia_smi, capsys
+):
+    """The summary is the last stage: a cool card is worth a wait."""
+    fake_nvidia_smi(4096, CLAMPED, IDLE)  # clamped at the first look, released at the next
+    settings = _settings(
+        tmp_vault, fake_llama_server, thermal_clamp_check=True, llm_local_clamp_wait=30.0
+    )
+
+    summarize(TRANSCRIPT, settings)
+
+    assert (tmp_path / "fake-nvidia-smi-looks").read_text() == "2"
+    assert "still thermally clamped" not in capsys.readouterr().err
+    assert len(fake_llama_server.starts()) == 1
+
+
+def test_a_clamp_that_does_not_release_in_time_still_gets_a_summary(
+    tmp_vault, fake_llama_server, fake_nvidia_smi, capsys
+):
+    fake_nvidia_smi(4096, CLAMPED)
+    settings = _settings(
+        tmp_vault, fake_llama_server, thermal_clamp_check=True, llm_local_clamp_wait=0.0
+    )
+
+    summary = summarize(TRANSCRIPT, settings)
+
+    assert summary.brief == "Discussed the project plan and assigned tasks."
+    assert "GPU still thermally clamped after 0s — proceeding anyway." in capsys.readouterr().err
+
+
+def test_without_the_clamp_check_nvidia_smi_is_not_asked(
+    tmp_vault, tmp_path, fake_llama_server, fake_nvidia_smi
+):
+    fake_nvidia_smi(4096, CLAMPED)
+
+    summarize(TRANSCRIPT, _settings(tmp_vault, fake_llama_server, thermal_clamp_check=False))
+
+    assert not (tmp_path / "fake-nvidia-smi-looks").exists()
+    assert len(fake_llama_server.starts()) == 1
+
+
+def test_a_local_answer_waits_for_its_own_timeout_not_the_clouds(
+    tmp_vault, fake_llama_server, monkeypatch
+):
+    monkeypatch.setenv("FAKE_LLAMA_MODE", "slow")
+    settings = _settings(tmp_vault, fake_llama_server, llm_timeout=600.0, llm_local_timeout=0.5)
+
+    with pytest.raises(Exception, match="timed out"):
+        summarize(TRANSCRIPT, settings)
+
+
 def test_a_server_that_fails_to_load_says_why_and_is_not_retried(
     tmp_vault, fake_llama_server, monkeypatch
 ):

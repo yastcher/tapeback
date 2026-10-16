@@ -27,7 +27,7 @@ import click
 from huggingface_hub import hf_hub_download
 from huggingface_hub.errors import LocalEntryNotFoundError
 
-from tapeback._gpu import get_free_vram_mib
+from tapeback._gpu import get_free_vram_mib, wait_for_clamp_release
 from tapeback.recorder import default_state_dir, ensure_private_dir
 from tapeback.settings import Settings
 
@@ -137,6 +137,10 @@ def running(settings: Settings) -> Iterator[Server]:
     ensure_private_dir(home)
     with _exclusive(home / "lock"):
         _reap_orphan(home / "pid")
+        if settings.thermal_clamp_check:
+            # The last stage, so a cool card is worth waiting for: clamped, an hour's
+            # prompt took longer than the wait would.
+            wait_for_clamp_release(settings.llm_local_clamp_wait, report=_warn)
         context = settings.llm_local_context
         try:
             process, server = _start(binary, model, context, home)
@@ -149,6 +153,10 @@ def running(settings: Settings) -> Iterator[Server]:
         finally:
             _stop(process)
             (home / "pid").unlink(missing_ok=True)
+
+
+def _warn(message: str) -> None:
+    click.echo(message, err=True)
 
 
 def model_path(settings: Settings) -> Path:

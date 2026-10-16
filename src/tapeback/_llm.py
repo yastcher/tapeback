@@ -184,7 +184,7 @@ def connected(settings: Settings) -> Iterator[Callable[[str, str], str]]:
         yield lambda system, user: call(system, user, settings)
         return
     with _llama_server.running(settings) as server:
-        client = _openai_client(server.key, server.url, settings.llm_timeout, retries=False)
+        client = _openai_client(server.key, server.url, settings.llm_local_timeout, retries=False)
         yield lambda system, user: _chat(client, server.model, system, user)
 
 

@@ -10,7 +10,8 @@ every request to FAKE_LLAMA_LOG as a JSON line for the test to read.
   what llama.cpp writes when the weights do not fit (exit 1), or with
   FAKE_LLAMA_OOM=context what it writes when the KV cache does not (older builds
   then crash).
-- FAKE_LLAMA_MODE: "die" exits while loading for another reason; "deaf" ignores SIGTERM.
+- FAKE_LLAMA_MODE: "die" exits while loading for another reason; "deaf" ignores SIGTERM;
+  "slow" takes SLOW_ANSWER seconds over each answer.
 """
 
 import argparse
@@ -31,6 +32,7 @@ LOAD_ERROR = "llama_model_load: error loading model: invalid magic characters: '
 
 # /health answers "loading" this many times before the model is ready.
 LOADING_POLLS = 2
+SLOW_ANSWER = 3.0
 
 
 def _record(entry: dict[str, object]) -> None:
@@ -85,6 +87,8 @@ def main() -> None:
             if auth != f"Bearer {key}":
                 self._reply(401, {"error": {"code": 401, "message": "Invalid API Key"}})
                 return
+            if mode == "slow":
+                time.sleep(SLOW_ANSWER)
             reply = replies[min(answered[0], len(replies) - 1)]
             answered[0] += 1
             message = {"role": "assistant", "content": reply}

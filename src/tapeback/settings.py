@@ -250,6 +250,14 @@ class Settings(BaseSettings):
     # local only: the context in tokens. An hour of Russian conversation is about 9k;
     # a CUDA out-of-memory while the model loads halves it once.
     llm_local_context: int = Field(default=16384, gt=0)
+    # local only: seconds to wait, before the server starts, for a GPU thermal clamp to
+    # release. The summary is the last stage, so waiting costs only time: a clamped card
+    # processed an hour's prompt at 13-17 tok/s, and the clamp releases after about six
+    # minutes of idle.
+    llm_local_clamp_wait: float = Field(default=600.0, ge=0.0)
+    # local only: seconds to wait for one answer. An hour's prompt is about 12k tokens,
+    # some 15 minutes on a clamped card; TAPEBACK_LLM_TIMEOUT stays the cloud's.
+    llm_local_timeout: float = Field(default=1800.0, gt=0.0)
 
     @model_validator(mode="after")
     def _resolve_stt_settings(self) -> Self:
