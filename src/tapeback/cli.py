@@ -245,6 +245,7 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
         format_summary_markdown,
         inject_summary_into_markdown,
         masked_preview,
+        note_language,
     )
     from tapeback.summarizer import summarize as do_summarize
 
@@ -268,7 +269,7 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
         return
 
     click.echo("Summarizing...", err=True)
-    summary = do_summarize(transcript, settings)
+    summary = do_summarize(transcript, settings, language=note_language(md_content))
     summary_md = format_summary_markdown(summary)
     new_content = inject_summary_into_markdown(md_content, summary_md)
     path.write_text(new_content)

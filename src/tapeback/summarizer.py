@@ -48,6 +48,17 @@ Rules:
 
 _RETRY_PROMPT = "Respond with valid JSON only. No other text."
 
+# "The same language as the transcript" was not enough: a 4B local model followed the
+# language of these English instructions and summarised a Russian meeting in English.
+# The note knows its language (Whisper's code), so the prompt names it.
+_LANGUAGE_RULE = (
+    "- The transcript is in {language} (ISO 639-1): write the brief, the actions and the "
+    "decisions in that language, whatever the language of these instructions"
+)
+_FRONTMATTER = re.compile(r"\A---\n(.*?)^---\n", re.MULTILINE | re.DOTALL)
+# A language code as Whisper writes it; anything else in the field is not passed on.
+_LANGUAGE_CODE = re.compile(r"^language: ([a-z]{2,3})$", re.MULTILINE)
+
 # A diarized note used to print the raw You/Other transcript and then the diarized
 # copy of the same text. Only the copy is sent: the raw half doubled the input.
 _RAW_TRANSCRIPT = re.compile(
@@ -132,23 +143,24 @@ def masked_preview(transcript: str, settings: Settings) -> tuple[str, dict[str, 
     return masker.mask(transcript), masker.counts
 
 
-def summarize(transcript: str, settings: Settings) -> Summary:
+def summarize(transcript: str, settings: Settings, *, language: str | None = None) -> Summary:
     """Send transcript to LLM, parse structured response, return Summary.
 
     With `mask_pii` on, the transcript is masked once and every provider in the fallback
     chain — and the JSON retry — receives that same masked text; the real values are
-    restored in the returned Summary. The system prompt is a static constant with no user
-    data in it, so it is not masked.
+    restored in the returned Summary. The system prompt holds no user data, only the
+    note's language code when it has one, so it is not masked.
     """
     masker = Masker(enabled=settings.mask_pii, terms=settings.mask_terms)
     masked = masker.mask(transcript)
+    rule = "\n" + _LANGUAGE_RULE.format(language=language) if language else ""
     with _llm.connected(settings) as ask:
         try:
-            raw = ask(_SYSTEM_PROMPT, masked)
+            raw = ask(_SYSTEM_PROMPT + rule, masked)
             summary = _parse_response(raw)
         except (json.JSONDecodeError, KeyError):
             # Retry once with shorter prompt
-            raw = ask(_RETRY_PROMPT, masked)
+            raw = ask(_RETRY_PROMPT + rule, masked)
             try:
                 summary = _parse_response(raw)
             except (json.JSONDecodeError, KeyError) as exc:
@@ -178,6 +190,15 @@ def format_summary_markdown(summary: Summary) -> str:
 
     lines.append("\n---\n")
     return "\n".join(lines)
+
+
+def note_language(md_content: str) -> str | None:
+    """The language code in a note's frontmatter, or None."""
+    frontmatter = _FRONTMATTER.match(md_content)
+    if frontmatter is None:
+        return None
+    code = _LANGUAGE_CODE.search(frontmatter.group(1))
+    return code.group(1) if code else None
 
 
 def extract_transcript_from_markdown(md_content: str) -> str:
@@ -251,7 +272,7 @@ def maybe_summarize(md_path: Path | str | None, settings: Settings) -> None:
 
         # No "Summarizing..." here: the pipeline reports the stage through its status
         # callback, which is what reaches the run record; printing it again doubled it.
-        summary = summarize(transcript, settings)
+        summary = summarize(transcript, settings, language=note_language(md_content))
         summary_md = format_summary_markdown(summary)
         new_content = inject_summary_into_markdown(md_content, summary_md)
         path.write_text(new_content)

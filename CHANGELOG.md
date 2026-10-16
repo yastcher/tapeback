@@ -25,6 +25,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Whisper's choice of device and compute type moves from `transcriber.py` to `_device.py`, under the 500-line limit; diarization takes its device from there too. Development-only.
 
 ### Fixed
+- A summary is written in the note's language. The prompt asked for "the same language as the transcript", and a small local model followed its English instructions instead and summarised a Russian meeting in English; it now names the language Whisper detected.
 - The default LLM models are replaced: vendors had retired most of them or closed them to new keys, so a summary without `TAPEBACK_LLM_MODEL` failed. The defaults are now `claude-sonnet-5-5` (anthropic), `gpt-6-luna` (openai), `openai/gpt-oss-120b` (groq), `gemini-3.8-flash` (gemini), `nvidia/nemotron-3-super-120b-a12b:free` (openrouter), `deepseek-flash` (deepseek) and `qwen-plus` (qwen). An anthropic reply that opens with the model's reasoning no longer fails the summary.
 - tapeback no longer dies in a directory whose `.env` belongs to another app, and no longer prints that file's values, secrets included, in the error. Keys tapeback does not know are ignored.
 - Diarization gives its GPU memory back when it finishes. A long-running tray kept it reserved between recordings, leaving the next transcription too little VRAM for the GPU.

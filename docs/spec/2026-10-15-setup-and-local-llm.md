@@ -248,6 +248,13 @@ earlier; the bench tunes them.
    for the clamp to release, since the summary is the last stage and the clamp
    releases after a few minutes of idle, then goes ahead; a local answer has its own
    `TAPEBACK_LLM_LOCAL_TIMEOUT` (1800 s) (`_llama_server.py:143`).
+8. A local summary of a Russian meeting came out in English. The system prompt is
+   English and asked for "the same language as the transcript"; the 4B model
+   followed the language of the instructions. Fixed on this branch: the prompt names
+   the language code from the note's frontmatter (`summarizer.py:54`). On the
+   same meeting the summary went from all Latin letters to almost all Cyrillic, the
+   rest being speaker labels. Regression test
+   `tests/regressions/test_summary_language.py`.
 
 ## Commits
 
