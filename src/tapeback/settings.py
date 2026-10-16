@@ -9,8 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from tapeback._stt_caps import openai_capabilities_for
 from tapeback.glossary import DEFAULT_HOTWORDS
 
-# The cloud providers _llm.PROVIDERS describes, and "openai_compatible": a server named
-# by TAPEBACK_LLM_BASE_URL (_llm.ENDPOINT). A test holds the lists equal.
+# The cloud providers _llm.PROVIDERS describes, and two that stand alone:
+# "openai_compatible", an API named by TAPEBACK_LLM_BASE_URL (_llm.ENDPOINT), and
+# "local", a llama-server tapeback starts itself (_llm.LOCAL). A test holds the lists
+# equal.
 type LLMProvider = Literal[
     "anthropic",
     "openai",
@@ -20,6 +22,7 @@ type LLMProvider = Literal[
     "deepseek",
     "qwen",
     "openai_compatible",
+    "local",
 ]
 
 # "local" = faster-whisper on this machine; other values are remote STT backends.
@@ -240,6 +243,13 @@ class Settings(BaseSettings):
     # Seconds to wait for one answer. 600 is the SDKs' own default, so calls that set
     # nothing keep it.
     llm_timeout: float = Field(default=600.0, gt=0.0)
+    # local only: the llama-server to start, a name on PATH or a path, and the GGUF it
+    # loads. An empty model is the pinned default, downloaded on first use.
+    llm_local_server: str = "llama-server"
+    llm_local_model: str = ""
+    # local only: the context in tokens. An hour of Russian conversation is about 9k;
+    # a CUDA out-of-memory while the model loads halves it once.
+    llm_local_context: int = Field(default=16384, gt=0)
 
     @model_validator(mode="after")
     def _resolve_stt_settings(self) -> Self:

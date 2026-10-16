@@ -142,16 +142,19 @@ def summarize(transcript: str, settings: Settings) -> Summary:
     """
     masker = Masker(enabled=settings.mask_pii, terms=settings.mask_terms)
     masked = masker.mask(transcript)
-    try:
-        raw = _llm.call(_SYSTEM_PROMPT, masked, settings)
-        summary = _parse_response(raw)
-    except (json.JSONDecodeError, KeyError):
-        # Retry once with shorter prompt
-        raw = _llm.call(_RETRY_PROMPT, masked, settings)
+    with _llm.connected(settings) as ask:
         try:
+            raw = ask(_SYSTEM_PROMPT, masked)
             summary = _parse_response(raw)
-        except (json.JSONDecodeError, KeyError) as exc:
-            raise RuntimeError(f"Failed to parse LLM response after retry: {raw[:500]}") from exc
+        except (json.JSONDecodeError, KeyError):
+            # Retry once with shorter prompt
+            raw = ask(_RETRY_PROMPT, masked)
+            try:
+                summary = _parse_response(raw)
+            except (json.JSONDecodeError, KeyError) as exc:
+                raise RuntimeError(
+                    f"Failed to parse LLM response after retry: {raw[:500]}"
+                ) from exc
     return _unmask_summary(summary, masker)
 
 

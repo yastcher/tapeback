@@ -12,12 +12,14 @@ so that check lives in tests/regressions/test_stop_reaps_recorders.py.
 """
 
 import os
+import time
 import wave
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tapeback import pipeline
 from tapeback.cli import cli
 from tests.fixtures import (
     mock_pyannote_annotation,
@@ -123,6 +125,46 @@ def test_a_diarized_meeting_writes_its_transcript_once(
         "[00:00:02] **Speaker 1:** Thanks a lot.\n\n"
         "[00:00:03] **Speaker 2:** See you Friday.\n"
     )
+
+
+@requires_pyannote
+def test_a_local_summary_loads_its_model_once_diarization_gives_the_gpu_back(
+    runner, vault_env, fake_parecord, ctrl_c_while_recording, fake_llama_server, monkeypatch
+):
+    """Whisper, pyannote and the summary model never share the card: the server starts
+    after the last GPU release and is gone when the command returns."""
+    monkeypatch.setenv("TAPEBACK_HF_TOKEN", "hf_fake")
+    monkeypatch.setenv("TAPEBACK_LLM_PROVIDER", "local")
+    monkeypatch.setenv("TAPEBACK_LLM_LOCAL_SERVER", str(fake_llama_server.binary))
+    monkeypatch.setenv("TAPEBACK_LLM_LOCAL_MODEL", str(fake_llama_server.model))
+    released: list[float] = []
+    real_release = pipeline.free_gpu_memory
+
+    def release() -> None:
+        released.append(time.time())
+        real_release()
+
+    monkeypatch.setattr(pipeline, "free_gpu_memory", release)
+    meeting = mock_whisper_by_channel(
+        mic_segments=[(0.0, 2.0, "I will send the report.")],
+        monitor_segments=[(2.0, 4.0, "Thanks, see you Friday.", [(2.0, 4.0, "Friday.")])],
+    )
+    turns = mock_pyannote_annotation([(2.0, 4.0, "SPEAKER_00")])
+
+    with (
+        patch("tapeback.transcriber.WhisperModel", return_value=meeting),
+        patch("pyannote.audio.Pipeline.from_pretrained", return_value=lambda *_a, **_k: turns),
+    ):
+        result = runner.invoke(cli, ["start", SESSION, "--no-live"])
+
+    assert result.exit_code == 0, result.output + repr(result.exception)
+    note = (vault_env / "meetings" / f"{SESSION}.md").read_text()
+    assert "Discussed the project plan and assigned tasks." in note
+    assert "**Speaker 1:**" in note
+    [start] = fake_llama_server.starts()
+    assert len(released) == 2  # after transcription, after diarization
+    assert released[-1] < start["time"]
+    assert process_state(start["pid"]) is None
 
 
 def test_failed_processing_keeps_the_recording_for_recovery(

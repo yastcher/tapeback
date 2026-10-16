@@ -4,14 +4,16 @@ import sys
 import time
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
+from typing import get_args
 
 import click
 
 from tapeback import _user_env, const
-from tapeback._llm import ENDPOINT, endpoint_address, has_api_key
+from tapeback._llama_server import find_binary, model_name
+from tapeback._llm import ENDPOINT, LOCAL, endpoint_address, has_api_key
 from tapeback._stt_caps import allows_local_diarize, openai_capabilities_for
 from tapeback.recorder import NoActiveRecording, Recorder, detect_devices, session_dir
-from tapeback.settings import Settings, get_settings
+from tapeback.settings import LLMProvider, Settings, get_settings
 
 
 def _echo_status(msg: str) -> None:
@@ -201,7 +203,7 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
 @click.argument("file", type=click.Path(exists=True))
 @click.option(
     "--provider",
-    type=click.Choice(["anthropic", "openai", "groq", "gemini", "openrouter", "deepseek", "qwen"]),
+    type=click.Choice(get_args(LLMProvider.__value__)),
     default=None,
     help="Override LLM provider",
 )
@@ -303,6 +305,11 @@ def status() -> None:
         # Host and port only: a path or query can carry a token too.
         model = settings.llm_model or "not set"
         click.echo(f"LLM: {ENDPOINT} at {endpoint_address(settings)}, model {model}")
+    elif settings.llm_provider == LOCAL:
+        server = find_binary(settings.llm_local_server) or (
+            f"{settings.llm_local_server} not found"
+        )
+        click.echo(f"LLM: {LOCAL}, model {model_name(settings)}, server {server}")
     else:
         llm_key = "set" if has_api_key(settings) else "not set"
         click.echo(f"LLM: {settings.llm_provider}, key {llm_key}")
@@ -389,7 +396,20 @@ def setup(diarize: bool | None, summarize: bool | None) -> None:
         click.echo(
             "Hint: diarization needs TAPEBACK_HF_TOKEN; see Speaker diarization in the README."
         )
-    if settings.summarize and settings.llm_provider != ENDPOINT and not has_api_key(settings):
+    if (
+        settings.summarize
+        and settings.llm_provider == LOCAL
+        and find_binary(settings.llm_local_server) is None
+    ):
+        click.echo(
+            f"Hint: local summaries need {settings.llm_local_server}; "
+            "see Local summaries in the README."
+        )
+    if (
+        settings.summarize
+        and settings.llm_provider not in (ENDPOINT, LOCAL)
+        and not has_api_key(settings)
+    ):
         click.echo(
             "Hint: summaries need an LLM key in TAPEBACK_LLM_API_KEY; "
             "see LLM summarization in the README."

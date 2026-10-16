@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import wave
@@ -740,6 +741,45 @@ def llm_endpoint():
     yield endpoint
     server.shutdown()
     server.server_close()
+
+
+FAKE_LLAMA_SERVER = Path(__file__).parent / "fake_llama_server.py"
+
+
+@dataclass
+class FakeLlamaServer:
+    """tests/fake_llama_server.py behind an executable, and what it recorded."""
+
+    binary: Path
+    model: Path
+    log: Path
+
+    def starts(self) -> list[dict]:
+        return [entry for entry in self._entries() if "argv" in entry]
+
+    def requests(self) -> list[dict]:
+        return [entry for entry in self._entries() if "path" in entry]
+
+    def _entries(self) -> list[dict]:
+        if not self.log.exists():
+            return []
+        return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+
+@pytest.fixture
+def fake_llama_server(tmp_path, monkeypatch) -> FakeLlamaServer:
+    """A llama-server stand-in and a model file to point it at. `exec` keeps the
+    PID, so tapeback watches the process it started, as with the real binary."""
+    binary = tmp_path / "fake-llama" / "llama-server"
+    binary.parent.mkdir()
+    binary.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE_LLAMA_SERVER}" "$@"\n')
+    binary.chmod(0o755)
+    model = tmp_path / "summary-model.gguf"
+    model.write_bytes(b"GGUF")
+    log = tmp_path / "fake-llama.jsonl"
+    monkeypatch.setenv("FAKE_LLAMA_LOG", str(log))
+    monkeypatch.setenv("FAKE_LLAMA_REPLIES", VALID_LLM_RESPONSE)
+    return FakeLlamaServer(binary, model, log)
 
 
 def voice_signal(duration: float, sr: int, fundamental: float) -> np.ndarray:

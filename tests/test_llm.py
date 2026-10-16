@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from tapeback._llm import ENDPOINT, PROVIDERS, api_key, call, has_api_key, provider_chain
+from tapeback._llm import ENDPOINT, LOCAL, PROVIDERS, api_key, call, has_api_key, provider_chain
 from tapeback.settings import LLMProvider, Settings
 from tests.fixtures import (
     VALID_LLM_RESPONSE,
@@ -20,7 +20,7 @@ from tests.fixtures import (
 
 
 def test_the_table_covers_every_provider_settings_accepts():
-    assert set(PROVIDERS) | {ENDPOINT} == set(get_args(LLMProvider.__value__))
+    assert set(PROVIDERS) | {ENDPOINT, LOCAL} == set(get_args(LLMProvider.__value__))
 
 
 # --- API key resolution ---

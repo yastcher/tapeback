@@ -8,14 +8,19 @@ here is cut off from the suite's environment the moment it exists.
 import ipaddress
 import os
 import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
 import click
 
-from tapeback import const
+from tapeback import _llama_server, const
 from tapeback.settings import Settings
+
+if TYPE_CHECKING:
+    import openai
 
 # A provider is retried on HTTP 429/529 this many times, after RETRY_BASE_DELAY seconds
 # doubled each time (5, 10, 20), before the chain moves on to the next one.
@@ -61,6 +66,11 @@ PROVIDERS: dict[str, Provider] = {
 # endpoint never falls back to a key the environment happens to hold for one of
 # PROVIDERS, and none of them falls back to it.
 ENDPOINT = "openai_compatible"
+
+# A llama-server tapeback starts for a summary and stops after it (_llama_server). Like
+# ENDPOINT it stands alone: the transcript stays on this machine, so a failure never
+# falls back to a cloud provider.
+LOCAL = "local"
 
 
 def endpoint_url(settings: Settings) -> str:
@@ -143,6 +153,8 @@ def provider_chain(settings: Settings) -> list[tuple[str, str, str]]:
     """
     if settings.llm_provider == ENDPOINT:
         return [(ENDPOINT, api_key(ENDPOINT, settings), settings.llm_model)]
+    if settings.llm_provider == LOCAL:
+        return [(LOCAL, "", _llama_server.model_name(settings))]
 
     chain: list[tuple[str, str, str]] = []
 
@@ -161,11 +173,29 @@ def provider_chain(settings: Settings) -> list[tuple[str, str, str]]:
     return chain
 
 
+@contextmanager
+def connected(settings: Settings) -> Iterator[Callable[[str, str], str]]:
+    """Ask as often as the block needs: for `local`, all through one server start.
+
+    A summary asks twice when its first answer is not JSON; a local model is loaded
+    once for both.
+    """
+    if settings.llm_provider != LOCAL:
+        yield lambda system, user: call(system, user, settings)
+        return
+    with _llama_server.running(settings) as server:
+        client = _openai_client(server.key, server.url, settings.llm_timeout, retries=False)
+        yield lambda system, user: _chat(client, server.model, system, user)
+
+
 def call(system_prompt: str, user_message: str, settings: Settings) -> str:
-    """Send one request through the chain.
+    """Send one request through the chain, or to a server started for it.
 
     Each provider is retried on rate limits before the next one is tried.
     """
+    if settings.llm_provider == LOCAL:
+        with connected(settings) as ask:
+            return ask(system_prompt, user_message)
     chain = provider_chain(settings)
     if not chain:
         raise RuntimeError(
@@ -254,31 +284,37 @@ def _call_once(
             raise RuntimeError(f"anthropic reply holds no text block, only: {kinds or 'nothing'}")
         return "".join(texts)
 
+    if provider == ENDPOINT:
+        url = settings.llm_base_url.strip()
+        client = _openai_client(key, url, settings.llm_timeout, retries=False)
+    else:
+        url = PROVIDERS[provider].base_url
+        client = _openai_client(key, url, settings.llm_timeout, retries=True)
+    return _chat(client, model, system_prompt, user_message)
+
+
+def _openai_client(
+    key: str, base_url: str | None, timeout: float, *, retries: bool
+) -> "openai.OpenAI":
+    """An OpenAI SDK client. Without retries for an endpoint or the local server: each
+    retry would send the whole transcript again, billed or not."""
     try:
         import openai
     except ImportError:
         raise RuntimeError(
             "openai package not installed. Install with: uv pip install tapeback[llm]"
         ) from None
+    if retries:
+        return openai.OpenAI(api_key=key, base_url=base_url, timeout=timeout)
+    return openai.OpenAI(api_key=key, base_url=base_url, timeout=timeout, max_retries=0)
 
-    if provider == ENDPOINT:
-        # No SDK retries: each one would send, and bill, the whole transcript again.
-        oai_client = openai.OpenAI(
-            api_key=key,
-            base_url=settings.llm_base_url.strip(),
-            timeout=settings.llm_timeout,
-            max_retries=0,
-        )
-    else:
-        oai_client = openai.OpenAI(
-            api_key=key, base_url=PROVIDERS[provider].base_url, timeout=settings.llm_timeout
-        )
-    oai_response = oai_client.chat.completions.create(
+
+def _chat(client: "openai.OpenAI", model: str, system_prompt: str, user_message: str) -> str:
+    response = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ],
     )
-    content = oai_response.choices[0].message.content
-    return content or ""
+    return response.choices[0].message.content or ""
