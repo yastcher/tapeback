@@ -249,9 +249,12 @@ The first summary downloads the model, Qwen3.5-4B in 4 bits (2.7 GB), once into 
 Hugging Face cache; `TAPEBACK_LLM_LOCAL_MODEL` names another GGUF instead. On a 4 GB
 GPU it takes 3.1–3.5 GB, and when it does not fit, tapeback retries once with half
 the context. The `.deb` reaches an NVIDIA GPU through the driver's Vulkan support; on
-Arch, install `ggml-cuda` or `ggml-vulkan`. Without a GPU the model runs on the CPU,
-slowly, and a slow GPU can need more than `TAPEBACK_LLM_TIMEOUT` (600 s) for an hour
-of conversation. A local summary never falls back to a cloud provider.
+Arch, install `ggml-cuda` or `ggml-vulkan`; without a GPU the model runs on the CPU,
+slowly. A thermally clamped card read an hour's prompt at 13–17 tokens/s, so before
+the server starts tapeback waits up to ten minutes for the clamp to release
+(`TAPEBACK_LLM_LOCAL_CLAMP_WAIT`), then goes ahead anyway, and one answer may take up
+to 30 minutes (`TAPEBACK_LLM_LOCAL_TIMEOUT`). A local summary never falls back to a
+cloud provider.
 
 ### Any OpenAI-compatible API
 
@@ -430,9 +433,9 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 | `TAPEBACK_RESUME_CACHE_DIR` | *(XDG)* | Where reusable channel results go. Default `~/.local/share/tapeback/resume` |
 | `TAPEBACK_ISOLATE_TRANSCRIPTION` | `true` | Run transcription in a child process. A CUDA out-of-memory permanently leaks VRAM inside the process it happens in — a child can simply exit and the kernel reclaims it. Costs one process start and model load per run; set `false` to transcribe in-process |
 | `TAPEBACK_MIN_FREE_VRAM_MIB` | `1200` | Use the CPU rather than attempting a CUDA load below this much free VRAM. The smallest measured configuration needs ~1115 MiB |
-| `TAPEBACK_THERMAL_CLAMP_CHECK` | `true` | Look for a GPU thermal clamp before each transcription stage. One `nvidia-smi` query, retaken per stage — which is what lets a run return to the GPU once the card recovers. See "Transcription is suddenly very slow" below |
+| `TAPEBACK_THERMAL_CLAMP_CHECK` | `true` | Look for a GPU thermal clamp before each transcription stage and before diarization. One `nvidia-smi` query, retaken per stage — which is what lets a run return to the GPU once the card recovers. See "Transcription is suddenly very slow" below |
 | `TAPEBACK_THERMAL_CLAMP_WAIT` | `0` | Seconds to wait for the clamp to release before giving up on the GPU for this stage. Default is not to wait: the clamp clears on *system* idle and the shortest release measured was 451 s, so any tolerable wait rarely succeeds while the CPU would already be transcribing. Raise it only if the machine will genuinely be idle |
-| `TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK` | `true` | Transcribe on CPU when the clamp has not released. A clamped GPU measured ~8× slower than the CPU, so falling back is the fast path, not a degradation |
+| `TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK` | `true` | Transcribe and diarize on CPU when the clamp has not released. A clamped GPU measured ~8× slower than the CPU for transcription and ~1.5× for diarization, so falling back is the fast path, not a degradation |
 | `TAPEBACK_STAGE_PAUSE_SECONDS` | `0` | Idle gap after each transcription stage, to shed heat instead of driving the chassis into a clamp. Try `60` on a laptop that clamps during long recordings |
 | `TAPEBACK_RUN_LOG` | `true` | Write one JSON record per run (settings used, every status line, outcome) so a failed or interrupted run can be diagnosed afterwards. Never contains credentials |
 | `TAPEBACK_RUN_LOG_DIR` | *(XDG)* | Where run records go. Default `~/.local/share/tapeback/runs` (honours `XDG_DATA_HOME`). Oldest records are pruned past 200 |
@@ -491,10 +494,12 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 | `TAPEBACK_LLM_API_KEY` | *(empty)* | API key (or use provider-specific env var) |
 | `TAPEBACK_LLM_MODEL` | *(provider default)* | Override model name; required for `openai_compatible` |
 | `TAPEBACK_LLM_BASE_URL` | *(empty)* | `openai_compatible` only: the API's address |
-| `TAPEBACK_LLM_TIMEOUT` | `600` | Seconds to wait for one answer |
+| `TAPEBACK_LLM_TIMEOUT` | `600` | Seconds to wait for one answer from a cloud provider or an OpenAI-compatible API |
 | `TAPEBACK_LLM_LOCAL_SERVER` | `llama-server` | `local` only: the server to start, a name on PATH or a path |
 | `TAPEBACK_LLM_LOCAL_MODEL` | *(Qwen3.5-4B, pinned)* | `local` only: a GGUF file instead of the default model |
 | `TAPEBACK_LLM_LOCAL_CONTEXT` | `16384` | `local` only: the context in tokens; an hour of Russian conversation is about 9k |
+| `TAPEBACK_LLM_LOCAL_CLAMP_WAIT` | `600` | `local` only: seconds to wait for a GPU thermal clamp to release before the server starts |
+| `TAPEBACK_LLM_LOCAL_TIMEOUT` | `1800` | `local` only: seconds to wait for one answer |
 
 </details>
 
@@ -577,8 +582,9 @@ you are using the machine, it will not release — so waiting for it is not a st
 `TAPEBACK_THERMAL_CLAMP_WAIT` defaults to 0.
 
 **The CPU is faster in this state** — 2.39× real time against 0.31× on the clamped GPU.
-tapeback checks before each stage and moves to the CPU, saying so. Disable with
-`TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK=false`.
+Diarization took 0.67× the recording's length on the CPU, against 0.86–1.18× on the
+clamped card. tapeback checks before each stage, diarization included, and moves to
+the CPU, saying so. Disable with `TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK=false`.
 
 **A run that fell back is not stuck there.** The check is retaken for every stage, each of
 which runs in its own worker process, so a clamp that clears between channels puts the

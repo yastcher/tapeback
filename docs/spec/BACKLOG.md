@@ -239,7 +239,13 @@ short: pyannote reports the real speakers plus a small third cluster; the spectr
 merge of real speakers is too weak a signal to rely on; diarization runs at roughly
 the recording's length because it meets the thermal clamp with no check, no telemetry
 and warnings that bypass the run record. 0.9.9 fixed only the bridging defect; the
-rest belongs with pluggable diarization models, chosen from a bench table.
+clamp check, the telemetry and the warnings came on 2026-10-16. The rest belongs with
+pluggable diarization models, chosen from a bench table.
+
+Measured on 2026-10-16 with a recording of about an hour, before that check: the clamp
+latched three minutes into the first channel's transcription and held for the next
+90 minutes, idle CPU-only stages included. Diarization ran clamped for 3522 s, 1.20x
+the recording. A check made before a stage cannot see a clamp that latches during it.
 
 ---
 
@@ -312,11 +318,10 @@ rest belongs with pluggable diarization models, chosen from a bench table.
   same card, while 8192 tokens do not hold an hour of Russian. An out-of-memory more
   likely means another program holds the card, so the message reports free VRAM; the
   halving stays for other models a user names.
-- **The clamp is not checked before the server starts.** The summary follows Whisper
-  and pyannote, the heaviest load. Measured earlier, clamped generation fell to
-  3-5 tok/s (one call took 795 s), and the clamp released only after about six
-  minutes idle with the server stopped. `_gpu.py:131` detects it; the policy (wait,
-  CPU, defer) is the spec's.
+- **A local summary on the CPU was ruled out on the test machine**: the model needs
+  2.7 GB of RAM where about 2.3 GB are free. A summary deferred to a cooler moment
+  (`summary: pending`, `tapeback summarize --pending`) stays open, if the wait for
+  the clamp (spec, defect 7) proves too long in practice.
 - **Vulkan against CUDA on a GTX 1650 Ti is not measured.** The `.deb` carries the
   Vulkan build for its reach (Ubuntu 22.04+, 30 MB).
 - **The pinned GGUF's Hugging Face scan reads "safe" with the code PAIT-GGUF-100**,

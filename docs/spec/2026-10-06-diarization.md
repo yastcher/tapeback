@@ -75,6 +75,19 @@ the run record.
 5. **Observability**: diarization device and a GPU telemetry line for the stage in the
    run record; Diarizer warnings through the status callback.
 
+## Done on `feat/setup-local-llm` (2026-10-16)
+
+- Items 4 and 5, decided by the maintainer without the long-file measurement:
+  diarization takes its device from transcription's policy (`_device.py`: the VRAM
+  floor, the clamp check, the CPU fallback, under the same `TAPEBACK_THERMAL_CLAMP_*`
+  settings). It reports its device, its progress through the recording for each
+  pyannote step, and the GPU's clocks for the stage, and its warnings go through the
+  status callback into the run record.
+- Decided: the target is one model that transcribes and tells the speakers apart,
+  in place of Whisper and pyannote. pyannote's own speed-ups (a longer segmentation
+  step, speech-only input, diarizing on the CPU while Whisper holds the GPU) are
+  measured only if pyannote stays.
+
 ## Done in 0.9.9
 
 Only defects, nothing tuned:

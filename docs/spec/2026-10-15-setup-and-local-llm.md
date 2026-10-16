@@ -125,14 +125,14 @@ earlier; the bench tunes them.
 - Provider `local`: `llama-server` starts for each summary with the measured flags
   (`_llama_server.py:39`) on a free loopback port, its key in `LLAMA_API_KEY` rather
   than argv, and its working directory in the private state directory, since ggml also
-  loads backend libraries from the working directory (`_llama_server.py:243`). It
+  loads backend libraries from the working directory (`_llama_server.py:251`). It
   stops after the answer; a summary and its JSON retry share one start
   (`_llm.py:177`). A model that does not fit halves the context once
-  (`_llama_server.py:143`); the markers cover CUDA, Vulkan and the KV cache, after
+  (`_llama_server.py:147`); the markers cover CUDA, Vulkan and the KV cache, after
   which the b9785 build crashes with SIGSEGV rather than exiting (`_llama_server.py:59`).
   A `flock` lets one local summary run at a time, and under it a PID file with the
   process's start time finds a server a crashed run left behind
-  (`_llama_server.py:310`).
+  (`_llama_server.py:318`).
 - The model: `TAPEBACK_LLM_LOCAL_MODEL`, or `unsloth/Qwen3.5-4B-GGUF`
   `Qwen3.5-4B-Q4_K_M.gguf` pinned by revision and sha256 and downloaded once through
   huggingface_hub (`_llama_server.py:90`). `setup` does not offer it yet.
@@ -147,7 +147,9 @@ earlier; the bench tunes them.
   51 MiB afterwards. The `.deb`'s Vulkan build (b11669) processed the prompt at 79 tok/s
   and generated at 29 tok/s, after a first load of about a minute. In a diarized
   `tapeback process`, pyannote left the process holding 106 MiB and the server peaked at
-  3128 MiB: 3234 MiB together, of 4096.
+  3128 MiB: 3234 MiB together, of 4096. An hour-long meeting's prompt was about 12k tokens:
+  the cool card read it at 148 tok/s and generated the 423-token answer at 27 tok/s,
+  119 s from start to the note; the clamped card read it at 13-17 tok/s (defect 7).
 - Left for the bench: Ollama, under the rule that a managed server within 10% of tuned
   Ollama is not worth its code; and a clamp policy, `thermal_clamp_active()` before the
   stage and on clamp `gpu`, `cpu` (only if RAM allows) or `defer` (`summary: pending`
@@ -203,7 +205,7 @@ earlier; the bench tunes them.
    this branch: `_diarize()` frees the GPU in a `finally`; regression test
    `tests/regressions/test_diarization_vram_release.py`.
 2. `transcriber.py` had 578 lines, over the 500-line limit. Fixed on this branch: the
-   choice of device and compute type moved to `_whisper_device.py`.
+   choice of device and compute type moved to `_device.py`.
 3. `.env.example:17` suggested `TAPEBACK_CHUNK_LENGTH=2`, which the README measures as
    much slower. Fixed on this branch: the example shows the default, 30.
 4. A diarized transcript drops short replies. Diarization cuts a Whisper segment where
@@ -236,6 +238,16 @@ earlier; the bench tunes them.
    the text block (`_llm.py:281`). Regression test
    `tests/regressions/test_anthropic_thinking_reply.py`. What is still open: §8 of
    the BACKLOG.
+
+7. Under a thermal clamp, a local summary of an hour-long meeting timed out. Measured
+   on an hour-long recording: the prompt was about 12k tokens, the clamped card
+   processed it at 13-17 tok/s, and at the 600 s `TAPEBACK_LLM_TIMEOUT` two thirds
+   were done and generation had not started; the note kept no summary. The clamp had
+   latched during transcription and held for 90 minutes. Fixed on this branch, as the
+   maintainer chose: the server waits up to `TAPEBACK_LLM_LOCAL_CLAMP_WAIT` (600 s)
+   for the clamp to release, since the summary is the last stage and the clamp
+   releases after a few minutes of idle, then goes ahead; a local answer has its own
+   `TAPEBACK_LLM_LOCAL_TIMEOUT` (1800 s) (`_llama_server.py:143`).
 
 ## Commits
 
