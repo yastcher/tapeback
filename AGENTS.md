@@ -30,7 +30,7 @@ No web servers, databases, Docker.
 ## Architecture
 
 - Source: `src/tapeback/` — cli.py, recorder.py, audio.py, channel.py, transcriber.py, remote_stt.py, diarizer.py, speaker_merge.py, formatter.py, vault.py, summarizer.py, glossary.py, live.py, tray.py, pipeline.py + models.py, settings.py, const.py
-- Private helpers are `_`-prefixed: `_gpu.py` (nvidia-smi, thermal clamp, VRAM), `_worker.py` + `_isolated.py` (out-of-process transcription), `_resume.py` (reusing a finished channel or remote STT chunk), `_quality.py` (transcript metrics and the hallucination filter), `_mask.py` (PII masking at the LLM boundary), `_stt_openai.py` + `_stt_openai_chunks.py` + `_stt_openai_fmt.py` + `_stt_caps.py` + `_stt_media.py` + `_stt_retry.py` (remote STT: OpenAI backend, chunking/resume, response mapping, capabilities, ffmpeg upload helpers, retries/heartbeats), `_sni.py` + `_dbusmenu.py` + `_tray_env.py` (tray protocol), `_runlog.py`, `_timing.py`, `_lazy.py`. The prefix means "internal to tapeback", not "pure" — `_gpu.py` shells out and `_worker.py` spawns processes.
+- Private helpers are `_`-prefixed: `_gpu.py` (nvidia-smi, thermal clamp, VRAM), `_worker.py` + `_isolated.py` (out-of-process transcription), `_resume.py` (reusing a finished channel or remote STT chunk), `_quality.py` (transcript metrics and the hallucination filter), `_mask.py` (PII masking at the LLM boundary), `_llm.py` (LLM providers in one table, keys, the fallback chain, SDK calls), `_user_env.py` (the user's settings file: what `tapeback setup` writes and where a value comes from), `_stt_openai.py` + `_stt_openai_chunks.py` + `_stt_openai_fmt.py` + `_stt_caps.py` + `_stt_media.py` + `_stt_retry.py` (remote STT: OpenAI backend, chunking/resume, response mapping, capabilities, ffmpeg upload helpers, retries/heartbeats), `_sni.py` + `_dbusmenu.py` + `_tray_env.py` (tray protocol), `_runlog.py`, `_timing.py`, `_lazy.py`. The prefix means "internal to tapeback", not "pure" — `_gpu.py` shells out and `_worker.py` spawns processes.
 - Benchmarks live in `scripts/bench_transcribe.py` — it drives the real `Transcriber`, so it measures what ships. Configuration choices here are made from its table, not from reasoning; see `docs/spec/BACKLOG.md` for what that has already overturned.
 - Constants: `src/tapeback/const.py` — import as `from tapeback import const`, use as `const.SPEAKER_YOU`
 - Domain models (Segment, Word, DiarizationSegment, Summary, ActionItem) live in models.py — never in infrastructure modules
@@ -43,7 +43,7 @@ No web servers, databases, Docker.
 - Lint: `uv run ruff check --fix`
 - Format: `uv run ruff format`
 - Type check: `uv run ty check`
-- Test: `uv run pytest` (coverage ≥90% enforced via pyproject.toml)
+- Test: `uv run pytest` (the coverage floor is `fail_under` in pyproject.toml)
 - Gate (everything CI checks, one verdict): `scripts/gate.sh`; the packaging stands run when the diff touches their paths, `--all` forces them
 
 ## Code quality
@@ -81,8 +81,9 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - **Test both branches of conditionals**: if code has `if x: A else: B`, test both paths.
 - **Isolation by construction, never by cleanup**: a test must not depend on leftover state from another test. Scope every assertion to what the test itself created. Nothing a test writes may land in the developer's home: the autouse `isolate_user_dirs` points `XDG_STATE_HOME` and `XDG_DATA_HOME` into the test's tmp dir.
 - **Bug fix workflow**: every fix MUST start with a failing test that reproduces the bug. Write the test first, verify it fails, then apply the fix and verify the test passes. This prevents regressions and documents the exact failure scenario.
-- **No test may reach a live vendor.** The autouse `isolate_settings_sources` fixture cuts off `.env`, every `TAPEBACK_*` variable, and every provider key in `summarizer._PROVIDER_ENV_VARS` — those are read under their own names (`ANTHROPIC_API_KEY`, ...), so a prefix sweep alone leaves them live. Drive the list off the production mapping, never a copy: a new provider must be isolated when it is added, not when someone remembers. A forgotten mock must then fail, not bill. Live vendors only under `TAPEBACK_RUN_E2E=1`.
+- **No test may reach a live vendor.** The autouse `isolate_settings_sources` fixture cuts off `.env`, every `TAPEBACK_*` variable, and every provider's key variable in `_llm.PROVIDERS` — those are read under their own names (`ANTHROPIC_API_KEY`, ...), so a prefix sweep alone leaves them live. Drive the list off the production mapping, never a copy: a new provider must be isolated when it is added, not when someone remembers. A forgotten mock must then fail, not bill. Live vendors only under `TAPEBACK_RUN_E2E=1`.
 - **Ad-hoc probes and benchmarks get no isolation fixture**: they read the developer's `.env` and every `TAPEBACK_*` variable. Build `Settings(_env_file=None)` and pass every knob the result depends on; a local clustering threshold of 0.85 once skewed a whole sweep.
+- **The coverage floor is a ratchet.** `fail_under` in pyproject.toml follows coverage up and never comes down to let a change in. When the total the gate prints passes the next whole percent, raise the floor to it; the fraction above is the slack, room for a branch that is hard to test and for CI's Python 3.13 and 3.14, which count statements differently (their totals have differed by 0.05). It is lowered only on purpose, in a commit that says why: deleting well-covered code lowers the percentage without losing a test.
 
 ## Versioning & releases
 
