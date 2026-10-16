@@ -18,8 +18,8 @@ def _info():
 
 @pytest.fixture
 def clear_gpu(monkeypatch):
-    monkeypatch.setattr("tapeback.transcriber.wait_for_clamp_release", lambda *_a, **_k: True)
-    monkeypatch.setattr("tapeback.transcriber.get_free_vram_mib", lambda: 4096)
+    monkeypatch.setattr("tapeback._whisper_device.wait_for_clamp_release", lambda *_a, **_k: True)
+    monkeypatch.setattr("tapeback._whisper_device.get_free_vram_mib", lambda: 4096)
 
 
 def test_low_free_vram_skips_cuda_entirely(settings, monkeypatch, capsys):
@@ -30,10 +30,10 @@ def test_low_free_vram_skips_cuda_entirely(settings, monkeypatch, capsys):
     CT2_CUDA_ALLOCATOR=cuda_malloc_async. Attempting a load that cannot fit therefore
     costs the whole card, so it must be refused up front.
     """
-    monkeypatch.setattr("tapeback.transcriber.get_free_vram_mib", lambda: 95)
+    monkeypatch.setattr("tapeback._whisper_device.get_free_vram_mib", lambda: 95)
     clamp_calls: list[object] = []
     monkeypatch.setattr(
-        "tapeback.transcriber.wait_for_clamp_release",
+        "tapeback._whisper_device.wait_for_clamp_release",
         lambda *a, **k: clamp_calls.append(a) or True,
     )
     s = settings.model_copy(update={"device": "cuda", "min_free_vram_mib": 1200})
@@ -49,8 +49,8 @@ def test_low_free_vram_skips_cuda_entirely(settings, monkeypatch, capsys):
 
 
 def test_enough_free_vram_uses_cuda(settings, monkeypatch):
-    monkeypatch.setattr("tapeback.transcriber.get_free_vram_mib", lambda: 1200)
-    monkeypatch.setattr("tapeback.transcriber.wait_for_clamp_release", lambda *_a, **_k: True)
+    monkeypatch.setattr("tapeback._whisper_device.get_free_vram_mib", lambda: 1200)
+    monkeypatch.setattr("tapeback._whisper_device.wait_for_clamp_release", lambda *_a, **_k: True)
     s = settings.model_copy(update={"device": "cuda", "min_free_vram_mib": 1200})
 
     with patch("tapeback.transcriber.WhisperModel"):
@@ -59,8 +59,8 @@ def test_enough_free_vram_uses_cuda(settings, monkeypatch):
 
 def test_unknown_free_vram_does_not_block_cuda(settings, monkeypatch):
     """No nvidia-smi means no answer — never refuse the GPU over a check we cannot run."""
-    monkeypatch.setattr("tapeback.transcriber.get_free_vram_mib", lambda: None)
-    monkeypatch.setattr("tapeback.transcriber.wait_for_clamp_release", lambda *_a, **_k: True)
+    monkeypatch.setattr("tapeback._whisper_device.get_free_vram_mib", lambda: None)
+    monkeypatch.setattr("tapeback._whisper_device.wait_for_clamp_release", lambda *_a, **_k: True)
     s = settings.model_copy(update={"device": "cuda"})
 
     with patch("tapeback.transcriber.WhisperModel"):

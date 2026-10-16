@@ -154,7 +154,7 @@ class Settings(BaseSettings):
 
     # Refuse to load a model on CUDA below this much free VRAM, and use the CPU instead.
     # A CUDA out-of-memory during load leaks the allocation on ctranslate2's C++ side
-    # for the life of the process (see transcriber._enough_vram), so the only reliable
+    # for the life of the process (see _whisper_device._enough_vram), so the only reliable
     # cure is not to trigger it. The smallest configuration measured needs ~1115 MiB.
     min_free_vram_mib: int = Field(default=1200, ge=0)
 
