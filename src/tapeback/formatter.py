@@ -161,7 +161,7 @@ def _is_vad_artifact(segment: Segment) -> bool:
 def _format_segments_block(segments: list[Segment]) -> list[str]:
     """Format a list of segments into timecoded markdown lines.
 
-    Low-confidence words (probability < 0.5) are marked with *italics*.
+    Low-confidence words (probability < WORD_LOW_CONFIDENCE) are marked with *italics*.
     """
     kept = [s for s in segments if not _is_vad_artifact(s)]
     kept = [_strip_hallucinated_text(s) for s in kept]

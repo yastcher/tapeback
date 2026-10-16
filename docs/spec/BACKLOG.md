@@ -232,14 +232,14 @@ without warning, so whatever is built has to measure and refuse rather than trun
 
 ---
 
-## 6. Diarization: quality, and the clamp it ignores
+## 6. Diarization: quality, and models to choose from
 
 Found by the 0.9.9 pre-release QA; full numbers in `2026-10-06-diarization.md`. In
 short: pyannote reports the real speakers plus a small third cluster; the spectral
-merge of real speakers is too weak a signal to rely on; diarization runs at roughly
-the recording's length because it meets the thermal clamp with no check, no telemetry
-and warnings that bypass the run record. 0.9.9 fixed only the bridging defect; the
-clamp check, the telemetry and the warnings came on 2026-10-16. The rest belongs with
+merge of real speakers is too weak a signal to rely on; diarization ran at roughly the
+recording's length because it met the thermal clamp with no check, no telemetry and
+warnings that bypassed the run record. 0.9.9 fixed only the bridging defect; the clamp
+check, the telemetry and the warnings came on 2026-10-16. The rest belongs with
 pluggable diarization models, chosen from a bench table.
 
 Measured on 2026-10-16 with a recording of about an hour, before that check: the clamp
@@ -272,10 +272,12 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   of their own, the user's backchannels cut the other side's speech into more blocks,
   and noise Whisper took for a word would show as well.
 - **A note can open with Speaker 2.** Labels are numbered as diarization assigns them
-  (`diarizer.py:301`), before the formatter drops artifacts under a second, so an
+  (`diarizer.py:346`), before the formatter drops artifacts under a second, so an
   artifact that carried a new voice first takes "Speaker 1" with it. Numbering by first
   appearance in the note would fix it.
 - The setup and local-LLM work and the defects it turned up: `2026-10-15-setup-and-local-llm.md`.
+- **`tapeback tray` without its extra names the wrong packages.** The ImportError hint
+  (`cli.py:444`) says "requires pystray and Pillow"; the tray extra is dbus-next.
 
 ## 8. Found 2026-10-16: the new default LLM models
 
@@ -284,7 +286,7 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   reasons, `deepseek-flash` thinks by default, openai's `reasoning_effort` defaults to
   medium: slower and costlier than the old defaults. On anthropic the thinking shares
   `max_tokens=4096` (`_llm.py:275`), so a long meeting can cut the JSON off, and the
-  parse retry (`summarizer.py:149`) resends the whole transcript under the same cap.
+  parse retry (`summarizer.py:161`) resends the whole transcript under the same cap.
   No test or QA step summarizes through a live vendor (the e2e suite passes
   `--no-summarize`): one `tapeback summarize` per provider on a long note is the check.
 - **qwen's address is moving.** Alibaba tells Singapore users to move from
@@ -318,16 +320,25 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   same card, while 8192 tokens do not hold an hour of Russian. An out-of-memory more
   likely means another program holds the card, so the message reports free VRAM; the
   halving stays for other models a user names.
+- **The summary's clamp wait may be held up by tapeback's own CUDA context.** On a
+  shorter meeting the clamp cleared by itself between transcription and
+  diarization, when no process held a CUDA context. After diarization the main
+  process kept torch's 106 MiB context, and the clamp held through the whole 600 s
+  wait (64-72 °C, 300 MHz) and the summary after it. One run, so a correlation; if it
+  holds, diarization in a worker process of its own, as transcription runs, would let
+  the card idle before the summary.
 - **A local summary on the CPU was ruled out on the test machine**: the model needs
   2.7 GB of RAM where about 2.3 GB are free. A summary deferred to a cooler moment
   (`summary: pending`, `tapeback summarize --pending`) stays open, if the wait for
   the clamp (spec, defect 7) proves too long in practice.
-- **Vulkan against CUDA on a GTX 1650 Ti is not measured.** The `.deb` carries the
-  Vulkan build for its reach (Ubuntu 22.04+, 30 MB).
+- **Vulkan against CUDA on a GTX 1650 Ti is not measured on the same input.** Each
+  build was run once, on different prompts (spec, "The convenient package"). The
+  `.deb` carries the Vulkan build for its reach (Ubuntu 22.04+, 30 MB).
 - **The pinned GGUF's Hugging Face scan reads "safe" with the code PAIT-GGUF-100**,
   whose meaning is not public. Its chat template differs from Qwen's in two places: the
   tool-call arguments and the thinking default.
-- **`tests/fixtures.py` has 848 lines**, over the 500-line limit. AGENTS.md keeps every
+- **`tests/fixtures.py` has 920 lines**, over the 500-line limit. AGENTS.md keeps every
   fixture there, so a split needs a decision on the layout first.
-- **The diarize, tray and cuda companions never run on a stand.** They are built and
-  released, but only `tapeback-llm-local` (with `tapeback-llm`) is installed and run.
+- **The diarize, tray and cuda companions never run on a stand.** They are built, and
+  released as `.deb`s, but only `tapeback-llm-local` (with `tapeback-llm`) is installed
+  and run.

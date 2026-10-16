@@ -207,7 +207,11 @@ def process(audio_file: str, name: str | None, no_diarize: bool, no_summarize: b
     default=None,
     help="Override LLM provider",
 )
-@click.option("--model", default=None, help="Override LLM model")
+@click.option(
+    "--model",
+    default=None,
+    help="Override LLM model; with --provider local, TAPEBACK_LLM_LOCAL_MODEL names it",
+)
 @click.option(
     "--show-masked",
     is_flag=True,
@@ -220,9 +224,11 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
     brief overview, action items, and key decisions.
 
     \b
-    Requires the llm extra: uv pip install tapeback[llm]
-    and an API key — set TAPEBACK_LLM_API_KEY or a provider-specific
-    env var (ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.).
+    Requires the llm extra: uv pip install tapeback[llm]. A cloud
+    provider needs its key: TAPEBACK_LLM_API_KEY or its own variable
+    (ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.). openai_compatible needs
+    TAPEBACK_LLM_BASE_URL and TAPEBACK_LLM_MODEL; local needs llama.cpp's
+    llama-server and no key.
 
     \b
     Examples:
@@ -280,8 +286,9 @@ def summarize(file: str, provider: str | None, model: str | None, show_masked: b
 def status() -> None:
     """Show current recording status and settings.
 
-    Displays whether a recording is in progress, vault path, Whisper model,
-    device, which keys are set (never their values), and available audio sources.
+    Displays whether a recording is in progress, the vault, the STT backend and
+    model, the LLM (whether its key is set, never the key; an endpoint's host and
+    port; the local server and model), the HF token, and the audio sources.
     """
     settings = get_settings()
 

@@ -137,9 +137,9 @@ class Settings(BaseSettings):
     # None → XDG data dir (~/.local/share/tapeback/runs).
     run_log_dir: Path | None = None
 
-    # Sample GPU clocks/temperature during transcription and report a one-line summary
-    # per stage. Observation only — tapeback never changes clock or power caps (that
-    # needs root). No-op when nvidia-smi is unavailable.
+    # Sample GPU clocks/temperature during transcription and diarization and report a
+    # one-line summary per stage. Observation only — tapeback never changes clock or
+    # power caps (that needs root). No-op when nvidia-smi is unavailable.
     gpu_telemetry: bool = True
 
     # Reuse a channel that was already transcribed with the same audio and the same
@@ -161,11 +161,12 @@ class Settings(BaseSettings):
     # cure is not to trigger it. The smallest configuration measured needs ~1115 MiB.
     min_free_vram_mib: int = Field(default=1200, ge=0)
 
-    # Look for a GPU thermal clamp before each transcription stage. On laptops that
-    # share one heatsink between CPU and GPU, the controller can cut the GPU's power
-    # budget (measured: 50 W -> 5 W, clocks pinned to 300 MHz) and hold it there while
-    # the CPU stays hot. The check is one nvidia-smi query and is retaken per stage, so
-    # a clamp that clears between channels returns the run to the GPU by itself.
+    # Look for a GPU thermal clamp before each transcription stage and before
+    # diarization, and let a local summary wait for it. On laptops that share one
+    # heatsink between CPU and GPU, the controller can cut the GPU's power budget
+    # (measured: 50 W -> 5 W, clocks pinned to 300 MHz) and hold it there while the CPU
+    # stays hot. The check is one nvidia-smi query and is retaken per stage, so a clamp
+    # that clears between channels returns the run to the GPU by itself.
     thermal_clamp_check: bool = True
     # Seconds to wait for the clamp to release before giving up on the GPU for this
     # stage. Default 0 — do not wait. The clamp clears on system idle, and the shortest
@@ -247,8 +248,8 @@ class Settings(BaseSettings):
     # loads. An empty model is the pinned default, downloaded on first use.
     llm_local_server: str = "llama-server"
     llm_local_model: str = ""
-    # local only: the context in tokens. An hour of Russian conversation is about 9k;
-    # a CUDA out-of-memory while the model loads halves it once.
+    # local only: the context in tokens. An hour of Russian conversation is about 12k;
+    # an out-of-memory while the model loads halves it once.
     llm_local_context: int = Field(default=16384, gt=0)
     # local only: seconds to wait, before the server starts, for a GPU thermal clamp to
     # release. The summary is the last stage, so waiting costs only time: a clamped card

@@ -18,7 +18,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Speaker diarization**: pyannote identifies who said what
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
-- **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback), or a model on this machine
+- **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback), any OpenAI-compatible API, or a model on this machine; the summary comes in the meeting's language
 - **System tray**: start/stop recording from the tray icon, no terminal needed
 - **CLI-first**: `tapeback start`, Ctrl+C to stop, done
 
@@ -62,8 +62,8 @@ sudo apt install ./tapeback-cuda_0.9.10_all.deb       # GPU transcription on CUD
 The base package bundles its own Python interpreter (from
 [python-build-standalone](https://github.com/astral-sh/python-build-standalone))
 so it works on any modern Ubuntu or Debian regardless of the system Python
-version. Only system dependencies are `ffmpeg` and `pulseaudio-utils` (for
-`parecord` / `pactl`).
+version. Its system dependencies are `ffmpeg`, `pulseaudio-utils` (for
+`parecord` / `pactl`) and `ca-certificates`.
 
 ### pip / uv
 
@@ -109,6 +109,7 @@ nix run github:yastcher/tapeback#tray             # + system tray icon
 nix run github:yastcher/tapeback#llm              # + LLM summaries
 nix run github:yastcher/tapeback#diarize          # + speaker diarization
 nix run github:yastcher/tapeback#full             # everything
+# local summaries also need llama.cpp's llama-server on PATH (nixpkgs: llama-cpp)
 ```
 
 ## Quick start
@@ -197,12 +198,17 @@ TAPEBACK_HF_TOKEN=hf_your_token_here
 ```
 
 > First run downloads the pyannote model (~1 GB). An NVIDIA GPU is strongly
-> recommended — diarization on CPU is very slow.
+> recommended: on the CPU, diarization takes about two thirds of the recording's
+> length. A thermally clamped GPU is slower still, so tapeback checks for the clamp
+> before diarizing and moves to the CPU, as it does for transcription (see
+> [below](#transcription-is-suddenly-very-slow-and-the-gpu-is-not-even-hot)). It
+> prints the device it chose and its progress through the recording.
 
 ## LLM summarization
 
 After transcription, tapeback can add a brief summary, action items, and key
-decisions using an LLM.
+decisions using an LLM. They are written in the meeting's language, as Whisper
+detected it.
 
 Set the key in `~/.config/tapeback/.env`:
 
@@ -264,8 +270,13 @@ A provider missing from the table is reached through its OpenAI-compatible API:
 TAPEBACK_LLM_PROVIDER=openai_compatible
 TAPEBACK_LLM_BASE_URL=https://api.example.com/v1   # the API's address
 TAPEBACK_LLM_MODEL=model-name                      # required: there is no default
-TAPEBACK_LLM_API_KEY=...
+TAPEBACK_LLM_API_KEY=...                           # if the API needs one
 ```
+
+ollama.com's API, for one, is `https://ollama.com/v1`, with a key from
+ollama.com/settings/keys and models such as `gpt-oss:120b`; anyapi.ai's is
+`https://api.anyapi.ai/v1`, with models named `provider/model`. Their free models
+may keep what they receive, as with OpenRouter's above.
 
 The key comes from `TAPEBACK_LLM_API_KEY` only. This provider never falls back to the
 ones above, and they never fall back to it. Masking applies as with any provider. An
@@ -344,7 +355,7 @@ tapeback start --no-live           # one-shot override: skip live transcription 
 tapeback start --no-diarize        # skip speaker identification
 tapeback start --no-summarize      # skip LLM summary
 tapeback process meeting.mp3 --name "weekly-standup"
-tapeback summarize notes.md --provider gemini --model gemini-2.5-pro
+tapeback summarize notes.md --provider anthropic --model claude-opus-5-5
 tapeback summarize notes.md --show-masked   # print what would be sent, send nothing
 tapeback setup                     # in a terminal, asks; then says where each setting comes from
 tapeback setup --no-diarize --summarize     # writes ~/.config/tapeback/.env, other lines kept
@@ -402,7 +413,7 @@ Brief overview of the meeting.
 All settings via environment variables (prefix `TAPEBACK_`) or
 `~/.config/tapeback/.env` file. A `.env` in the directory you run tapeback from is
 read too and wins over the user file; the environment wins over both. `tapeback setup`
-says which of them a setting comes from. Keys tapeback does not know are ignored
+says which of them its two switches come from. Keys tapeback does not know are ignored
 without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 
 ### Core
@@ -428,12 +439,12 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 | `TAPEBACK_STT_FFMPEG_TIMEOUT` | `120` | Wall-clock timeout for ffmpeg encode/slice used to prepare remote uploads |
 | `TAPEBACK_LANGUAGE` | `auto` | Language code (`auto` for auto-detection, or `en`, `ru`, `fr`, etc.) |
 | `TAPEBACK_DEVICE` | `cuda` | `cuda` or `cpu`. Local backend only |
-| `TAPEBACK_GPU_TELEMETRY` | `true` | Sample GPU clocks/temperature during transcription and print a one-line summary per stage. Observation only — tapeback never changes clock or power caps. No-op without `nvidia-smi` or on `cpu` |
+| `TAPEBACK_GPU_TELEMETRY` | `true` | Sample GPU clocks/temperature during transcription and diarization and print a one-line summary per stage. Observation only — tapeback never changes clock or power caps. No-op without `nvidia-smi` or on `cpu` |
 | `TAPEBACK_RESUME_CACHE` | `true` | Reuse a channel already transcribed from the same audio with the same output-affecting settings, so an interrupted run does not redo finished work. Changing the model, glossary, language or any decoding setting invalidates it |
 | `TAPEBACK_RESUME_CACHE_DIR` | *(XDG)* | Where reusable channel results go. Default `~/.local/share/tapeback/resume` |
 | `TAPEBACK_ISOLATE_TRANSCRIPTION` | `true` | Run transcription in a child process. A CUDA out-of-memory permanently leaks VRAM inside the process it happens in — a child can simply exit and the kernel reclaims it. Costs one process start and model load per run; set `false` to transcribe in-process |
-| `TAPEBACK_MIN_FREE_VRAM_MIB` | `1200` | Use the CPU rather than attempting a CUDA load below this much free VRAM. The smallest measured configuration needs ~1115 MiB |
-| `TAPEBACK_THERMAL_CLAMP_CHECK` | `true` | Look for a GPU thermal clamp before each transcription stage and before diarization. One `nvidia-smi` query, retaken per stage — which is what lets a run return to the GPU once the card recovers. See "Transcription is suddenly very slow" below |
+| `TAPEBACK_MIN_FREE_VRAM_MIB` | `1200` | Transcribe on the CPU rather than attempting a CUDA load below this much free VRAM. The smallest measured configuration needs ~1115 MiB; diarization's own floor is 1500 MiB |
+| `TAPEBACK_THERMAL_CLAMP_CHECK` | `true` | Look for a GPU thermal clamp before each transcription stage and before diarization, and let a local summary wait for it to release (`TAPEBACK_LLM_LOCAL_CLAMP_WAIT`). One `nvidia-smi` query, retaken per stage — which is what lets a run return to the GPU once the card recovers. See "Transcription is suddenly very slow" below |
 | `TAPEBACK_THERMAL_CLAMP_WAIT` | `0` | Seconds to wait for the clamp to release before giving up on the GPU for this stage. Default is not to wait: the clamp clears on *system* idle and the shortest release measured was 451 s, so any tolerable wait rarely succeeds while the CPU would already be transcribing. Raise it only if the machine will genuinely be idle |
 | `TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK` | `true` | Transcribe and diarize on CPU when the clamp has not released. A clamped GPU measured ~8× slower than the CPU for transcription and ~1.5× for diarization, so falling back is the fast path, not a degradation |
 | `TAPEBACK_STAGE_PAUSE_SECONDS` | `0` | Idle gap after each transcription stage, to shed heat instead of driving the chassis into a clamp. Try `60` on a laptop that clamps during long recordings |
@@ -492,12 +503,12 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 | `TAPEBACK_MASK_TERMS` | *(empty)* | Comma-separated names/terms to mask too (needs `MASK_PII`) |
 | `TAPEBACK_LLM_PROVIDER` | `anthropic` | Primary provider ([list](#llm-summarization)), `local` for [a model on this machine](#local-summaries), or `openai_compatible` for [any OpenAI-compatible API](#any-openai-compatible-api) |
 | `TAPEBACK_LLM_API_KEY` | *(empty)* | API key (or use provider-specific env var) |
-| `TAPEBACK_LLM_MODEL` | *(provider default)* | Override model name; required for `openai_compatible` |
+| `TAPEBACK_LLM_MODEL` | *(provider default)* | Override model name; required for `openai_compatible`; `local` takes `TAPEBACK_LLM_LOCAL_MODEL` |
 | `TAPEBACK_LLM_BASE_URL` | *(empty)* | `openai_compatible` only: the API's address |
 | `TAPEBACK_LLM_TIMEOUT` | `600` | Seconds to wait for one answer from a cloud provider or an OpenAI-compatible API |
 | `TAPEBACK_LLM_LOCAL_SERVER` | `llama-server` | `local` only: the server to start, a name on PATH or a path |
 | `TAPEBACK_LLM_LOCAL_MODEL` | *(Qwen3.5-4B, pinned)* | `local` only: a GGUF file instead of the default model |
-| `TAPEBACK_LLM_LOCAL_CONTEXT` | `16384` | `local` only: the context in tokens; an hour of Russian conversation is about 9k |
+| `TAPEBACK_LLM_LOCAL_CONTEXT` | `16384` | `local` only: the context in tokens. An hour of Russian conversation is about 12k; a longer one needs more, and more VRAM |
 | `TAPEBACK_LLM_LOCAL_CLAMP_WAIT` | `600` | `local` only: seconds to wait for a GPU thermal clamp to release before the server starts |
 | `TAPEBACK_LLM_LOCAL_TIMEOUT` | `1800` | `local` only: seconds to wait for one answer |
 
@@ -507,24 +518,35 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 
 ### Reading the processing output
 
-Processing reports what it is doing, how long each stage took, and where Whisper
-actually ran:
+Processing reports what it is doing, how long each stage took, and where each model
+actually ran. A recorded meeting on a 4 GB laptop GPU:
 
 ```
-Stage 'load channels' took 0.7s
+Stage 'load channels' took 1.1s
 Splitting channels...
-Stage 'split' took 82.0s
-Stage 'gate mic' took 2.3s
+Stage 'split' took 44.5s
+Stage 'gate mic' took 0.6s
 Transcribing (this may take a few minutes)...
-Stage 'load model' took 2.3s
+Stage 'load model' took 0.2s
 Whisper: large-v3-turbo in an isolated worker
 Whisper: large-v3-turbo on cuda/int8_float16
-  transcribe monitor: 47% (14:58 / 31:40)
-  transcribe monitor: 100% (31:36 / 31:40)
-Stage 'transcribe monitor' took 322.1s
-Pausing 60s to let the GPU cool...
-Stage 'transcribe mic' took 106.9s
-GPU: sm 1035 MHz avg / 300 min, max 87°C, 1436 MiB peak, throttled 56% of 78 samples
+  transcribe monitor: 41% (8:13 / 20:03)
+Stage 'transcribe monitor' took 63.3s
+Whisper: large-v3-turbo on cuda/int8_float16
+  transcribe mic: 92% (18:29 / 20:03)
+Stage 'transcribe mic' took 81.5s
+GPU: sm 1345 MHz avg / 300 min, max 87°C, 1308 MiB peak, throttled 76% of 29 samples
+Diarizing speakers...
+Diarization: pyannote/speaker-diarization-3.1 on cuda
+  diarize embeddings: 12% (2:18 / 20:03)
+  diarize embeddings: 99% (19:52 / 20:03)
+GPU: sm 373 MHz avg / 300 min, max 89°C, 2855 MiB peak, throttled 99% of 149 samples
+Stage 'diarize' took 815.0s
+Summarizing...
+GPU thermally clamped, waiting for it to release (0s of 600s)...
+GPU still thermally clamped after 600s — proceeding anyway. It clears on idle, so a busy machine may never release it.
+Summary added.
+Stage 'summarize' took 1171.8s
 ```
 
 The monitor channel is transcribed first so its detected language can be reused for the
@@ -539,11 +561,31 @@ Lines worth watching:
 - **`transcribe monitor: NN%`** — progress through the audio, printed every 10 seconds.
   If the percentage stops advancing, the model is stuck in a repeat loop on that channel
   rather than working.
+- **`Diarization: <model> on <device>`** — where pyannote runs, chosen as Whisper's
+  device is: `cpu` follows a clamp or too little VRAM, with the reason just above. The
+  check is made before the stage; a clamp that latches during it, as above, slows the
+  stage instead.
+- **`diarize embeddings: NN%`** — diarization's progress through the recording; this
+  step takes most of its time.
+- **`GPU thermally clamped, waiting for it to release`** — a local summary waiting up to
+  `TAPEBACK_LLM_LOCAL_CLAMP_WAIT` for a cool card before its server starts.
 - **`GPU: sm … throttled NN%`** — a high throttled share together with a low minimum
   clock means the card was held back by heat or its power limit, not by the model. This
   line is a report of what already happened; the *decision* is made before each stage, and
   a card found clamped is skipped in favour of the CPU. Disable the reporting with
   `TAPEBACK_GPU_TELEMETRY=false`.
+
+### A local summary fails
+
+- **`llama-server not found`**: install `tapeback-llm-local`, put llama.cpp's server on
+  PATH, or name it in `TAPEBACK_LLM_LOCAL_SERVER`.
+- **`does not fit in VRAM`**: tapeback retried once with half the context and says how
+  much VRAM was free. Usually another program holds the card.
+- **`exited ... while loading`** or **`did not load the model`**: the server's own log is
+  `~/.local/state/tapeback/llama-server/log`, overwritten at every start.
+- **`Request timed out`**: a clamped card reads a long prompt slowly. Raise
+  `TAPEBACK_LLM_LOCAL_TIMEOUT`, or summarize later, on a cool card:
+  `tapeback summarize <note> --provider local`.
 
 ### A run failed or you interrupted it — what happened?
 
@@ -579,16 +621,18 @@ shared cooler. Three things follow.
 moderate heating, still latched after 900 s once the chassis was saturated, and still
 latched an hour later with the GPU down to 72 °C while a browser kept the CPU busy. If
 you are using the machine, it will not release — so waiting for it is not a strategy, and
-`TAPEBACK_THERMAL_CLAMP_WAIT` defaults to 0.
+`TAPEBACK_THERMAL_CLAMP_WAIT` defaults to 0. A local summary is the exception: it is the
+last stage, and a clamped card read an hour's prompt ten times slower, so it waits up to
+`TAPEBACK_LLM_LOCAL_CLAMP_WAIT` (600 s) before the server starts.
 
 **The CPU is faster in this state** — 2.39× real time against 0.31× on the clamped GPU.
 Diarization took 0.67× the recording's length on the CPU, against 0.86–1.18× on the
 clamped card. tapeback checks before each stage, diarization included, and moves to
 the CPU, saying so. Disable with `TAPEBACK_THERMAL_CLAMP_CPU_FALLBACK=false`.
 
-**A run that fell back is not stuck there.** The check is retaken for every stage, each of
-which runs in its own worker process, so a clamp that clears between channels puts the
-next one back on the GPU.
+**A run that fell back is not stuck there.** The check is retaken for every stage (each
+transcription channel runs in a worker process of its own), so a clamp that clears
+between channels puts the next one back on the GPU.
 
 You can tell a clamped card from a merely busy one without any load: a healthy GPU
 reports only `GpuIdle` when idle, a clamped one still reports a thermal reason.
@@ -654,13 +698,20 @@ Fixes, in order of reliability:
 # Arch Linux
 yay -R tapeback tapeback-tray tapeback-diarize tapeback-llm tapeback-llm-local tapeback-cuda
 
+# Ubuntu / Debian
+sudo apt remove tapeback tapeback-tray tapeback-diarize tapeback-llm tapeback-llm-local tapeback-cuda
+
 # pip / uv
 uv tool uninstall tapeback
 
-# Remove cached ML models (~2-5 GB)
+# Remove cached ML models: Whisper, pyannote and the local summary model (~5 GB)
 # Skip if you use HuggingFace for other projects
 rm -rf ~/.cache/huggingface/
 ```
+
+tapeback's own files stay: settings in `~/.config/tapeback`, run records in
+`~/.local/share/tapeback`, and in `~/.local/state/tapeback` the recordings not yet
+processed.
 
 ## Roadmap
 

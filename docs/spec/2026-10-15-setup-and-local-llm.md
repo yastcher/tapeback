@@ -1,8 +1,9 @@
 # `tapeback setup` and local LLM summaries
 
-Status: done on `feat/setup-local-llm` but for commit 8, which waits for a
-menu-driven setup (Later), and the bench, which tunes the managed server. Synthesised
-from three proposals (simplest, fastest on a 4 GB laptop GPU, cleanest code).
+Status: done on `feat/setup-local-llm`, but for commit 8, which waits for a menu-driven
+setup (Later), the bench, which tunes the managed server, and chunking for a meeting
+longer than the local context. Synthesised from three proposals (simplest, fastest on
+a 4 GB laptop GPU, cleanest code).
 
 ## The request
 
@@ -18,7 +19,7 @@ from three proposals (simplest, fastest on a 4 GB laptop GPU, cleanest code).
 - Some engines cover several stages at once: transcript, speakers, emotion tags, even
   a short summary. The setup must not assume one engine per stage.
 
-## Facts
+## Facts (2026-10-15, before this branch)
 
 The test machine: a 4 GB Turing laptop GPU, often thermally clamped to 300 MHz;
 12 threads; 7.6 GB RAM with ~2.3 GB available and swap in use. Local LLMs were
@@ -65,13 +66,14 @@ In tapeback:
   follow_symlinks=True)`: other lines byte-identical, the mode kept, a new file 0600
   in a 0700 directory, an unchanged value not written. An `OSError` (a read-only
   target) prints the lines to add by hand. python-dotenv becomes a direct dependency.
-- The report: each written key's effective value and its source, in order
+- The report: each switch's effective value and its source, in order
   environment > `./.env` (unless it is the user file) > user file > default. A
   shadowed key names what shadows it. Secrets only as set/not set.
 - Engine-aware: when the STT model provides speakers (`allows_local_diarize` is
   false), no diarization question; setup says where speakers come from.
-- Hints: diarization without an HF token; a summary without a usable key or endpoint;
-  a running tray keeps its old settings until restarted.
+- Hints: diarization without an HF token; a cloud summary without a key, or a local
+  one without llama-server; a running tray keeps its old settings until restarted. An
+  endpoint without its address or model is reported when a summary runs.
 
 ### The endpoint
 
@@ -92,7 +94,8 @@ In tapeback:
   recording.
 - Chunking (map-reduce over speaker turns, mask before split, unmask after merge) is
   built only if the bench shows an hour does not fit one pass; with one transcript
-  section (below) an hour is ~9k tokens.
+  section (below) an hour-long meeting measured about 12k tokens, against a 16384-token
+  local context.
 
 ### One transcript in the note
 
@@ -149,11 +152,13 @@ earlier; the bench tunes them.
   `tapeback process`, pyannote left the process holding 106 MiB and the server peaked at
   3128 MiB: 3234 MiB together, of 4096. An hour-long meeting's prompt was about 12k tokens:
   the cool card read it at 148 tok/s and generated the 423-token answer at 27 tok/s,
-  119 s from start to the note; the clamped card read it at 13-17 tok/s (defect 7).
+  119 s from start to the note; the clamped card read it at 13-17 tok/s (defect 7). On
+  a shorter meeting after that fix, the clamp held through the 600 s wait, and the
+  clamped card still finished the answer in 9.5 minutes, inside the 1800 s timeout.
 - Left for the bench: Ollama, under the rule that a managed server within 10% of tuned
-  Ollama is not worth its code; and a clamp policy, `thermal_clamp_active()` before the
-  stage and on clamp `gpu`, `cpu` (only if RAM allows) or `defer` (`summary: pending`
-  in the note and `tapeback summarize --pending`).
+  Ollama is not worth its code. The summary's clamp policy is a wait (defect 7); the
+  CPU (only if RAM allows) or `defer` (`summary: pending` in the note and
+  `tapeback summarize --pending`) remain alternatives.
 
 ## Later
 
@@ -258,7 +263,8 @@ earlier; the bench tunes them.
 
 ## Commits
 
-Done on `feat/setup-local-llm`: 1–7 and 9–12. Commit 8 waits for the menu-driven setup.
+Done on `feat/setup-local-llm`: 1–7 and 9 (squashed into one commit), then 10–16.
+Commit 8 waits for the menu-driven setup.
 
 1. `fix:` free the GPU after diarization.
 2. `fix:` a diarized transcript keeps short replies.
@@ -274,8 +280,12 @@ Done on `feat/setup-local-llm`: 1–7 and 9–12. Commit 8 waits for the menu-dr
 10. `refactoring:` Whisper's device choice leaves `transcriber.py`.
 11. `feat:` the `local` provider, tested against a fake `llama-server` process.
 12. `feat:` the `tapeback-llm-local` packages, run on both stands.
+13. `feat:` diarization follows transcription's clamp policy and reports its progress.
+14. `fix:` a local summary waits for a clamped GPU to cool (defect 7).
+15. `fix:` a summary is written in the note's language (defect 8).
+16. `fix:` an OpenAI-compatible API is asked for one answer, not a stream.
 
-The bench, the clamp policy and chunking follow as their own work.
+The bench and chunking follow as their own work.
 
 ## Decided (2026-10-15)
 
@@ -295,3 +305,8 @@ The bench, the clamp policy and chunking follow as their own work.
   carrying a pinned llama.cpp release, and pip with `llama-server` on PATH. The model
   is a pinned GGUF downloaded on first use, or a path. `transcriber.py` is split in
   this PR.
+- (2026-10-16) Diarization takes transcription's clamp policy: the CPU when the card
+  is clamped, without the long-file measurement. A local summary waits up to 600 s
+  for the clamp, then goes ahead, with its own 1800 s timeout. The summary prompt
+  names the note's language. The target is one model for the transcript and the
+  speakers, in place of Whisper and pyannote.

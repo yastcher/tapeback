@@ -1,7 +1,8 @@
 # Diarization: what the 0.9.9 pre-release QA found
 
 Status: findings and a plan for the next release. 0.9.9 only fixes the plain defects
-(see "Done in 0.9.9"); the rest waits for pluggable diarization models.
+(see "Done in 0.9.9"); items 4 and 5 of the plan were done on 2026-10-16; the rest
+waits for pluggable diarization models.
 
 ## How it surfaced
 
@@ -54,11 +55,11 @@ nothing here is tuned to them.
   (`SwPowerCap` + `SwThermalSlowdown`). The same sweep step took 17 s at first and
   220–242 s later in the run.
 
-So diarization runs into the thermal clamp described in BACKLOG ("Why runs used to
-stall with no way out"), and nothing in it reacts: transcription checks for the clamp
-before each stage and falls back to the CPU; diarization has no check, no GPU
-telemetry line, and its own fallback warnings go to `print()`, so they never reach
-the run record.
+So diarization ran into the thermal clamp described in BACKLOG ("Why runs used to
+stall with no way out"), and nothing in it reacted: transcription checked for the
+clamp before each stage and fell back to the CPU; diarization had no check, no GPU
+telemetry line, and its own fallback warnings went to `print()`, so they never
+reached the run record. Fixed on 2026-10-16, below.
 
 ## Plan for the next release
 
@@ -78,11 +79,11 @@ the run record.
 ## Done on `feat/setup-local-llm` (2026-10-16)
 
 - Items 4 and 5, decided by the maintainer without the long-file measurement:
-  diarization takes its device from transcription's policy (`_device.py`: the VRAM
-  floor, the clamp check, the CPU fallback, under the same `TAPEBACK_THERMAL_CLAMP_*`
-  settings). It reports its device, its progress through the recording for each
-  pyannote step, and the GPU's clocks for the stage, and its warnings go through the
-  status callback into the run record.
+  diarization takes its device from transcription's policy (`_device.py`: its own
+  1500 MiB VRAM floor, the clamp check, the CPU fallback, under the same
+  `TAPEBACK_THERMAL_CLAMP_*` settings). It reports its device, its progress through
+  the recording for each pyannote step, and the GPU's clocks for the stage, and its
+  warnings go through the status callback into the run record.
 - Decided: the target is one model that transcribes and tells the speakers apart,
   in place of Whisper and pyannote. pyannote's own speed-ups (a longer segmentation
   step, speech-only input, diarizing on the CPU while Whisper holds the GPU) are

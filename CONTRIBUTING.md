@@ -60,7 +60,7 @@ and Arch packages in containers, as CI does — that needs docker and
 - **No magic numbers.** Thresholds, limits and ratios belong in `settings.py` as a
   `TAPEBACK_` setting, or in `const.py` — not as an inline literal or a default argument.
 - **No local imports inside functions**, except where an optional extra requires it
-  (see `diarizer.py` and `summarizer.py` for the pattern and the `noqa` that documents it).
+  (see `diarizer.py` and `_llm.py` for the pattern and the `noqa` that documents it).
 - Everything committed is in English — code, comments, logs, docs, commit messages.
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`,
   `docs:`, `refactor:`.
