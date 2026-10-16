@@ -10,6 +10,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+## [0.10.0] — 2026-10-17
+
 ### Added
 - `TAPEBACK_LLM_PROVIDER=local` writes the summary on this machine. Once transcription and diarization have given the GPU back, tapeback starts llama.cpp's `llama-server`, and stops it after the answer. The model, Qwen3.5-4B in 4 bits, downloads once on the first summary; `TAPEBACK_LLM_LOCAL_MODEL` names another GGUF. A model that does not fit in VRAM is retried once with half the context, the server waits up to ten minutes for a GPU thermal clamp to release before it starts, and one answer may take up to 30 minutes. A local summary never falls back to a cloud provider. The `tapeback-llm-local` package brings the server: on AUR it depends on `llama-cpp` from [extra], and the `.deb` carries a pinned llama.cpp release.
 - `TAPEBACK_LLM_PROVIDER=openai_compatible` reaches any OpenAI-compatible API named by `TAPEBACK_LLM_BASE_URL` and `TAPEBACK_LLM_MODEL`, with its key in `TAPEBACK_LLM_API_KEY`. It never falls back to the other providers, nor they to it, and masking applies as with any provider. An address with credentials in it is refused, plain http to another host warns, and the request asks for one answer, not a stream. `TAPEBACK_LLM_TIMEOUT` (600 s) bounds one answer from it or from a cloud provider.
