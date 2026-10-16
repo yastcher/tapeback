@@ -132,7 +132,7 @@ omit = ["src/tapeback/tray.py"]  # GUI module, requires X display — tested loc
 [tool.coverage.report]
 show_missing = true
 # A ratchet: raised as coverage grows, never lowered to let a change in (AGENTS.md, Testing).
-fail_under = 94
+fail_under = 94.5
 # The floor is compared with the total rounded to this many places: at the default 0,
 # 93.6% rounds to 94 and passes a floor of 94.
 precision = 2
