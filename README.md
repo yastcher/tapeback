@@ -18,7 +18,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Speaker diarization**: pyannote identifies who said what
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
-- **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback)
+- **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback), or a model on this machine
 - **System tray**: start/stop recording from the tray icon, no terminal needed
 - **CLI-first**: `tapeback start`, Ctrl+C to stop, done
 
@@ -33,9 +33,10 @@ Speaker diarization and LLM summaries are optional and installed separately.
 yay -S tapeback                              # recording + transcription
 yay -S tapeback tapeback-tray                # + system tray icon
 yay -S tapeback tapeback-llm                 # + LLM summaries
+yay -S tapeback tapeback-llm-local           # + LLM summaries on this machine
 yay -S tapeback tapeback-diarize             # + speaker diarization
 yay -S tapeback tapeback-cuda                # + GPU transcription on CUDA 13 systems
-yay -S tapeback tapeback-tray tapeback-llm tapeback-diarize tapeback-cuda  # everything
+yay -S tapeback tapeback-tray tapeback-llm tapeback-llm-local tapeback-diarize tapeback-cuda  # everything
 ```
 
 All system dependencies (ffmpeg, PipeWire) are installed automatically.
@@ -53,6 +54,7 @@ sudo apt install ./tapeback_0.9.10_amd64.deb
 # Optional extras:
 sudo apt install ./tapeback-tray_0.9.10_all.deb       # tray icon
 sudo apt install ./tapeback-llm_0.9.10_all.deb        # LLM summaries
+sudo apt install ./tapeback-llm-local_0.9.10_amd64.deb  # LLM summaries on this machine
 sudo apt install ./tapeback-diarize_0.9.10_all.deb    # speaker diarization
 sudo apt install ./tapeback-cuda_0.9.10_all.deb       # GPU transcription on CUDA 13
 ```
@@ -91,7 +93,8 @@ uv tool install "tapeback[tray,stt,llm,diarize]"  # everything
 
 `tapeback[stt]` installs the openai SDK for remote transcription.
 `tapeback[llm]` also installs that SDK (plus anthropic), so remote STT works if
-you already have the LLM extra.
+you already have the LLM extra. [Local summaries](#local-summaries) need the LLM
+extra and llama.cpp's `llama-server` on PATH.
 
 ### pipx or Nix
 
@@ -229,6 +232,27 @@ The `openrouter` default is a free model. Free models may keep or train on what 
 receive, and a meeting is personal data: check the model's data policy first, or set
 `TAPEBACK_LLM_MODEL` to a paid one.
 
+### Local summaries
+
+`TAPEBACK_LLM_PROVIDER=local` writes the summary on this machine, so the transcript
+never leaves it. Once transcription and diarization have given the GPU back,
+tapeback starts llama.cpp's `llama-server`, and stops it after the answer: the model
+holds the VRAM only for the summary. The `tapeback-llm-local` package brings the
+server; with pip, put `llama-server` on PATH or name it in
+`TAPEBACK_LLM_LOCAL_SERVER`.
+
+```bash
+TAPEBACK_LLM_PROVIDER=local
+```
+
+The first summary downloads the model, Qwen3.5-4B in 4 bits (2.7 GB), once into the
+Hugging Face cache; `TAPEBACK_LLM_LOCAL_MODEL` names another GGUF instead. On a 4 GB
+GPU it takes 3.1–3.5 GB, and when it does not fit, tapeback retries once with half
+the context. The `.deb` reaches an NVIDIA GPU through the driver's Vulkan support; on
+Arch, install `ggml-cuda` or `ggml-vulkan`. Without a GPU the model runs on the CPU,
+slowly, and a slow GPU can need more than `TAPEBACK_LLM_TIMEOUT` (600 s) for an hour
+of conversation. A local summary never falls back to a cloud provider.
+
 ### Any OpenAI-compatible API
 
 A provider missing from the table is reached through its OpenAI-compatible API:
@@ -249,7 +273,8 @@ the host and port, never the rest of the address.
 ### PII masking
 
 By default, recording, transcription and diarization stay on your machine.
-Summarization is the usual off-machine path: a text request to an LLM provider.
+Summarization is the usual off-machine path: a text request to an LLM provider,
+unless it is [local](#local-summaries).
 If that bothers you, leave summarization off (`TAPEBACK_SUMMARIZE=false`) or turn
 on masking.
 
@@ -462,11 +487,14 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 | `TAPEBACK_SUMMARIZE` | `true` | Enable LLM summarization |
 | `TAPEBACK_MASK_PII` | `false` | Mask emails and phone numbers before sending ([details](#pii-masking)) |
 | `TAPEBACK_MASK_TERMS` | *(empty)* | Comma-separated names/terms to mask too (needs `MASK_PII`) |
-| `TAPEBACK_LLM_PROVIDER` | `anthropic` | Primary provider ([list](#llm-summarization)), or `openai_compatible` for [any OpenAI-compatible API](#any-openai-compatible-api) |
+| `TAPEBACK_LLM_PROVIDER` | `anthropic` | Primary provider ([list](#llm-summarization)), `local` for [a model on this machine](#local-summaries), or `openai_compatible` for [any OpenAI-compatible API](#any-openai-compatible-api) |
 | `TAPEBACK_LLM_API_KEY` | *(empty)* | API key (or use provider-specific env var) |
 | `TAPEBACK_LLM_MODEL` | *(provider default)* | Override model name; required for `openai_compatible` |
 | `TAPEBACK_LLM_BASE_URL` | *(empty)* | `openai_compatible` only: the API's address |
 | `TAPEBACK_LLM_TIMEOUT` | `600` | Seconds to wait for one answer |
+| `TAPEBACK_LLM_LOCAL_SERVER` | `llama-server` | `local` only: the server to start, a name on PATH or a path |
+| `TAPEBACK_LLM_LOCAL_MODEL` | *(Qwen3.5-4B, pinned)* | `local` only: a GGUF file instead of the default model |
+| `TAPEBACK_LLM_LOCAL_CONTEXT` | `16384` | `local` only: the context in tokens; an hour of Russian conversation is about 9k |
 
 </details>
 
@@ -618,7 +646,7 @@ Fixes, in order of reliability:
 
 ```bash
 # Arch Linux
-yay -R tapeback tapeback-tray tapeback-diarize tapeback-llm tapeback-cuda
+yay -R tapeback tapeback-tray tapeback-diarize tapeback-llm tapeback-llm-local tapeback-cuda
 
 # pip / uv
 uv tool uninstall tapeback

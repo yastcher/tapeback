@@ -49,21 +49,23 @@ git push && git push --tags
 scripts/aur-publish.sh 0.9.0
 ```
 
-`aur-publish.sh` updates all 4 AUR packages:
+`aur-publish.sh` updates the 5 AUR packages:
 - `tapeback` — base (recording + transcription)
 - `tapeback-tray` — system tray icon (pystray + Pillow)
 - `tapeback-llm` — LLM summarization (anthropic + openai SDKs)
+- `tapeback-llm-local` — summaries on this machine (Arch's `llama-cpp`)
 - `tapeback-diarize` — speaker diarization (pyannote + PyTorch)
 
 ### AUR packages
 
-Each AUR package is a meta-package with a `.install` hook that pip-installs
-the corresponding Python extras into `/opt/tapeback/` venv. PKGBUILDs live in
+Each companion is a meta-package. Most pip-install their Python extras into the
+`/opt/tapeback/` venv through a `.install` hook; `tapeback-llm-local` depends on
+Arch's `llama-cpp` instead. PKGBUILDs live in
 `packaging/` and keep `sha256sums=('SKIP')` — real checksums are set only in
 the AUR repo after the PyPI tarball is available.
 
 AUR publishing is manual: `aur-publish.sh` clones each AUR repo, copies
-PKGBUILD + .install, generates `.SRCINFO`, and pushes.
+the PKGBUILD and its `.install`, if any, generates `.SRCINFO`, and pushes.
 
 ## CI
 

@@ -277,8 +277,8 @@ rest belongs with pluggable diarization models, chosen from a bench table.
   adaptively, gemini 3 cannot turn thinking off, groq's `openai/gpt-oss-120b` always
   reasons, `deepseek-flash` thinks by default, openai's `reasoning_effort` defaults to
   medium: slower and costlier than the old defaults. On anthropic the thinking shares
-  `max_tokens=4096` (`_llm.py:245`), so a long meeting can cut the JSON off, and the
-  parse retry (`summarizer.py:148`) resends the whole transcript under the same cap.
+  `max_tokens=4096` (`_llm.py:275`), so a long meeting can cut the JSON off, and the
+  parse retry (`summarizer.py:149`) resends the whole transcript under the same cap.
   No test or QA step summarizes through a live vendor (the e2e suite passes
   `--no-summarize`): one `tapeback summarize` per provider on a long note is the check.
 - **qwen's address is moving.** Alibaba tells Singapore users to move from
@@ -290,3 +290,39 @@ rest belongs with pluggable diarization models, chosen from a bench table.
   no policy fields, and a free model may keep or train on prompts
   (`poolside/laguna-s-2.1` says it trains on inputs). The README warns; the default's
   own policy is not checked. The free tier allows 50 requests a day.
+
+## 9. Found 2026-10-16: the local LLM
+
+- **`-ngl 99` switches llama.cpp's `--fit` off.** With an explicit layer count, fit
+  only warns, and a model that does not fit fails to load instead of leaving layers on
+  the CPU; `auto` keeps a 1 GiB margin, which on a 4 GB card may move layers off the
+  GPU. A row for the bench, not a guess.
+- **JSON from the local model is not enforced.** llama-server enforces
+  `response_format` only with a non-empty schema; `json_object` alone is ignored for
+  this model's template. Measured earlier outside this repo, Qwen3.5-4B with thinking
+  off answered valid JSON 10 times in 10 under a `json_schema` grammar, and without
+  bounds on arrays and strings a 4B model looped to its token limit. The JSON retry it
+  would spare reprocesses the whole transcript: its system prompt differs, so nothing
+  is reused. The bench's "valid JSON on the first try" column decides.
+- **The local request sets no `max_tokens` and no temperature, and ignores
+  `finish_reason`.** The server's default temperature is 0.8, and a truncated answer
+  reads as "not JSON" and costs a second full pass. For the bench.
+- **Halving the context frees little for the default model.** Qwen3.5-4B is hybrid:
+  measured earlier, it took 3090 MiB at a 12288-token context, and 24576 ran on the
+  same card, while 8192 tokens do not hold an hour of Russian. An out-of-memory more
+  likely means another program holds the card, so the message reports free VRAM; the
+  halving stays for other models a user names.
+- **The clamp is not checked before the server starts.** The summary follows Whisper
+  and pyannote, the heaviest load. Measured earlier, clamped generation fell to
+  3-5 tok/s (one call took 795 s), and the clamp released only after about six
+  minutes idle with the server stopped. `_gpu.py:131` detects it; the policy (wait,
+  CPU, defer) is the spec's.
+- **Vulkan against CUDA on a GTX 1650 Ti is not measured.** The `.deb` carries the
+  Vulkan build for its reach (Ubuntu 22.04+, 30 MB).
+- **The pinned GGUF's Hugging Face scan reads "safe" with the code PAIT-GGUF-100**,
+  whose meaning is not public. Its chat template differs from Qwen's in two places: the
+  tool-call arguments and the thinking default.
+- **`tests/fixtures.py` has 848 lines**, over the 500-line limit. AGENTS.md keeps every
+  fixture there, so a split needs a decision on the layout first.
+- **The diarize, tray and cuda companions never run on a stand.** They are built and
+  released, but only `tapeback-llm-local` (with `tapeback-llm`) is installed and run.

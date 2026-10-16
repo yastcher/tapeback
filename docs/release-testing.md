@@ -77,6 +77,10 @@ On a fresh Ubuntu/Debian VM or real machine:
   extension + re-login → tray icon menu actually responds
 - `sudo apt install ./tapeback-llm_*.deb` → `/opt/tapeback/venv/bin/python -c
   "import anthropic, openai"` succeeds
+- `sudo apt install ./tapeback-llm-local_*.deb` on a machine with a GPU →
+  `TAPEBACK_LLM_PROVIDER=local tapeback summarize <note>` adds a summary, and
+  `nvidia-smi` shows the VRAM free again afterwards. The stands only run
+  `llama-server --version`: they have no GPU and no model.
 - `sudo apt remove tapeback-llm` → anthropic/openai uninstalled from the venv;
   `sudo apt remove tapeback` removes everything
 

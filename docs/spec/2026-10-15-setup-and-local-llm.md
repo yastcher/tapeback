@@ -1,8 +1,8 @@
 # `tapeback setup` and local LLM summaries
 
 Status: done on `feat/setup-local-llm` but for commit 8, which waits for a
-menu-driven setup (Later). Synthesised from three proposals (simplest, fastest on a
-4 GB laptop GPU, cleanest code).
+menu-driven setup (Later), and the bench, which tunes the managed server. Synthesised
+from three proposals (simplest, fastest on a 4 GB laptop GPU, cleanest code).
 
 ## The request
 
@@ -117,24 +117,41 @@ valid JSON on the first try, action/decision agreement with the note's existing 
 summary, summary language. Clamped rows are never averaged with cool ones. The table
 goes here, and the README follows it.
 
-## After the bench: the convenient package
+## The convenient package
 
-Decided by the bench, not by reasoning:
+Built on this branch before the bench (decided 2026-10-16), with the flags measured
+earlier; the bench tunes them.
 
-- Managed llama-server (provider `local`): started per summary with the measured flags
-  on a free loopback port, the key in an env var rather than argv, stopped afterwards
-  so the next recording's Whisper gets the VRAM, orphans reaped through a PID file in
-  the state directory, half the context after a CUDA OOM. The model as a local path or
-  a pinned GGUF downloaded through huggingface_hub, offered by `setup`. AUR
-  `tapeback-llm-local` depends on `llama.cpp` (cuda or vulkan); the `.deb` bundles a
-  pinned llama.cpp release checked by sha256; pip users need `llama-server` on PATH.
-- Ollama: `ollama` from Arch extra; needs `OLLAMA_CONTEXT_LENGTH`, a non-thinking model
-  and a short keep-alive, otherwise the model holds VRAM after the summary.
-- Rule: if tuned Ollama comes within 10% of the managed server, the managed server is
-  not worth its code.
-- With a managed server, a clamp policy becomes possible: `thermal_clamp_active()`
-  before the stage and between chunks; on clamp `gpu`, `cpu` (only if RAM allows) or
-  `defer` (`summary: pending` in the note and `tapeback summarize --pending`).
+- Provider `local`: `llama-server` starts for each summary with the measured flags
+  (`_llama_server.py:39`) on a free loopback port, its key in `LLAMA_API_KEY` rather
+  than argv, and its working directory in the private state directory, since ggml also
+  loads backend libraries from the working directory (`_llama_server.py:243`). It
+  stops after the answer; a summary and its JSON retry share one start
+  (`_llm.py:177`). A model that does not fit halves the context once
+  (`_llama_server.py:143`); the markers cover CUDA, Vulkan and the KV cache, after
+  which the b9785 build crashes with SIGSEGV rather than exiting (`_llama_server.py:59`).
+  A `flock` lets one local summary run at a time, and under it a PID file with the
+  process's start time finds a server a crashed run left behind
+  (`_llama_server.py:310`).
+- The model: `TAPEBACK_LLM_LOCAL_MODEL`, or `unsloth/Qwen3.5-4B-GGUF`
+  `Qwen3.5-4B-Q4_K_M.gguf` pinned by revision and sha256 and downloaded once through
+  huggingface_hub (`_llama_server.py:90`). `setup` does not offer it yet.
+- Packages: AUR `tapeback-llm-local` depends on Arch's `llama-cpp`, with `ggml-cuda` or
+  `ggml-vulkan` for the GPU. The `.deb` carries llama.cpp b11669's Vulkan build,
+  checked against the asset digest GitHub reports; it runs on Ubuntu 22.04+ and Debian
+  12+, where the CUDA builds need 24.04+ and weigh 25 times more. pip users put
+  `llama-server` on PATH. Both stands install the companion and run its server
+  (`tests/smoke/llm-local.sh`).
+- Measured on the test machine with the pinned model. The local llama.cpp build (b9785,
+  CUDA) summarised a short synthetic meeting in 67 s, and the VRAM was back at its idle
+  51 MiB afterwards. The `.deb`'s Vulkan build (b11669) processed the prompt at 79 tok/s
+  and generated at 29 tok/s, after a first load of about a minute. In a diarized
+  `tapeback process`, pyannote left the process holding 106 MiB and the server peaked at
+  3128 MiB: 3234 MiB together, of 4096.
+- Left for the bench: Ollama, under the rule that a managed server within 10% of tuned
+  Ollama is not worth its code; and a clamp policy, `thermal_clamp_active()` before the
+  stage and on clamp `gpu`, `cpu` (only if RAM allows) or `defer` (`summary: pending`
+  in the note and `tapeback summarize --pending`).
 
 ## Later
 
@@ -185,7 +202,8 @@ Decided by the bench, not by reasoning:
 1. VRAM is not freed after diarization (`pipeline.py:271`, `:388`). Fixed first on
    this branch: `_diarize()` frees the GPU in a `finally`; regression test
    `tests/regressions/test_diarization_vram_release.py`.
-2. `transcriber.py` has 578 lines, over the 500-line limit.
+2. `transcriber.py` had 578 lines, over the 500-line limit. Fixed on this branch: the
+   choice of device and compute type moved to `_whisper_device.py`.
 3. `.env.example:17` suggested `TAPEBACK_CHUNK_LENGTH=2`, which the README measures as
    much slower. Fixed on this branch: the example shows the default, 30.
 4. A diarized transcript drops short replies. Diarization cuts a Whisper segment where
@@ -215,13 +233,13 @@ Decided by the bench, not by reasoning:
    Fixed on this branch: current defaults from each vendor's deprecation page
    (`const.py:116`). The new anthropic default thinks adaptively, and its reply can
    open with a thinking block, which the transport took for the text; it now reads
-   the text block (`_llm.py:251`). Regression test
+   the text block (`_llm.py:281`). Regression test
    `tests/regressions/test_anthropic_thinking_reply.py`. What is still open: §8 of
    the BACKLOG.
 
 ## Commits
 
-Done on `feat/setup-local-llm`: 1–7 and 9. Commit 8 waits for the menu-driven setup.
+Done on `feat/setup-local-llm`: 1–7 and 9–12. Commit 8 waits for the menu-driven setup.
 
 1. `fix:` free the GPU after diarization.
 2. `fix:` a diarized transcript keeps short replies.
@@ -234,9 +252,11 @@ Done on `feat/setup-local-llm`: 1–7 and 9. Commit 8 waits for the menu-driven 
    endpoint fails, the masked body is what crossed the wire.
 8. `feat:` setup configures the summary.
 9. `docs:` README, `.env.example`, CHANGELOG through the script.
+10. `refactoring:` Whisper's device choice leaves `transcriber.py`.
+11. `feat:` the `local` provider, tested against a fake `llama-server` process.
+12. `feat:` the `tapeback-llm-local` packages, run on both stands.
 
-The bench, then the managed server, clamp policy, chunking and packaging follow as
-their own work once the table exists.
+The bench, the clamp policy and chunking follow as their own work.
 
 ## Decided (2026-10-15)
 
@@ -249,3 +269,10 @@ their own work once the table exists.
 - (2026-10-16) The local summaries stay in this PR. `setup` keeps its two switches;
   choosing the cloud or a server moves to a menu-driven setup that also checks what
   fits the machine.
+- (2026-10-16) The managed llama-server (provider `local`) is built in this PR, before
+  the bench, with the flags measured earlier; the bench tunes the model and the
+  context later. It starts after diarization and stops after the summary. It ships
+  three ways: an AUR companion depending on Arch's `llama-cpp`, a `.deb` companion
+  carrying a pinned llama.cpp release, and pip with `llama-server` on PATH. The model
+  is a pinned GGUF downloaded on first use, or a path. `transcriber.py` is split in
+  this PR.
