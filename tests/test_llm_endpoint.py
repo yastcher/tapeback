@@ -40,6 +40,15 @@ def test_a_summary_goes_through_the_endpoint(tmp_vault, llm_endpoint, capsys):
     assert "Warning" not in capsys.readouterr().err
 
 
+def test_the_endpoint_is_asked_for_one_answer_not_a_stream(tmp_vault, llm_endpoint):
+    """An API may document streaming as its default (anyapi.ai's docs say both); tapeback
+    reads one JSON answer, so the request says so."""
+    call("system", "transcript", _settings(tmp_vault, llm_endpoint.url))
+
+    [request] = llm_endpoint.requests
+    assert json.loads(request.body)["stream"] is False
+
+
 def test_no_cloud_key_crosses_the_wire(tmp_vault, llm_endpoint, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-cloud-key-must-not-leak")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-cloud-key-must-not-leak")

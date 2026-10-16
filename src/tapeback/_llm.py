@@ -310,8 +310,10 @@ def _openai_client(
 
 
 def _chat(client: "openai.OpenAI", model: str, system_prompt: str, user_message: str) -> str:
+    # One answer, said aloud: an API may document streaming as its default.
     response = client.chat.completions.create(
         model=model,
+        stream=False,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
