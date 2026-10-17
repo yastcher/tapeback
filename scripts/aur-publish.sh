@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Update AUR packages after a GitHub release.
+# Publish every AUR package after a GitHub release: packaging/PKGBUILD (tapeback) and
+# each packaging/<name>/PKGBUILD, with the .install file it names. A package whose
+# files AUR already holds is skipped, so a rerun for the same version publishes only
+# what is new: a package added after the release, say.
 # Usage: ./scripts/aur-publish.sh 0.8.1
 #
 # Prerequisites:
@@ -16,7 +19,10 @@ fi
 VERSION="$1"
 TARBALL_URL="https://github.com/yastcher/tapeback/archive/v$VERSION.tar.gz"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-AUR_DIR="/tmp/aur-tapeback-release"
+# Tests point this at local repositories.
+AUR_REMOTE="${AUR_REMOTE:-ssh://aur@aur.archlinux.org}"
+AUR_DIR="$(mktemp -d)"
+trap 'rm -rf "$AUR_DIR"' EXIT
 
 # Verify tarball exists
 echo "Checking tarball at $TARBALL_URL..."
@@ -31,55 +37,33 @@ echo "Computing sha256sum..."
 SHA256=$(curl -sL "$TARBALL_URL" | sha256sum | cut -d' ' -f1)
 echo "  $SHA256"
 
-rm -rf "$AUR_DIR"
-mkdir -p "$AUR_DIR"
-
-# --- tapeback (main package) ---
-echo ""
-echo "==> Updating tapeback..."
-git clone ssh://aur@aur.archlinux.org/tapeback.git "$AUR_DIR/tapeback"
-cp "$REPO_ROOT/packaging/PKGBUILD" "$AUR_DIR/tapeback/PKGBUILD"
-sed -i "s/sha256sums=('SKIP')/sha256sums=('$SHA256')/" "$AUR_DIR/tapeback/PKGBUILD"
-(cd "$AUR_DIR/tapeback" && makepkg --printsrcinfo > .SRCINFO)
-(cd "$AUR_DIR/tapeback" && git add PKGBUILD .SRCINFO && git commit -m "Update to $VERSION" && git push)
-
-# --- tapeback-llm ---
-echo ""
-echo "==> Updating tapeback-llm..."
-git clone ssh://aur@aur.archlinux.org/tapeback-llm.git "$AUR_DIR/tapeback-llm"
-cp "$REPO_ROOT/packaging/tapeback-llm/PKGBUILD" "$AUR_DIR/tapeback-llm/PKGBUILD"
-cp "$REPO_ROOT/packaging/tapeback-llm/tapeback-llm.install" "$AUR_DIR/tapeback-llm/"
-(cd "$AUR_DIR/tapeback-llm" && makepkg --printsrcinfo > .SRCINFO)
-(cd "$AUR_DIR/tapeback-llm" && git add PKGBUILD .SRCINFO tapeback-llm.install && git commit -m "Update to $VERSION" && git push)
-
-# --- tapeback-llm-local ---
-echo ""
-echo "==> Updating tapeback-llm-local..."
-git clone ssh://aur@aur.archlinux.org/tapeback-llm-local.git "$AUR_DIR/tapeback-llm-local"
-cp "$REPO_ROOT/packaging/tapeback-llm-local/PKGBUILD" "$AUR_DIR/tapeback-llm-local/PKGBUILD"
-(cd "$AUR_DIR/tapeback-llm-local" && makepkg --printsrcinfo > .SRCINFO)
-(cd "$AUR_DIR/tapeback-llm-local" && git add PKGBUILD .SRCINFO && git commit -m "Update to $VERSION" && git push)
-
-# --- tapeback-diarize ---
-echo ""
-echo "==> Updating tapeback-diarize..."
-git clone ssh://aur@aur.archlinux.org/tapeback-diarize.git "$AUR_DIR/tapeback-diarize"
-cp "$REPO_ROOT/packaging/tapeback-diarize/PKGBUILD" "$AUR_DIR/tapeback-diarize/PKGBUILD"
-cp "$REPO_ROOT/packaging/tapeback-diarize/tapeback-diarize.install" "$AUR_DIR/tapeback-diarize/"
-(cd "$AUR_DIR/tapeback-diarize" && makepkg --printsrcinfo > .SRCINFO)
-(cd "$AUR_DIR/tapeback-diarize" && git add PKGBUILD .SRCINFO tapeback-diarize.install && git commit -m "Update to $VERSION" && git push)
-
-# --- tapeback-tray ---
-echo ""
-echo "==> Updating tapeback-tray..."
-git clone ssh://aur@aur.archlinux.org/tapeback-tray.git "$AUR_DIR/tapeback-tray"
-cp "$REPO_ROOT/packaging/tapeback-tray/PKGBUILD" "$AUR_DIR/tapeback-tray/PKGBUILD"
-cp "$REPO_ROOT/packaging/tapeback-tray/tapeback-tray.install" "$AUR_DIR/tapeback-tray/"
-(cd "$AUR_DIR/tapeback-tray" && makepkg --printsrcinfo > .SRCINFO)
-(cd "$AUR_DIR/tapeback-tray" && git add PKGBUILD .SRCINFO tapeback-tray.install && git commit -m "Update to $VERSION" && git push)
-
-# Cleanup
-rm -rf "$AUR_DIR"
+for pkgbuild in "$REPO_ROOT/packaging/PKGBUILD" "$REPO_ROOT"/packaging/*/PKGBUILD; do
+    pkg="$(sed -n 's/^pkgname=//p' "$pkgbuild")"
+    hook="$(sed -n 's/^install=//p' "$pkgbuild")"
+    echo ""
+    echo "==> Updating $pkg..."
+    git clone "$AUR_REMOTE/$pkg.git" "$AUR_DIR/$pkg"
+    cp "$pkgbuild" "$AUR_DIR/$pkg/PKGBUILD"
+    if [ -n "$hook" ]; then
+        cp "$(dirname "$pkgbuild")/$hook" "$AUR_DIR/$pkg/"
+    fi
+    # The release tarball is the base package's source; the companions have none.
+    if [ "$pkgbuild" = "$REPO_ROOT/packaging/PKGBUILD" ]; then
+        sed -i "s/sha256sums=('SKIP')/sha256sums=('$SHA256')/" "$AUR_DIR/$pkg/PKGBUILD"
+    fi
+    (
+        cd "$AUR_DIR/$pkg"
+        makepkg --printsrcinfo > .SRCINFO
+        git add PKGBUILD .SRCINFO ${hook:+"$hook"}
+        if git diff --cached --quiet; then
+            echo "    AUR already has $pkg in this state, skipped"
+        else
+            git commit -m "Update to $VERSION"
+            # AUR takes master only, and an empty repository has no upstream yet.
+            git push origin HEAD:master
+        fi
+    )
+done
 
 echo ""
-echo "All AUR packages updated to $VERSION."
+echo "All AUR packages published for $VERSION."

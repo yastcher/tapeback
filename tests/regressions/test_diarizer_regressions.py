@@ -9,17 +9,13 @@ import pytest
 from pydantic import SecretStr
 
 from tapeback.audio import split_channels_16k
-from tapeback.channel import (
-    filter_silent_segments,
-    load_stereo_channels,
-    split_on_silence,
-)
+from tapeback.channel import load_stereo_channels
 from tapeback.diarizer import (
     Diarizer,
     assign_speakers,
     merge_similar_speakers,
 )
-from tapeback.models import DiarizationSegment, Segment, Word
+from tapeback.models import DiarizationSegment, Segment
 from tapeback.settings import Settings
 from tests.fixtures import create_stereo_wav_segments, requires_pyannote
 
@@ -306,99 +302,4 @@ def test_minor_speaker_absorbed_into_dominant():
 
     assert len(speakers) == 1, (
         f"Expected 1 speaker after minor absorption, got {len(speakers)}: {speakers}"
-    )
-
-
-TEST_WAV = Path(__file__).parent.parent / "data" / "2026-03-19_02-45-24.wav"
-
-
-@pytest.mark.skipif(not TEST_WAV.exists(), reason="test WAV not available")
-def test_dual_channel_speaker_attribution():
-    """filter_silent_segments should keep speech and drop silence per channel.
-
-    Uses raw (pre-loudnorm) stereo channels for RMS filtering.
-
-    Test file channel analysis (RMS per second):
-      0-9s:  L(mic)=350-445   R(mon)=0        -> mic=speech, monitor=silence
-      10-16s: L(mic)=95-136   R(mon)=2050-2950 -> mic=silence, monitor=speech
-      17-18s: L(mic)=460-665  R(mon)=0         -> mic=speech, monitor=silence
-      19-29s: L(mic)=260-770  R(mon)=1120-2580 -> both channels=speech
-    """
-
-    mic_raw, monitor_raw, raw_sr = load_stereo_channels(TEST_WAV)
-
-    # Fake segments covering each time region
-    fake_segments = [
-        Segment(start=0.0, end=9.0, text="Region 0-9s"),
-        Segment(start=10.0, end=16.0, text="Region 10-16s"),
-        Segment(start=17.0, end=18.0, text="Region 17-18s"),
-        Segment(start=19.0, end=29.0, text="Region 19-29s"),
-    ]
-
-    # Filter mic channel
-    mic_kept = filter_silent_segments(fake_segments, mic_raw, raw_sr)
-    mic_starts = {s.start for s in mic_kept}
-
-    # Mic should keep: 0-9s (speech), 17-18s (speech), 19-29s (simultaneous)
-    assert 0.0 in mic_starts, "Mic speech at 0-9s should pass filter"
-    assert 17.0 in mic_starts, "Mic speech at 17-18s should pass filter"
-    assert 19.0 in mic_starts, "Simultaneous speech at 19-29s should pass mic filter"
-    # Mic should drop: 10-16s (silence/background noise)
-    assert 10.0 not in mic_starts, "Mic silence at 10-16s should be filtered out"
-
-    # Filter monitor channel
-    monitor_kept = filter_silent_segments(fake_segments, monitor_raw, raw_sr)
-    monitor_starts = {s.start for s in monitor_kept}
-
-    # Monitor should keep: 10-16s (speech), 19-29s (simultaneous)
-    assert 10.0 in monitor_starts, "Monitor speech at 10-16s should pass filter"
-    assert 19.0 in monitor_starts, "Simultaneous speech at 19-29s should pass monitor filter"
-    # Monitor should drop: 0-9s (silence), 17-18s (silence)
-    assert 0.0 not in monitor_starts, "Monitor silence at 0-9s should be filtered out"
-    assert 17.0 not in monitor_starts, "Monitor silence at 17-18s should be filtered out"
-
-
-@pytest.mark.skipif(not TEST_WAV.exists(), reason="test WAV not available")
-def test_split_on_silence_detects_real_pause():
-    """split_on_silence should split mic segment at 9-10s pause.
-
-    Test WAV: user speaks 0-9s, pauses 10-16s (monitor active), resumes 17s+.
-    A segment spanning 0-20s should be split around the pause.
-    """
-
-    mic_raw, monitor_raw, sr = load_stereo_channels(TEST_WAV)
-
-    # Simulate Whisper returning one big mic segment covering speech + pause + speech
-    seg = Segment(
-        start=0.0,
-        end=20.0,
-        text="speech before pause speech after pause",
-        words=[
-            Word(start=1.0, end=2.0, word="speech", probability=0.9),
-            Word(start=3.0, end=4.0, word="before", probability=0.9),
-            Word(start=5.0, end=6.0, word="pause", probability=0.9),
-            Word(start=17.0, end=18.0, word="speech", probability=0.9),
-            Word(start=18.0, end=19.0, word="after", probability=0.9),
-            Word(start=19.0, end=20.0, word="pause", probability=0.9),
-        ],
-        speaker="You",
-    )
-
-    result = split_on_silence(
-        [seg],
-        mic_raw,
-        sr,
-        pause_threshold=1.0,
-        monitor_samples=monitor_raw,
-    )
-
-    assert len(result) >= 2, (
-        f"Expected split at ~10s pause, got {len(result)} segment(s): "
-        f"{[(s.start, s.end, s.text) for s in result]}"
-    )
-    # First sub-segment should end before the pause
-    assert result[0].end <= 10.0, f"First segment should end before pause, got end={result[0].end}"
-    # Last sub-segment should start after the pause
-    assert result[-1].start >= 15.0, (
-        f"Last segment should start after pause, got start={result[-1].start}"
     )

@@ -434,14 +434,15 @@ def tray() -> None:
     without needing a terminal. Right-click the icon for the menu.
 
     \b
-    Requires the tray extra:
-      uv pip install tapeback[tray]
+    Requires the tray extra, dbus-next: the tapeback-tray package,
+    or tapeback[tray] with pip or uv.
     """
     try:
         from tapeback.tray import run_tray
     except ImportError:
         raise click.ClickException(
-            "System tray requires pystray and Pillow. Install with: uv pip install tapeback[tray]"
+            "The system tray needs its extra, dbus-next: install the tapeback-tray "
+            "package, or tapeback[tray] with pip or uv."
         ) from None
 
     run_tray()

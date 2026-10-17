@@ -449,6 +449,92 @@ def run_gate(tmp_path):
     return run
 
 
+# What aur-publish.sh asks besides git: curl finds the tag's tarball and hands back the
+# same bytes every time, and makepkg --printsrcinfo reads the PKGBUILD it is run next to.
+_FAKE_CURL = (
+    '#!/usr/bin/env bash\ncase "$*" in *http_code*) printf 200 ;; *) printf tarball ;; esac\n'
+)
+_FAKE_MAKEPKG = (
+    "#!/usr/bin/env bash\nsed -n 's/^pkgname=/pkgbase = /p; s/^pkgver=/pkgver = /p' PKGBUILD\n"
+)
+
+
+@pytest.fixture
+def run_aur_publish(tmp_path):
+    """Run the real scripts/aur-publish.sh against an AUR of local bare repositories.
+
+    The script and packaging/ are copies of the real ones, git is real, curl and makepkg
+    are stubs, and the package of every PKGBUILD starts with an empty repository. Returns
+    a callable that runs the script for a version and gives back the finished process
+    and, per package, the subjects of the commits its repository holds."""
+    # The PKGBUILDs and their hooks only: packaging/ also holds makepkg's output.
+    for source in [REPO_ROOT / "packaging" / "PKGBUILD", *REPO_ROOT.glob("packaging/*/PKGBUILD")]:
+        target = tmp_path / source.parent.relative_to(REPO_ROOT)
+        target.mkdir(parents=True, exist_ok=True)
+        for path in (source, *source.parent.glob("*.install")):
+            shutil.copy2(path, target)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy2(REPO_ROOT / "scripts" / "aur-publish.sh", scripts)
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    for name, body in (("curl", _FAKE_CURL), ("makepkg", _FAKE_MAKEPKG)):
+        (stubs / name).write_text(body)
+        (stubs / name).chmod(0o755)
+    aur = tmp_path / "aur"
+    env = os.environ | {
+        "PATH": f"{stubs}:{os.environ['PATH']}",
+        "AUR_REMOTE": aur.as_uri(),
+        # Only local repositories: a script that still names the real AUR fails here
+        # instead of pushing with the developer's SSH key.
+        "GIT_ALLOW_PROTOCOL": "file",
+        "TMPDIR": str(tmp_path),
+        # The developer's git config (signing, hooks, the default branch) stays out.
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+    pkgbuilds = [tmp_path / "packaging" / "PKGBUILD", *(tmp_path / "packaging").glob("*/PKGBUILD")]
+    names = sorted(
+        line.removeprefix("pkgname=")
+        for pkgbuild in pkgbuilds
+        for line in pkgbuild.read_text().splitlines()
+        if line.startswith("pkgname=")
+    )
+    for name in names:
+        subprocess.run(
+            ["git", "init", "-q", "--bare", "-b", "master", aur / f"{name}.git"],
+            env=env,
+            check=True,
+        )
+
+    def run(version: str) -> tuple[subprocess.CompletedProcess[str], dict[str, list[str]]]:
+        result = subprocess.run(
+            [scripts / "aur-publish.sh", version],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+        commits = {}
+        for name in names:
+            log = subprocess.run(
+                ["git", "-C", aur / f"{name}.git", "log", "--format=%s"],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            commits[name] = log.stdout.splitlines() if log.returncode == 0 else []
+        return result, commits
+
+    return run
+
+
 # --- WAV file helpers ---
 
 

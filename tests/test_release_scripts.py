@@ -1,5 +1,6 @@
 """A release tag must agree with every copy of the version, and carry its notes."""
 
+import hashlib
 import os
 import re
 import shutil
@@ -129,6 +130,64 @@ def test_bump_version_moves_every_copy_the_tag_check_reads(release_tree):
     )
 
     assert release_from_tag.check(release_tree, "v1.2.4") == "### Fixed\n- Next."
+
+
+def test_aur_publish_publishes_every_pkgbuild_in_packaging(run_aur_publish, tmp_path):
+    """tapeback-cuda had a PKGBUILD that README offered, but the script named its
+    packages one by one and never published it."""
+    result, commits = run_aur_publish("1.2.3")
+
+    assert result.returncode == 0, result.stderr
+    assert commits == {
+        "tapeback": ["Update to 1.2.3"],
+        "tapeback-cuda": ["Update to 1.2.3"],
+        "tapeback-diarize": ["Update to 1.2.3"],
+        "tapeback-llm": ["Update to 1.2.3"],
+        "tapeback-llm-local": ["Update to 1.2.3"],
+        "tapeback-tray": ["Update to 1.2.3"],
+    }
+
+    def published(name: str, *args: str) -> str:
+        repo = tmp_path / "aur" / f"{name}.git"
+        return subprocess.run(
+            ["git", "-C", repo, *args], capture_output=True, text=True, check=True
+        ).stdout
+
+    assert {
+        name: published(name, "ls-tree", "--name-only", "master").split() for name in commits
+    } == {
+        "tapeback": [".SRCINFO", "PKGBUILD"],
+        "tapeback-cuda": [".SRCINFO", "PKGBUILD", "tapeback-cuda.install"],
+        "tapeback-diarize": [".SRCINFO", "PKGBUILD", "tapeback-diarize.install"],
+        "tapeback-llm": [".SRCINFO", "PKGBUILD", "tapeback-llm.install"],
+        "tapeback-llm-local": [".SRCINFO", "PKGBUILD"],
+        "tapeback-tray": [".SRCINFO", "PKGBUILD", "tapeback-tray.install"],
+    }
+    # Only the base package's source is the release tarball, the stub's bytes here.
+    tarball = hashlib.sha256(b"tarball").hexdigest()
+    assert f"sha256sums=('{tarball}')" in published("tapeback", "show", "master:PKGBUILD")
+
+
+def test_aur_publish_rerun_publishes_only_what_aur_lacks(run_aur_publish, tmp_path):
+    """A package added after the release goes out with a rerun for the same version,
+    and the packages AUR already has are left alone: `git commit` with nothing to
+    commit used to stop the script at the first of them."""
+    held = tmp_path / "held"
+    (tmp_path / "packaging" / "tapeback-cuda").rename(held)
+    run_aur_publish("1.2.3")
+    held.rename(tmp_path / "packaging" / "tapeback-cuda")
+
+    result, commits = run_aur_publish("1.2.3")
+
+    assert result.returncode == 0, result.stderr
+    assert commits == {
+        "tapeback": ["Update to 1.2.3"],
+        "tapeback-cuda": ["Update to 1.2.3"],
+        "tapeback-diarize": ["Update to 1.2.3"],
+        "tapeback-llm": ["Update to 1.2.3"],
+        "tapeback-llm-local": ["Update to 1.2.3"],
+        "tapeback-tray": ["Update to 1.2.3"],
+    }
 
 
 def test_local_deb_smoke_installs_into_the_images_ci_does():

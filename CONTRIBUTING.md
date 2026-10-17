@@ -29,8 +29,9 @@ scripts/gate.sh
 
 The gate has passed only when its last line reads `all gates passed`. Coverage is
 enforced by `fail_under` in `pyproject.toml`, so new code needs tests. When the branch touches
-`src/`, `packaging/` or `pyproject.toml`, the gate also builds and installs the `.deb`
-and Arch packages in containers, as CI does — that needs docker and
+a path the packaging workflows watch, such as `src/` or `packaging/` (the full lists are
+`DEB_PATHS` and `ARCH_PATHS` in `scripts/gate.sh`), the gate also builds and installs the
+`.deb` and Arch packages in containers, as CI does — that needs docker and
 [nfpm](https://nfpm.goreleaser.com/), and some minutes.
 
 ## CHANGELOG and the version
@@ -47,7 +48,7 @@ and Arch packages in containers, as CI does — that needs docker and
 - **Do not touch the version** — not in `pyproject.toml`, `uv.lock`, `packaging/` or README's
   install commands.
   The maintainer's `scripts/release.sh` writes it everywhere at release time and turns
-  `[Unreleased]` into the dated section; a PR that bumps it fails the tests.
+  `[Unreleased]` into the dated section; a PR in which the copies disagree fails the tests.
 
 ## What reviewers look for
 
@@ -60,7 +61,8 @@ and Arch packages in containers, as CI does — that needs docker and
 - **No magic numbers.** Thresholds, limits and ratios belong in `settings.py` as a
   `TAPEBACK_` setting, or in `const.py` — not as an inline literal or a default argument.
 - **No local imports inside functions**, except where an optional extra requires it
-  (see `diarizer.py` and `_llm.py` for the pattern and the `noqa` that documents it).
+  (the files allowed to are listed under `per-file-ignores` in `pyproject.toml`, each
+  with its reason).
 - Everything committed is in English — code, comments, logs, docs, commit messages.
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`,
   `docs:`, `refactor:`.
@@ -79,9 +81,9 @@ changes have been reverted after measurement contradicted them;
 ## CI on pull requests
 
 Every commit pushed to a PR re-runs lint, format, types and tests, on Python 3.13 and
-3.14. Changes to `src/`, `packaging/` or `pyproject.toml` additionally build the `.debs`
-and install them in six Ubuntu and Debian containers, and build the AUR packages in an
-Arch container; both run the package and its local LLM companion.
+3.14. Changes to a path the packaging workflows watch (as above) additionally build the
+`.debs` and install them in Ubuntu and Debian containers, and build the AUR packages in
+an Arch container; both run the package and its local LLM companion.
 
 ## Reporting a bug
 

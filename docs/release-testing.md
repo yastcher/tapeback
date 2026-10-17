@@ -2,7 +2,7 @@
 
 CHANGELOG entries for tagged versions are immutable (see AGENTS.md). A broken
 release forces a patch-version bump even if no functional change is intended.
-This document describes what stands between a merged PR and a tag;
+This document describes what stands between a change and a tag;
 `scripts/release.sh` refuses to tag a tree `scripts/pre_release_qa.sh` has not passed.
 
 ## Why
@@ -15,8 +15,9 @@ in the package that can drift silently. Hence the layered test plan below.
 
 ## Layered checks
 
-Run them in order. Each layer is fast enough to be the default; the slower
-layers below are only needed when the cheaper layers have surprises.
+§1 runs before every release, and `scripts/release.sh` refuses a tree it has not
+stamped; §2 runs by itself on every PR; §3 once per minor release, or when behaviour
+changes.
 
 ### 1. `scripts/pre_release_qa.sh` (run before every release)
 
@@ -28,8 +29,9 @@ recordings. In every container the installed package runs `tapeback --version`,
 `tapeback status` and `tests/smoke/transcribe.sh`, which transcribes a two-voice
 recording through the stereo pipeline with the `tiny` model and checks both
 voices reach the note. Then `tapeback-llm` and `tapeback-llm-local` are installed
-and `tests/smoke/llm-local.sh` checks that tapeback finds the bundled
-`llama-server` and that it starts. The same stands run in the everyday gate
+and `tests/smoke/llm-local.sh` checks that tapeback finds `llama-server` (bundled
+in the `.deb`, Arch's `llama-cpp` in the Arch container) and that it runs
+`--version`. The same stands run in the everyday gate
 whenever a change touches what they cover.
 This catches the most common failure modes: broken shebangs, wrong venv paths,
 missing system dependencies, broken hooks — and a dependency release that breaks
@@ -51,8 +53,9 @@ docker run --rm -v $PWD/dist:/dist ubuntu:26.04 bash -c '
 **Do not keep EOL releases in the image list** — their apt repositories are
 removed, `apt-get update` fails, and the .deb dependency resolution can't
 complete. An interim release lives nine months: add the new one when it ships and
-drop the old one when it reaches EOL, in `deb-e2e.yml` and `scripts/deb-smoke.sh`
-together (`tests/test_release_scripts.py` fails when the two lists differ).
+drop the old one when it reaches EOL, in `deb-e2e.yml`, `scripts/deb-smoke.sh` and
+the expected list in `tests/test_release_scripts.py` together (the test fails when
+they differ).
 
 ### 2. CI gate on every PR (automatic)
 
@@ -70,6 +73,9 @@ that is already published, with no PR to turn red.
 
 On a fresh Ubuntu/Debian VM or real machine:
 
+- README's install, quick start and uninstall commands, copied as written, work on
+  the released packages. No stand runs them: a package README offers that was never
+  published, and uninstall lines that removed nothing, both shipped in 0.10.0.
 - `sudo apt install ./tapeback_*.deb` → `tapeback --version` prints the tag
 - `tapeback start test-meeting` on a clip with known speakers → markdown
   written to vault, audio file linked
@@ -83,9 +89,12 @@ On a fresh Ubuntu/Debian VM or real machine:
 - `sudo apt install ./tapeback-llm-local_*.deb` on a machine with a GPU →
   `TAPEBACK_LLM_PROVIDER=local tapeback summarize <note>` adds a summary, and
   `nvidia-smi` shows the VRAM free again afterwards. The stands only run
-  `llama-server --version`: they have no GPU and no model.
+  `llama-server --version`: they have no GPU and no model. On Arch the same with
+  `yay -S tapeback-llm-local ggml-cuda`, through Arch's `llama-cpp`.
 - `sudo apt remove tapeback-llm` → anthropic/openai uninstalled from the venv;
-  `sudo apt remove tapeback` removes everything
+  README's `dpkg -r` line removes the rest. `apt remove tapeback` alone leaves the
+  extras installed: apt does not remove packages installed from files along with
+  the package they depend on
 
 If any of these fails on the final tag → bump the patch version, fix, retag.
 Don't amend the released tag.
