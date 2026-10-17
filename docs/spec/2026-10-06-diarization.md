@@ -1,7 +1,7 @@
 # Diarization: what the 0.9.9 pre-release QA found
 
 Status: findings and a plan for the next release. 0.9.9 only fixes the plain defects
-(see "Done in 0.9.9"); items 4 and 5 of the plan were done on 2026-10-16; the rest
+(see "Done in 0.9.9"); items 4 and 5 of the plan shipped in 0.10.0; the rest
 waits for pluggable diarization models.
 
 ## How it surfaced

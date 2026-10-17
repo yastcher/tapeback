@@ -1,6 +1,6 @@
 # `tapeback setup` and local LLM summaries
 
-Status: done on `feat/setup-local-llm`, but for commit 8, which waits for a menu-driven
+Status: shipped in 0.10.0, but for commit 8, which waits for a menu-driven
 setup (Later), the bench, which tunes the managed server, and chunking for a meeting
 longer than the local context. Synthesised from three proposals (simplest, fastest on
 a 4 GB laptop GPU, cleanest code).

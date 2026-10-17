@@ -1,9 +1,11 @@
 # tapeback
 
 Local meeting recorder for Linux. Records system audio + microphone via
-PipeWire/PulseAudio, transcribes with Whisper (local by default), identifies speakers, saves
-Markdown to your Obsidian vault. Transcription stays on your machine unless you
-opt into a remote STT backend (OpenAI today).
+PipeWire/PulseAudio, transcribes with Whisper (local by default), identifies speakers,
+summarizes, and saves Markdown to your Obsidian vault. Transcription stays on your
+machine unless you opt into a remote STT backend (OpenAI today). The summary comes from
+the LLM provider you choose, or from a model on your machine with
+`TAPEBACK_LLM_PROVIDER=local`: then nothing leaves it.
 
 Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord, Slack huddles.
 
@@ -18,7 +20,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Speaker diarization**: pyannote identifies who said what
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
-- **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback), any OpenAI-compatible API, or a model on this machine; the summary comes in the meeting's language
+- **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback), any OpenAI-compatible API, or a model on this machine (`TAPEBACK_LLM_PROVIDER=local`, no key needed); the summary comes in the meeting's language
 - **System tray**: start/stop recording from the tray icon, no terminal needed
 - **CLI-first**: `tapeback start`, Ctrl+C to stop, done
 
@@ -54,7 +56,7 @@ sudo apt install ./tapeback_0.10.0_amd64.deb
 # Optional extras:
 sudo apt install ./tapeback-tray_0.10.0_all.deb       # tray icon
 sudo apt install ./tapeback-llm_0.10.0_all.deb        # LLM summaries
-sudo apt install ./tapeback-llm-local_0.10.0_amd64.deb  # LLM summaries on this machine
+sudo apt install ./tapeback-llm-local_0.10.0_amd64.deb  # LLM summaries on this machine (needs tapeback-llm)
 sudo apt install ./tapeback-diarize_0.10.0_all.deb    # speaker diarization
 sudo apt install ./tapeback-cuda_0.10.0_all.deb       # GPU transcription on CUDA 13
 ```
@@ -126,6 +128,9 @@ To save to your Obsidian vault instead:
 mkdir -p ~/.config/tapeback
 echo 'TAPEBACK_VAULT_PATH=~/Documents/obsidian/vault' >> ~/.config/tapeback/.env
 ```
+
+Diarization and the summary are optional: `tapeback setup` turns each on or off and
+says what it still needs (a token, a key, a package).
 
 **Tip:** if you always meet in one language, pin it — auto-detection can misfire on a
 channel that starts silent (and even hallucinate). English terms inside another language
@@ -208,9 +213,11 @@ TAPEBACK_HF_TOKEN=hf_your_token_here
 
 After transcription, tapeback can add a brief summary, action items, and key
 decisions using an LLM. They are written in the meeting's language, as Whisper
-detected it.
+detected it. `TAPEBACK_LLM_PROVIDER` picks the LLM: a cloud provider, `local` for
+[a model on this machine](#local-summaries), or `openai_compatible` for
+[any OpenAI-compatible API](#any-openai-compatible-api).
 
-Set the key in `~/.config/tapeback/.env`:
+A cloud provider needs its key. Set it in `~/.config/tapeback/.env`:
 
 ```bash
 TAPEBACK_LLM_PROVIDER=gemini
@@ -230,9 +237,12 @@ whether a key is set, never the key.
 | `openrouter` | `OPENROUTER_API_KEY` | nvidia/nemotron-3-super-120b-a12b:free |
 | `deepseek` | `DEEPSEEK_API_KEY` | deepseek-flash |
 | `qwen` | `DASHSCOPE_API_KEY` | qwen-plus |
+| `local` | *(no key)* | Qwen3.5-4B, [on this machine](#local-summaries) |
+| `openai_compatible` | `TAPEBACK_LLM_API_KEY` | *(none: set `TAPEBACK_LLM_MODEL`)* |
 
 If the primary provider fails, tapeback automatically tries the next available
-provider (any provider whose variable is set in the environment).
+provider (any provider whose variable is set in the environment). `local` and
+`openai_compatible` stay out of it: they never fall back, and nothing falls back to them.
 
 The `openrouter` default is a free model. Free models may keep or train on what they
 receive, and a meeting is personal data: check the model's data policy first, or set
@@ -356,6 +366,7 @@ tapeback start --no-diarize        # skip speaker identification
 tapeback start --no-summarize      # skip LLM summary
 tapeback process meeting.mp3 --name "weekly-standup"
 tapeback summarize notes.md --provider anthropic --model claude-opus-5-5
+tapeback summarize notes.md --provider local   # a model on this machine, no key
 tapeback summarize notes.md --show-masked   # print what would be sent, send nothing
 tapeback setup                     # in a terminal, asks; then says where each setting comes from
 tapeback setup --no-diarize --summarize     # writes ~/.config/tapeback/.env, other lines kept
@@ -414,7 +425,8 @@ All settings via environment variables (prefix `TAPEBACK_`) or
 `~/.config/tapeback/.env` file. A `.env` in the directory you run tapeback from is
 read too and wins over the user file; the environment wins over both. `tapeback setup`
 says which of them its two switches come from. Keys tapeback does not know are ignored
-without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
+without a warning, so a misspelled `TAPEBACK_` name silently does nothing. A path
+setting may start with `~`, your home directory.
 
 ### Core
 
@@ -481,7 +493,7 @@ without a warning, so a misspelled `TAPEBACK_` name silently does nothing.
 | `TAPEBACK_MONITOR_SOURCE` | `auto` | PulseAudio monitor source name |
 | `TAPEBACK_MIC_SOURCE` | `auto` | PulseAudio mic source name |
 | `TAPEBACK_SAMPLE_RATE` | `48000` | Recording sample rate |
-| `TAPEBACK_SESSIONS_DIR` | *(XDG)* | Where recordings in progress live, about 1.6 GB per hour until processed. Default `~/.local/state/tapeback/sessions`. An absolute path: `~` is not expanded. Must be private to you (mode `0700`); tapeback refuses one other users can reach. A session that failed to process stays here, so it can be recovered |
+| `TAPEBACK_SESSIONS_DIR` | *(XDG)* | Where recordings in progress live, about 1.6 GB per hour until processed. Default `~/.local/state/tapeback/sessions`. Must be private to you (mode `0700`); tapeback refuses one other users can reach. A session that failed to process stays here, so it can be recovered |
 | `TAPEBACK_TIMEZONE` | *(system)* | Time zone for naming a recording, and so for the note's file name, date and time. An IANA name such as `Europe/Madrid`, or `UTC`. Unset: the machine's own zone |
 
 ### Speaker diarization
@@ -695,11 +707,11 @@ Fixes, in order of reliability:
 ## Uninstall
 
 ```bash
-# Arch Linux
-yay -R tapeback tapeback-tray tapeback-diarize tapeback-llm tapeback-llm-local tapeback-cuda
+# Arch Linux: tapeback and every package that depends on it
+yay -Rc tapeback
 
-# Ubuntu / Debian
-sudo apt remove tapeback tapeback-tray tapeback-diarize tapeback-llm tapeback-llm-local tapeback-cuda
+# Ubuntu / Debian: the base last, after the extras; a name you never installed is skipped
+sudo dpkg -r tapeback-tray tapeback-diarize tapeback-llm-local tapeback-llm tapeback-cuda tapeback
 
 # pip / uv
 uv tool uninstall tapeback
@@ -708,6 +720,9 @@ uv tool uninstall tapeback
 # Skip if you use HuggingFace for other projects
 rm -rf ~/.cache/huggingface/
 ```
+
+`apt remove tapeback` alone would leave the extras installed: apt does not remove
+packages installed from files along with the package they depend on.
 
 tapeback's own files stay: settings in `~/.config/tapeback`, run records in
 `~/.local/share/tapeback`, and in `~/.local/state/tapeback` the recordings not yet
