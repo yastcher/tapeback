@@ -10,6 +10,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Changed
+- The Arch packaging stand gives the audio server a stub instead of installing pipewire-pulse and 29 more packages, none of which it runs: the smoke transcribes a file and never records. Development-only.
+
 ### Fixed
 - `scripts/aur-publish.sh` publishes every PKGBUILD under `packaging/`, `tapeback-cuda` included. It named its packages one by one, and README offered `yay -S tapeback-cuda`, a package never published. A package AUR already holds is skipped, so a rerun for the same version publishes only what is new.
 - Two install hints named the wrong thing. `tapeback tray` without its extra asked for pystray and Pillow, though the extra is dbus-next; the `tapeback-llm` AUR package told users to set `ANTHROPIC_API_KEY` and the rest, which tapeback reads from the environment only.
