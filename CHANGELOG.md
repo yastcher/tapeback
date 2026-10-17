@@ -10,6 +10,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+## [0.10.1] — 2026-10-17
+
 ### Changed
 - The Arch packaging stand gives the audio server a stub instead of installing pipewire-pulse and 29 more packages, none of which it runs: the smoke transcribes a file and never records. Development-only.
 

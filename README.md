@@ -50,15 +50,15 @@ Pre-built `.deb` packages are attached to every
 (see the releases page for the current one), download, install:
 
 ```bash
-wget https://github.com/yastcher/tapeback/releases/download/v0.10.0/tapeback_0.10.0_amd64.deb
-sudo apt install ./tapeback_0.10.0_amd64.deb
+wget https://github.com/yastcher/tapeback/releases/download/v0.10.1/tapeback_0.10.1_amd64.deb
+sudo apt install ./tapeback_0.10.1_amd64.deb
 
 # Optional extras:
-sudo apt install ./tapeback-tray_0.10.0_all.deb       # tray icon
-sudo apt install ./tapeback-llm_0.10.0_all.deb        # LLM summaries
-sudo apt install ./tapeback-llm-local_0.10.0_amd64.deb  # LLM summaries on this machine (needs tapeback-llm)
-sudo apt install ./tapeback-diarize_0.10.0_all.deb    # speaker diarization
-sudo apt install ./tapeback-cuda_0.10.0_all.deb       # GPU transcription on CUDA 13
+sudo apt install ./tapeback-tray_0.10.1_all.deb       # tray icon
+sudo apt install ./tapeback-llm_0.10.1_all.deb        # LLM summaries
+sudo apt install ./tapeback-llm-local_0.10.1_amd64.deb  # LLM summaries on this machine (needs tapeback-llm)
+sudo apt install ./tapeback-diarize_0.10.1_all.deb    # speaker diarization
+sudo apt install ./tapeback-cuda_0.10.1_all.deb       # GPU transcription on CUDA 13
 ```
 
 The base package bundles its own Python interpreter (from
