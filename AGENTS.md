@@ -2,9 +2,9 @@
 
 CLI tool for recording meeting audio (Google Meet, Zoom, Teams, Telegram — any platform) on Linux via PulseAudio/PipeWire system audio capture. Transcribes locally with faster-whisper (optional OpenAI remote STT), saves markdown to Obsidian vault.
 
-Stack: Python 3.13+, click, faster-whisper, pydantic-settings, anthropic/openai, ffmpeg, parecord.
+Stack: Python 3.13+, click, faster-whisper, pyannote, pydantic-settings, python-dotenv, anthropic/openai, llama.cpp's llama-server, ffmpeg, parecord.
 
-No web servers, databases, Docker.
+No databases, and no server of tapeback's own: the `llama-server` a local summary starts is llama.cpp's.
 
 ## Safety rules
 
@@ -102,9 +102,9 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 
 ## Git
 
-- Conventional commits (feat:, fix:, docs:, refactoring:)
+- Conventional commits (feat:, fix:, docs:, refactor:)
 - Always PR, never push to main. The one exception is `scripts/release.sh`, run by the maintainer: the release commit is mechanical and has nothing to review.
-- **Do not run git commit, checkout, reset, clean, stash, rebase** — these are blocked in settings.json. Ask user if needed.
+- **Do not run git push, checkout, switch, reset, clean, stash, rebase, restore or branch -d/-D** — `.claude/settings.json` denies them. Ask user if needed. Commit only when the user asks.
 - Max ~500 lines of diff and ~15 files per commit — stop and propose a commit before continuing. A separable refactor, its tests and its docs go in separate commits; inseparable code and test travel together, so no knowingly broken commit is born.
 - Always work in the current branch — never switch branches
 - Don't run git network operations you don't need (remote, fetch): work with the local state.
@@ -136,9 +136,9 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 2. **`scripts/gate.sh`** — CI step for step (`tests/test_gate.py` keeps the two in sync): the checks always, the `.deb` and Arch stands when the diff against `origin/main` touches the paths their workflows filter on — the same minutes CI would spend, spent before the push. The stands need docker and nfpm. The gate has passed only when its last line reads `all gates passed`; not "tests are green", not coverage read by eye. A "known" failure is not an exemption.
 3. Security review (see checklist below)
 4. **Tech lead review**: re-read your own diff as a strict reviewer. Look for overengineering, antipatterns copied from existing code, unnecessary complexity, and assertions weakened to make a test pass. Fix what you find before finishing.
-5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume. Docs change in the same task, but only those whose facts changed; one fact lives with one owner, and the others link to it instead of retelling it.
+5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume: grep the docs for the old wording of every behaviour the diff changes, put a new option where readers choose among options (Features, the tables, the CLI reference) and not only in a section of its own, and run an install or uninstall command before writing it down. `tests/test_docs.py` checks names, not prose. Docs change in the same task, but only those whose facts changed; one fact lives with one owner, and the others link to it instead of retelling it.
 6. **Always add a CHANGELOG entry** — under `[Unreleased]`, with `scripts/changelog_add.py`; never pick a version number.
-7. **Propose a commit message** (Conventional Commits). `git commit` is blocked, so the user runs it — hand them the exact message. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
+7. **Propose a commit message** (Conventional Commits) — hand the user the exact message, and commit yourself only when asked. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
 8. **Name what you ran**, with what result, and which risks remain open.
 
 **Run the gate bare, into a file:** `mkdir -p tmp && scripts/gate.sh > tmp/gate.log 2>&1`, then read the log in a separate call. A pipe destroys the exit code (`false | tail` returns 0), and a tail such as `; echo "EXIT=$?"` prints the right code while the call itself reports the 0 of `echo` — a background task then says "exit code 0" over a red gate. Never start a second gate over a running one.
