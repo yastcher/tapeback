@@ -31,6 +31,22 @@ git -c safe.directory=/src ls-files -z --cached --others --exclude-standard \
   | tar --null -T - -czf "$work/tapeback-$pkgver.tar.gz" --transform "s,^,tapeback-$pkgver/,"
 chown -R builder "$work"
 
+# A user's machine already runs the audio server tapeback records through, and the
+# smoke never records. In a bare container pacman would satisfy pulse-native-provider
+# with pipewire-pulse and 29 more packages (wireplumber, avahi, Bluetooth codecs, LV2)
+# that nothing here runs, so a stub provides it. parecord and pactl come with ffmpeg.
+install -d -o builder "$work/pulse-stub"
+cat > "$work/pulse-stub/PKGBUILD" <<'EOF'
+pkgname=pulse-native-provider-stub
+pkgver=1
+pkgrel=1
+pkgdesc='The audio server of the packaging stand, which never records'
+arch=('any')
+provides=('pulse-native-provider')
+package() { :; }
+EOF
+(cd "$work/pulse-stub" && sudo -u builder makepkg -si --noconfirm >/dev/null)
+
 cd "$work"
 sudo -u builder makepkg -si --noconfirm
 
