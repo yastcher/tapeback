@@ -261,9 +261,8 @@ the recording. A check made before a stage cannot see a clamp that latches durin
 - **Packaging resolves dependencies at build time and lets extras rewrite the base.**
   The AUR and `.deb` venvs are not built from `uv.lock`, the extras' scriptlets pip into
   the pacman-owned `/opt/tapeback`, and the AUR venv borrows undeclared system
-  packages through `--system-site-packages`. `tapeback-cuda` has a PKGBUILD but was
-  never published to AUR. Redesign undecided: build from the lock, or create the venv
-  in `post_install`.
+  packages through `--system-site-packages`. Redesign undecided: build from the lock,
+  or create the venv in `post_install`.
 - **The user's own short replies are dropped.** The VAD-artifact rule
   (`formatter.py:151`, under a second) measures diarization's pieces by the segment
   they were cut from, but not the mic's: pause splitting (`channel.py:226`) and the
@@ -276,8 +275,6 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   artifact that carried a new voice first takes "Speaker 1" with it. Numbering by first
   appearance in the note would fix it.
 - The setup and local-LLM work and the defects it turned up: `2026-10-15-setup-and-local-llm.md`.
-- **`tapeback tray` without its extra names the wrong packages.** The ImportError hint
-  (`cli.py:444`) says "requires pystray and Pillow"; the tray extra is dbus-next.
 
 ## 8. Found 2026-10-16: the new default LLM models
 
@@ -337,8 +334,21 @@ the recording. A check made before a stage cannot see a clamp that latches durin
 - **The pinned GGUF's Hugging Face scan reads "safe" with the code PAIT-GGUF-100**,
   whose meaning is not public. Its chat template differs from Qwen's in two places: the
   tool-call arguments and the thinking default.
-- **`tests/fixtures.py` has 920 lines**, over the 500-line limit. AGENTS.md keeps every
+- **`tests/fixtures.py` is twice the 500-line limit** (1002 lines on 2026-10-17). AGENTS.md keeps every
   fixture there, so a split needs a decision on the layout first.
 - **The diarize, tray and cuda companions never run on a stand.** They are built, and
   released as `.deb`s, but only `tapeback-llm-local` (with `tapeback-llm`) is installed
   and run.
+
+## 10. Found 2026-10-17
+
+- **The security review was not rerun for three new outbound paths.** The 2026-08-07
+  review (`done/2026-08-07-security-review.md`) asks for a rerun whenever a call that
+  leaves the machine is added. Since then remote STT uploads audio, `openai_compatible`
+  sends the transcript to an address the user gives, and `local` downloads its model
+  from Hugging Face.
+- **A second stop at the same moment dies with a raw error.** The tray and `tapeback
+  stop` both read `session.json` (`recorder.py:384`); the first removes it after up to
+  5 s of waiting for the recorders (`recorder.py:394`), and the second then fails with
+  `FileNotFoundError` instead of "No recording in progress". Read from the code, not
+  reproduced: no second note should come of it.

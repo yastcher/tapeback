@@ -10,6 +10,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Fixed
+- `scripts/aur-publish.sh` publishes every PKGBUILD under `packaging/`, `tapeback-cuda` included. It named its packages one by one, and README offered `yay -S tapeback-cuda`, a package never published. A package AUR already holds is skipped, so a rerun for the same version publishes only what is new.
+- Two install hints named the wrong thing. `tapeback tray` without its extra asked for pystray and Pillow, though the extra is dbus-next; the `tapeback-llm` AUR package told users to set `ANTHROPIC_API_KEY` and the rest, which tapeback reads from the environment only.
+
+### Docs
+- The README's uninstall commands work. They named every extra, so pacman refused the whole list when one was not installed and apt could not find one never installed; and `apt remove tapeback` leaves the extras behind, as apt does not remove packages installed from files along with their base. Arch takes `yay -Rc tapeback`, Debian and Ubuntu `dpkg -r` with the base last.
+- The README names `local` and `openai_compatible` in the provider table, where a reader picks one, and `tapeback setup` in the quick start. It no longer says a `~` in `TAPEBACK_SESSIONS_DIR` is not expanded.
+- `.env.example` shows the real default beam size, 4, and no longer suggests `GROQ_API_KEY` and the like in the file, where tapeback never reads them.
+- A test fails a PR whose README misses an LLM provider, a package or a setting, or names one that does not exist. CONTRIBUTING, DEPLOY and `docs/release-testing.md` match the scripts again. Development-only.
+
 ## [0.10.0] — 2026-10-17
 
 ### Added

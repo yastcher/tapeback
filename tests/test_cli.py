@@ -536,12 +536,16 @@ def test_status_command_with_pactl(runner, vault_env):
 
 
 def test_tray_missing_dependency(runner):
-    """tapeback tray → helpful error when pystray not installed."""
+    """tapeback tray without its extra names what to install. The hint once named
+    pystray and Pillow, which the tray had stopped using."""
     with patch.dict("sys.modules", {"tapeback.tray": None}):
         result = runner.invoke(cli, ["tray"])
 
-    assert result.exit_code != 0
-    assert "pystray" in result.output
+    assert result.exit_code == 1
+    assert result.output == (
+        "Error: The system tray needs its extra, dbus-next: install the tapeback-tray "
+        "package, or tapeback[tray] with pip or uv.\n"
+    )
 
 
 # --- remote STT runtime notice ---
