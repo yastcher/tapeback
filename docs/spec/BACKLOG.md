@@ -218,8 +218,6 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   last release is 0.2.3 (2021); `dbus-fast` is the maintained fork. All 43 pytest
   warnings are this one deprecation, so `filterwarnings = ["error"]` would need exactly
   one filter until the move. Python 3.15 in CI: not yet (decided 2026-10-15).
-- **The bench measures the developer's `.env`.** `scripts/bench_transcribe.py:265`
-  builds `Settings(...)` without `_env_file=None`, against the AGENTS.md rule for probes.
 - **Packaging resolves dependencies at build time and lets extras rewrite the base.**
   The AUR and `.deb` venvs are not built from `uv.lock`, the extras' scriptlets pip into
   the pacman-owned `/opt/tapeback`, and the AUR venv borrows undeclared system

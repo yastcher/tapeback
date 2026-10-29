@@ -727,6 +727,9 @@ def load_script(name: str) -> ModuleType:
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Registered first, as importlib's own recipe does: a dataclass in the script looks
+    # its module up in sys.modules while the module is still executing.
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
