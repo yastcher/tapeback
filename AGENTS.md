@@ -6,6 +6,8 @@ Stack: Python 3.13+, click, faster-whisper, pyannote, pydantic-settings, python-
 
 No databases, and no server of tapeback's own: the `llama-server` a local summary starts is llama.cpp's.
 
+The project's words (session, channel, stage, clamp, stand, the gate, companion...) are defined in `docs/GLOSSARY.md`; a word used otherwise in a discussion is corrected there.
+
 ## Safety rules
 
 - Always fix the cause of a problem, never the symptom.
@@ -72,6 +74,8 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - E2E tests in `tests/test_e2e_quality.py` — run with `TAPEBACK_RUN_E2E=1`
 - Regression tests (bug-fix) in `tests/regressions/`
 - **Assert with a value the code under test cannot produce by accident.** A note that exists does not prove both channels were transcribed; the mic phrase under **You** does (`tests/smoke/transcribe.sh`).
+- **A fake SDK reply is built from the SDK's own types** (`anthropic.types.TextBlock`, `ThinkingBlock`), not `MagicMock(text=...)`: a MagicMock has every attribute, so it can never show that a reply's first block has no `.text`.
+- **A smoke check prints the value it compares before comparing it**: a `grep -Fx` filter hid `/usr/sbin/llama-server`, and the Arch stand failed with nothing in the log.
 - **What leaves the machine is asserted on the serialized request body**, not on an object the test built itself; the absence of a secret or personal data is asserted over the whole body, not over a list of fields.
 - **A setup path hides the branch a regression was written for.** Walk the lifecycle, but test every independently required branch on its own as well, without a neighbour that creates its postcondition first.
 - **"Rerun and it passed" reads as "go find the cause".** A test red on one machine and green on another reads the environment: find what it reads (in 2026-10 twelve transcriber tests read the real GPU's free VRAM).
@@ -106,8 +110,10 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - Always PR, never push to main. The one exception is `scripts/release.sh`, run by the maintainer: the release commit is mechanical and has nothing to review.
 - **Do not run git push, checkout, switch, reset, clean, stash, rebase, restore or branch -d/-D** — `.claude/settings.json` denies them. Ask user if needed. Commit only when the user asks.
 - Max ~500 lines of diff and ~15 files per commit — stop and propose a commit before continuing. A separable refactor, its tests and its docs go in separate commits; inseparable code and test travel together, so no knowingly broken commit is born.
+- **Commit in its own call, after you have read the checks' exit code**: `(pytest …; ruff check) && git commit` commits over a failed test, since a subshell returns the code of its last command; `… | tail -1 && git commit` returns `tail`'s.
 - Always work in the current branch — never switch branches
 - Don't run git network operations you don't need (remote, fetch): work with the local state.
+- **Before any history rewrite, `git for-each-ref refs/remotes/origin/<branch>`**: `git log origin/main..HEAD` does not show that a feature branch was already pushed.
 
 ## Workflow
 
@@ -160,3 +166,5 @@ Before completing any change, verify:
 - **Everything committed to git is in English** — code, comments, logs, README, CHANGELOG, AGENTS.md, specs in `docs/spec/`, commit messages. Chat replies to the user follow the user's language; files do not.
 - At the end of each non-trivial session, write 1–3 items into `.claude/insights-inbox.md` right away, without asking: only what will improve the next piece of work; with nothing worth it, write nothing.
 - A spec cites code as `file:line`, not from memory. Closing it, run its criteria as measurements, not a checklist of finished phases: a phase closed by reasoning instead of code must become a test.
+- GPU probes on a machine with the AUR package run with `/opt/tapeback/bin/python` and `PYTHONPATH=src`: the repo venv has no `nvidia-cublas-cu12`, so Whisper falls back to the CPU with one warning line. Read the "Whisper: ... on cuda" line before waiting on a result.
+- After `scripts/aur-publish.sh` the AUR RPC (what `yay` reads) lags; read `.SRCINFO` through cgit (`https://aur.archlinux.org/cgit/aur.git/plain/.SRCINFO?h=<pkg>`) before suspecting the publish.
