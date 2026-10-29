@@ -352,3 +352,16 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   5 s of waiting for the recorders (`recorder.py:394`), and the second then fails with
   `FileNotFoundError` instead of "No recording in progress". Read from the code, not
   reproduced: no second note should come of it.
+
+## 11. Found 2026-10-28: two of the three remote STT models shut down on 2027-02-26
+
+- OpenAI deprecated `whisper-1` and `gpt-4o-transcribe-diarize` on 2026-08-26 and
+  shuts them down on 2027-02-26 (developers.openai.com/api/docs/deprecations). The
+  replacement it names, `gpt-transcribe`, returns text without timestamps and without
+  speakers, and no diarizing successor is announced. After that date remote STT is
+  `gpt-transcribe` only: no remote speaker labels, and no timestamps to align with
+  local pyannote turns. Local diarization stays required.
+- Needs a decision before the date: drop the two models from `_stt_caps.py`, warn at
+  load until then, or align `gpt-transcribe` text to audio locally (forced alignment).
+- Anthropic offers no audio input or speech-to-text API, so it can replace neither
+  stage. Details and sources: `docs/local/2026-10-28-remote-stt-survey.md` (not in git).
