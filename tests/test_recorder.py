@@ -62,12 +62,8 @@ def test_start_creates_session_file(recorder, settings, session_file):
     with (
         patch("tapeback.recorder.detect_devices", return_value=("monitor_dev", "mic_dev")),
         patch("tapeback.recorder.shutil.which", return_value="/usr/bin/parecord"),
-        patch("tapeback.recorder.subprocess.Popen") as mock_popen,
+        patch("tapeback.recorder.os.posix_spawnp", side_effect=[12345, 12346]),
     ):
-        proc_mock = MagicMock()
-        proc_mock.pid = 12345
-        mock_popen.return_value = proc_mock
-
         session_name = recorder.start(settings, session_name="test_session")
 
     assert session_name == "test_session"
@@ -76,7 +72,7 @@ def test_start_creates_session_file(recorder, settings, session_file):
     data = json.loads(session_file.read_text())
     assert data["session_name"] == "test_session"
     assert data["pid_monitor"] == 12345
-    assert data["pid_mic"] == 12345
+    assert data["pid_mic"] == 12346
     assert "started_at" in data
     assert "monitor_path" in data
     assert "mic_path" in data

@@ -327,3 +327,18 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   load until then, or align `gpt-transcribe` text to audio locally (forced alignment).
 - Anthropic offers no audio input or speech-to-text API, so it can replace neither
   stage. Details and sources: `docs/local/2026-10-28-remote-stt-survey.md` (not in git).
+
+## 12. Found 2026-10-28, while turning warnings into errors
+
+- **A recorder that dies mid-meeting ends the recording silently.** When one parecord
+  exits (a source vanished), `Recorder.is_recording()` removes `session.json`
+  (`recorder.py`, `is_recording`), and `tapeback start` takes it for a stop from another
+  terminal and returns with exit code 0 (`cli.py`, `start`): no error, no processing,
+  no note, and the other parecord keeps recording. Read from the code, not reproduced. Needs a
+  decision: process what both channels hold so far, or stop the survivor and fail
+  with the tail of the dead recorder's log (`monitor.log`/`mic.log` in the session
+  directory).
+- **The python-dotenv leak is filtered, not fixed.** Up to 1.2.4, `set_key` leaves the
+  `.env` open when it cannot create its temporary file; fixed upstream in 6a49d6d8,
+  unreleased. When a release carries it, raise the bound in `pyproject.toml` and drop
+  its two `filterwarnings` lines.

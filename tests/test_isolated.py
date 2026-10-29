@@ -16,7 +16,8 @@ class _FakeProcess:
 
     def __init__(self, lines: list[str], returncode: int = 0):
         self.stdin = io.StringIO()
-        self.stdout = iter(lines)
+        # A file, as the pipe is: the parent must close it.
+        self.stdout = io.StringIO("".join(lines))
         self.returncode = returncode
         self.terminated = False
         self.killed = False
@@ -163,6 +164,8 @@ def test_worker_is_always_stopped(settings, spawn):
     transcribe_isolated(Path("/fake/audio.wav"), settings, on_status=lambda _m: None)
 
     assert process.terminated
+    # An open pipe outlived every transcription, one descriptor each.
+    assert process.stdout.closed
 
 
 def test_emit_writes_one_flushed_line():

@@ -142,6 +142,7 @@ def transcribe_isolated(
         return segments, info
     finally:
         _stop(process)
+        stdout.close()
 
     if info:
         return segments, info

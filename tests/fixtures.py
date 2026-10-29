@@ -293,6 +293,7 @@ for arg in "$@"; do
   esac
 done
 cp "$FAKE_PARECORD_AUDIO/$device.wav" "$out"
+printf 'fake parecord recording %s\\n' "$device" >&2
 printf '%s %s %s\\n' "$$" "$device" "$(stat -c %a "$(dirname "$out")")" >> "$FAKE_PARECORD_LOG"
 while :; do sleep 0.05; done
 """
