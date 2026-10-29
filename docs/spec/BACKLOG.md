@@ -35,40 +35,7 @@ because the shape, not the specific cause, is what generalises.
 
 Clamp detection with CPU fallback, pre-flight VRAM floor, process isolation, per-stage
 GPU telemetry, positive device reporting, progress percentage, run records, bounded
-channel memory. See CHANGELOG 0.9.8.
-
----
-
-## 0. `thermal_clamp_wait=60` is the worst of both options
-
-**Observed 2026-08-06**, transcribing a 31-minute recording while a video played in the
-browser. The monitor channel finished unclamped in 322 s. The clamp then latched, the
-mic channel's worker checked it, and sat waiting — 0.7 % CPU, 14 MB RSS, nothing on the
-GPU — for the full configured timeout before giving up and using the CPU.
-
-**The wait cannot succeed while the user is doing something else.** The clamp clears on
-*system* idle, and the browser held the CPU package at 90–94 °C throughout. Waiting for
-a condition that depends on the user's own workload is not a strategy.
-
-**The numbers make the default indefensible.** The shortest measured release is 451 s of
-genuine idle. A 60 s wait therefore essentially never succeeds — it is 60 s of doing
-nothing, then the CPU fallback that could have started immediately. Meanwhile the CPU
-runs at ~2.39x real time against a clamped GPU's ~0.31x.
-
-So the default should be one of:
-
-- **0** — never wait, fall back to CPU the moment a clamp is seen. Costs the case where
-  the clamp really was about to clear.
-- **~500+** — actually long enough to succeed, and only worth it when the machine will
-  genuinely be idle.
-
-60 buys neither. Deciding between them wants one more measurement: how often a clamp
-seen at the *start* of a run clears within a few minutes on an otherwise idle machine.
-
-**A better policy than either** is to stop treating this as a waiting problem. We know
-both throughputs — CPU ~2.39x, clamped GPU ~0.31x — so the decision is arithmetic, not a
-timeout: if clamped, use the CPU, and re-check the GPU only between channels where the
-switch is free. That needs the worker to report throughput back, which it now can.
+channel memory. See CHANGELOG 0.9.8; the decisions are ADR-003 to ADR-005 in `docs/adr/`.
 
 ---
 
@@ -174,12 +141,7 @@ words.** That is the same axis on which `large-v3` beat turbo in stage 3a, and t
 the metric suite was originally blind to — it was found by reading, not measuring. A
 third less punctuation is probably not noise.
 
-### Recommendation: do not switch the default
-
-The saving is real and large — 39 s and 9 °C on every recording. But the only quality
-difference found lands on readability of the quiet channel, which this project has
-repeatedly under-valued and then regretted. Trading it for 39 seconds is the same deal
-that was reverted twice before.
+### The default stays: ADR-006
 
 **Worth doing instead:** make it a setting (`TAPEBACK_NORMALISATION=loudnorm |
 dynaudnorm | none`) keeping `loudnorm` as the default, so a hot or weak machine can take
@@ -334,7 +296,7 @@ the recording. A check made before a stage cannot see a clamp that latches durin
 - **The pinned GGUF's Hugging Face scan reads "safe" with the code PAIT-GGUF-100**,
   whose meaning is not public. Its chat template differs from Qwen's in two places: the
   tool-call arguments and the thinking default.
-- **`tests/fixtures.py` is twice the 500-line limit** (1002 lines on 2026-10-17). AGENTS.md keeps every
+- **`tests/fixtures.py` is over the 500-line limit** (`wc -l tests/fixtures.py`). AGENTS.md keeps every
   fixture there, so a split needs a decision on the layout first.
 - **The diarize, tray and cuda companions never run on a stand.** They are built, and
   released as `.deb`s, but only `tapeback-llm-local` (with `tapeback-llm`) is installed

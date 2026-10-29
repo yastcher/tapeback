@@ -7,8 +7,7 @@ a 4 GB laptop GPU, cleanest code).
 
 ## The request
 
-- `tapeback setup`: for now, diarization on/off and summary on/off. Decided: a dialog
-  with the current values as defaults, plus the same choices as flags for scripts.
+- `tapeback setup`: for now, diarization on/off and summary on/off. Decided: ADR-014.
 - In the same PR, local summaries (issue #11, "more llm providers"; the plan in its
   comments: a generic OpenAI-compatible endpoint, base URL + model). Installed in the
   way most convenient for the user, possibly a separate package like
@@ -83,7 +82,7 @@ In tapeback:
 - A new provider, `openai_compatible`: base URL + model, both required; the key only from
   `TAPEBACK_LLM_API_KEY`. It covers llama-server, Ollama, LM Studio, ollama.com,
   anyapi.ai.
-- Privacy: the endpoint and the cloud providers are mutually exclusive settings: the
+- Privacy (ADR-011): the endpoint and the cloud providers are mutually exclusive settings: the
   endpoint is never in the cloud fallback chain and never falls back to a cloud key
   found in the environment; masking applies whatever the host (a forwarded port
   makes "loopback" remote); a URL with credentials is refused; plain http to a
@@ -98,6 +97,8 @@ In tapeback:
   local context.
 
 ### One transcript in the note
+
+Decided: ADR-013.
 
 A diarized note keeps one section, the diarized transcript (`You` from the mic,
 `Speaker N` from diarization), instead of the raw `You`/`Other` transcript followed by
@@ -122,8 +123,8 @@ goes here, and the README follows it.
 
 ## The convenient package
 
-Built on this branch before the bench (decided 2026-10-16), with the flags measured
-earlier; the bench tunes them.
+Built on this branch before the bench, with the flags measured earlier; the bench
+tunes them. Decided: ADR-012 (the server), ADR-015 (the packages), ADR-004 (the clamp).
 
 - Provider `local`: `llama-server` starts for each summary with the measured flags
   (`_llama_server.py:39`) on a free loopback port, its key in `LLAMA_API_KEY` rather
@@ -287,26 +288,13 @@ Commit 8 waits for the menu-driven setup.
 
 The bench and chunking follow as their own work.
 
-## Decided (2026-10-15)
+## Decisions
 
-- The provider is `openai_compatible`; `local` stays for a server tapeback manages.
-- The endpoint and the cloud providers are mutually exclusive: no fallback either way.
-- A diarized note keeps one transcript; every provider gets that shorter input.
-- The bench runs in a separate session; neither Ollama nor llama-server is ruled out.
-  Qwen has matched a cloud model on other extraction tasks.
-- Preset storage is decided later.
-- (2026-10-16) The local summaries stay in this PR. `setup` keeps its two switches;
-  choosing the cloud or a server moves to a menu-driven setup that also checks what
-  fits the machine.
-- (2026-10-16) The managed llama-server (provider `local`) is built in this PR, before
-  the bench, with the flags measured earlier; the bench tunes the model and the
-  context later. It starts after diarization and stops after the summary. It ships
-  three ways: an AUR companion depending on Arch's `llama-cpp`, a `.deb` companion
-  carrying a pinned llama.cpp release, and pip with `llama-server` on PATH. The model
-  is a pinned GGUF downloaded on first use, or a path. `transcriber.py` is split in
-  this PR.
-- (2026-10-16) Diarization takes transcription's clamp policy: the CPU when the card
-  is clamped, without the long-file measurement. A local summary waits up to 600 s
-  for the clamp, then goes ahead, with its own 1800 s timeout. The summary prompt
-  names the note's language. The target is one model for the transcript and the
-  speakers, in place of Whisper and pyannote.
+Recorded in `docs/adr/`: ADR-011 (the endpoint and `local` never fall back), ADR-012
+(the managed llama-server), ADR-013 (one transcript, the summary's language), ADR-014
+(`tapeback setup`), ADR-015 (the packages), ADR-004 (the clamp policy for diarization
+and the summary), ADR-016 (one model for transcript and speakers).
+
+Still plan, not decision: the bench runs in a session of its own, with neither Ollama
+nor llama-server ruled out; preset storage is decided later; `setup` keeps its two
+switches until the menu-driven setup.
