@@ -124,6 +124,10 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=tapeback --cov-report=term-missing"
+# /tmp is a small tmpfs with a per-user quota on some machines; kept basetemps once
+# filled it and broke every command. A passing run keeps nothing; a failing one, its own.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 
 [tool.coverage.run]
 source = ["src/tapeback"]

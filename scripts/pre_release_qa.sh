@@ -36,7 +36,10 @@ step "e2e quality"
 # Every e2e test skips itself when something it needs is missing, and a run made
 # only of skips exits 0. Here a skip is a failure: the report is read for the
 # count, not the exit code alone.
-report=$(mktemp)
+# Under the repository's tmp/, never /tmp: on some machines /tmp is a small tmpfs with
+# a per-user quota.
+mkdir -p tmp
+report=$(mktemp tmp/pre_release_qa.XXXXXX)
 trap 'rm -f "$report"' EXIT
 TAPEBACK_RUN_E2E=1 uv run pytest tests/test_e2e_quality.py --no-cov -rs --junitxml="$report"
 python3 - "$report" <<'EOF'

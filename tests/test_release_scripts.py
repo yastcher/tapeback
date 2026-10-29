@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -188,6 +189,19 @@ def test_aur_publish_rerun_publishes_only_what_aur_lacks(run_aur_publish, tmp_pa
         "tapeback-llm-local": ["Update to 1.2.3"],
         "tapeback-tray": ["Update to 1.2.3"],
     }
+
+
+def test_aur_publish_clones_under_the_repos_tmp_and_removes_it(run_aur_publish, tmp_path):
+    """Development scratch goes to the repository's tmp/, never to /tmp: on some
+    machines /tmp is a small tmpfs with a per-user quota."""
+    result, _ = run_aur_publish("1.2.3")
+
+    assert result.returncode == 0, result.stderr
+    # makepkg runs in <scratch>/<package>.
+    log = (tmp_path / "makepkg-cwd.log").read_text().splitlines()
+    assert {Path(clone).parent.parent for clone in log} == {tmp_path / "tmp"}
+    assert list((tmp_path / "tmp").iterdir()) == []
+    assert list((tmp_path / "system-tmp").iterdir()) == []
 
 
 def test_local_deb_smoke_installs_into_the_images_ci_does():

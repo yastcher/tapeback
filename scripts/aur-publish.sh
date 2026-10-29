@@ -21,7 +21,10 @@ TARBALL_URL="https://github.com/yastcher/tapeback/archive/v$VERSION.tar.gz"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Tests point this at local repositories.
 AUR_REMOTE="${AUR_REMOTE:-ssh://aur@aur.archlinux.org}"
-AUR_DIR="$(mktemp -d)"
+# The clones live under the repository's tmp/, never /tmp: on some machines /tmp is a
+# small tmpfs with a per-user quota.
+mkdir -p "$REPO_ROOT/tmp"
+AUR_DIR="$(mktemp -d "$REPO_ROOT/tmp/aur-publish.XXXXXX")"
 trap 'rm -rf "$AUR_DIR"' EXIT
 
 # Verify tarball exists
