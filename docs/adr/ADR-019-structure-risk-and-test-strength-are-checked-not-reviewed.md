@@ -49,7 +49,9 @@ showed up nowhere.
   unchecked, which a stopped run does, with fewer survivors than a whole one.
 - A survivor is a test gap, code that does nothing (simplified away), a question for the
   maintainer (BACKLOG), or an equivalent mutant. The first triage, from 317 survivors,
-  also found four defects. The equivalents stay counted under the maximum:
-  `astype(None)` is float64 in numpy, `wave.open` reads by default, `reshape(-2, 2)`
-  equals `reshape(-1, 2)`, an `<=` whose equality leaves an empty slice, the separator
-  of a resume key, and a threshold no signal can be built to hit exactly.
+  found six defects: four bugs, and two behaviours the maintainer ruled on. The
+  equivalents stay counted under the maximum: `astype(None)` is float64 in numpy,
+  `wave.open` reads by default, `reshape(-2, 2)` equals `reshape(-1, 2)`, a bound whose
+  other value changes nothing (an empty slice, a read past the data, a clamp that binds
+  only below 20 Hz, a loop with no full phrase left, the shortcut for one speaker), the
+  separator of a resume key, and a threshold no signal can be built to hit exactly.

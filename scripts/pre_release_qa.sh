@@ -82,7 +82,7 @@ systemd-run --user --scope --quiet -p MemoryMax=$((1200 + 500 * children))M \
   -p MemorySwapMax=0 -p OOMPolicy=continue uv run mutmut run --max-children "$children"
 uv run mutmut export-cicd-stats
 uv run python scripts/mutation_ratchet.py mutants/mutmut-cicd-stats.json \
-  --survived-max 24 --no-tests-max 0
+  --survived-max 23 --no-tests-max 0
 
 echo "$tree" > "$stamp"
 printf '\n\033[32mpre_release_qa: passed for tree %s\033[0m\n' "$tree"
