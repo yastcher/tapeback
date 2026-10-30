@@ -17,6 +17,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - A recording no longer depends on a pipe nobody read. parecord's messages went there: 64 KiB of them would have stalled the recorder, and its next message after the starting process exited would have killed it. They now go to `monitor.log` and `mic.log` in the session directory, which a failed session keeps.
 - File descriptors no longer leak: one per transcription, and one per readiness poll while a local summary's model loads.
+- A subtitle credit cut out of the middle of a sentence no longer comes back in the note. Local Whisper gives every segment its words, and the pass that marks unsure words in italics rebuilt the text from them, credit included.
 
 ## [0.10.1] — 2026-10-17
 

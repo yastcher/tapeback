@@ -1,7 +1,7 @@
 """Regression tests for transcript formatting bugs."""
 
 from tapeback.formatter import TranscriptMeta, format_markdown
-from tapeback.models import Segment
+from tapeback.models import Segment, Word
 
 
 def _speech(start: float, end: float, speaker: str | None = None) -> Segment:
@@ -96,6 +96,42 @@ def test_subtitle_corpus_hallucinations_are_stripped():
     # The real speech around the hallucination must survive.
     assert "куда ты вставляешь summary" in markdown
     assert "как будто нам сейчас не нужно" in markdown.lower()
+
+
+def test_a_stripped_phrase_stays_out_of_a_segment_with_words():
+    """Local Whisper gives every segment its words, and they must not bring the phrase back.
+
+    Bug: the italic pass rebuilds a segment's text from its words, so a credit cut out of
+    the middle of a sentence returned with them. The test above passes words=None and
+    could not see it; on the default local path the credit stayed in the note.
+    """
+    words = [
+        Word(start=0.0, end=0.5, word=" Ведь", probability=0.9),
+        Word(start=0.5, end=1.0, word=" решение.", probability=0.9),
+        Word(start=1.0, end=2.0, word=" Субтитры", probability=0.9),
+        Word(start=2.0, end=3.0, word=" DimaTorzok", probability=0.9),
+        Word(start=3.0, end=5.0, word=" штука.", probability=0.9),
+    ]
+    segment = Segment(
+        start=0.0,
+        end=5.0,
+        text="Ведь решение. Субтитры DimaTorzok штука.",
+        words=words,
+        speaker="You",
+    )
+
+    markdown = format_markdown(
+        segments=[segment],
+        meta=TranscriptMeta(
+            session_name="2026-08-06_12-00-00",
+            audio_rel_path="attachments/audio/x.wav",
+            duration_seconds=5.0,
+            language="ru",
+        ),
+    )
+
+    lines = [line for line in markdown.splitlines() if line.startswith("[")]
+    assert lines == ["[00:00:00] **You:** Ведь решение. штука"]
 
 
 def test_segment_that_is_only_a_hallucination_is_dropped_entirely():

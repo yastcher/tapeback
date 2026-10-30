@@ -132,9 +132,9 @@ def _mark_low_confidence_words(segment: Segment) -> Segment:
 def _strip_hallucinated_text(segment: Segment) -> Segment:
     """Drop subtitle-corpus phrases from a segment's text.
 
-    Words are left untouched: they still carry the timings that channel filtering and
-    diarization resegmentation depend on, and the italic markup pass reads the text,
-    not the word list.
+    A cleaned segment loses its words: the italic pass rebuilds the text from them and
+    would put the phrase back, so its unsure words go unmarked. Rendering is the last
+    stage, and nothing after it needs their timings.
     """
     cleaned = strip_hallucinations(segment.text)
     if cleaned == segment.text:
@@ -143,7 +143,7 @@ def _strip_hallucinated_text(segment: Segment) -> Segment:
         start=segment.start,
         end=segment.end,
         text=cleaned,
-        words=segment.words,
+        words=None,
         speaker=segment.speaker,
     )
 
