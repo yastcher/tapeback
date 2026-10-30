@@ -175,7 +175,8 @@ def store(
     try:
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / key.filename
-        path.write_text(json.dumps(_to_payload(segments, info), ensure_ascii=False))
+        # ASCII JSON, the rest escaped: no locale's encoding can fail to write it.
+        path.write_text(json.dumps(_to_payload(segments, info)))
         _prune(directory)
     except OSError:
         return None
