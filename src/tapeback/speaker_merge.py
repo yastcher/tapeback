@@ -1,5 +1,7 @@
 """Spectral-profile clustering — merges over-segmented pyannote speakers."""
 
+from itertools import combinations
+
 import numpy as np
 
 from tapeback import const
@@ -68,15 +70,9 @@ def _weakest_link(
     profiles: dict[str, np.ndarray], first: list[str], second: list[str]
 ) -> float | None:
     """The similarity of the least alike pair across two groups; None if one is silent."""
-    weakest: float | None = None
-    for a in first:
-        for b in second:
-            similarity = _similarity(profiles[a], profiles[b])
-            if similarity is None:
-                return None
-            if weakest is None or similarity < weakest:
-                weakest = similarity
-    return weakest
+    similarities = [_similarity(profiles[a], profiles[b]) for a in first for b in second]
+    known = [similarity for similarity in similarities if similarity is not None]
+    return min(known) if len(known) == len(similarities) else None
 
 
 def _merge_alike(
@@ -89,15 +85,15 @@ def _merge_alike(
     """
     groups = [[speaker] for speaker in speakers]
     while True:
-        best: tuple[float, int, int] | None = None
-        for i, first in enumerate(groups):
-            for j in range(i + 1, len(groups)):
-                link = _weakest_link(profiles, first, groups[j])
-                if link is not None and link >= threshold and (best is None or link > best[0]):
-                    best = (link, i, j)
-        if best is None:
+        links = [
+            (link, i, j)
+            for i, j in combinations(range(len(groups)), 2)
+            if (link := _weakest_link(profiles, groups[i], groups[j])) is not None
+            and link >= threshold
+        ]
+        if not links:
             return groups
-        _, i, j = best
+        _, i, j = max(links)
         groups[i] += groups.pop(j)
 
 
