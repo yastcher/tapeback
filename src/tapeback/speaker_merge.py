@@ -44,7 +44,8 @@ def _speaker_spectral_profile(
 
         hop = n_fft // 2
         for start in range(0, len(chunk) - n_fft + 1, hop):
-            frame = chunk[start : start + n_fft].astype(np.float64)
+            # The float64 window makes the product float64, whatever the samples are.
+            frame = chunk[start : start + n_fft]
             spectrum = np.abs(np.fft.rfft(frame * window))[min_bin:max_bin]
             spectra.append(spectrum)
 
@@ -146,9 +147,6 @@ def merge_similar_speakers(
             best_similarity, best = max(scored)
             if best_similarity >= MINOR_SPEAKER_MERGE_THRESHOLD:
                 merge_map[sp] = merge_map[best]
-
-    if all(merge_map[s] == s for s in speakers):
-        return diarization_segments
 
     return [
         DiarizationSegment(speaker=merge_map[seg.speaker], start=seg.start, end=seg.end)
