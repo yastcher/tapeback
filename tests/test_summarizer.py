@@ -66,14 +66,26 @@ def test_format_summary_markdown_full():
 
     result = format_summary_markdown(summary)
 
-    assert "## Summary" in result
-    assert "Discussed the project plan." in result
-    assert "### Action Items" in result
-    assert "- [ ] **You:** Send the report by Friday" in result
-    assert "- [ ] **Speaker 1:** Review the code" in result
-    assert "### Key Decisions" in result
-    assert "- Use PostgreSQL instead of MongoDB" in result
-    assert result.strip().endswith("---")
+    assert result == (
+        "\n"
+        "## Summary\n"
+        "\n"
+        "Discussed the project plan.\n"
+        "\n"
+        "\n"
+        "### Action Items\n"
+        "\n"
+        "- [ ] **You:** Send the report by Friday\n"
+        "- [ ] **Speaker 1:** Review the code\n"
+        "\n"
+        "\n"
+        "### Key Decisions\n"
+        "\n"
+        "- Use PostgreSQL instead of MongoDB\n"
+        "\n"
+        "\n"
+        "---\n"
+    )
 
 
 def test_format_summary_markdown_trivial():
@@ -247,23 +259,58 @@ def test_summarize_openai_compatible_flow(tmp_vault, monkeypatch):
     )
 
 
+@pytest.mark.parametrize(
+    ("reply", "summary"),
+    [
+        ('{"brief": "Small talk only."}', Summary(brief="Small talk only.")),
+        (
+            '{"brief": "Small talk only.", "action_items": [], "key_decisions": [], '
+            '"is_trivial": true}',
+            Summary(brief="Small talk only.", is_trivial=True),
+        ),
+    ],
+    ids=["brief only", "trivial"],
+)
+def test_a_reply_is_read_into_a_whole_summary(summarize_settings, reply, summary):
+    with patch("anthropic.Anthropic") as mock_cls:
+        mock_cls.return_value.messages.create.return_value = mock_anthropic_response(reply)
+
+        assert summarize("transcript", summarize_settings) == summary
+
+
+@pytest.mark.parametrize(("length", "quoted"), [(499, 499), (500, 500), (501, 500)])
+def test_an_unparsable_reply_is_quoted_up_to_500_characters(summarize_settings, length, quoted):
+    with patch("anthropic.Anthropic") as mock_cls, pytest.raises(RuntimeError) as raised:
+        mock_cls.return_value.messages.create.return_value = mock_anthropic_response("x" * length)
+        summarize("transcript", summarize_settings)
+
+    assert str(raised.value) == "Failed to parse LLM response after retry: " + "x" * quoted
+
+
 def test_summarize_resilience_flow(summarize_settings):
     """Resilience: fenced JSON, invalid JSON retry, persistent failure."""
-    # Fenced JSON — stripped and parsed correctly
-    fenced = f"```json\n{VALID_LLM_RESPONSE}\n```"
-    with patch("anthropic.Anthropic") as mock_cls:
-        mock_cls.return_value.messages.create.return_value = mock_anthropic_response(fenced)
-        summary = summarize("transcript", summarize_settings)
-    assert summary.brief == "Discussed the project plan and assigned tasks."
+    # Fenced JSON — stripped and parsed correctly, with the closing fence on its own
+    # line or glued to the JSON
+    for fenced in (f"```json\n{VALID_LLM_RESPONSE}\n```", f"```json\n{VALID_LLM_RESPONSE}```"):
+        with patch("anthropic.Anthropic") as mock_cls:
+            create = mock_cls.return_value.messages.create
+            create.return_value = mock_anthropic_response(fenced)
+            summary = summarize("transcript", summarize_settings)
+        assert summary.brief == "Discussed the project plan and assigned tasks."
+        assert create.call_count == 1
 
     # Invalid JSON first call → retry with shorter prompt → success
     with patch("anthropic.Anthropic") as mock_cls:
-        mock_cls.return_value.messages.create.side_effect = [
+        create = mock_cls.return_value.messages.create
+        create.side_effect = [
             mock_anthropic_response("not json at all"),
             mock_anthropic_response(VALID_LLM_RESPONSE),
         ]
         summary = summarize("transcript", summarize_settings)
     assert summary.brief == "Discussed the project plan and assigned tasks."
+    retry = create.call_args_list[1].kwargs
+    assert retry["system"] == "Respond with valid JSON only. No other text."
+    assert retry["messages"] == [{"role": "user", "content": "transcript"}]
 
     # Persistent invalid JSON → RuntimeError
     with (
@@ -276,7 +323,7 @@ def test_summarize_resilience_flow(summarize_settings):
         summarize("transcript", summarize_settings)
 
 
-def test_maybe_summarize_end_to_end(tmp_vault, monkeypatch):
+def test_maybe_summarize_end_to_end(tmp_vault, monkeypatch, capsys):
     """maybe_summarize: full flow including edge cases and happy path."""
     clear_all_provider_env_vars(monkeypatch)
 
@@ -298,6 +345,7 @@ def test_maybe_summarize_end_to_end(tmp_vault, monkeypatch):
     settings_off = Settings(vault_path=tmp_vault, summarize=False)
     maybe_summarize(md_file, settings_off)
     assert "## Summary" not in md_file.read_text()
+    assert capsys.readouterr() == ("", "")
 
     # No API key → warning, file unchanged
     settings_no_key = Settings(
@@ -305,12 +353,21 @@ def test_maybe_summarize_end_to_end(tmp_vault, monkeypatch):
     )
     maybe_summarize(md_file, settings_no_key)
     assert "## Summary" not in md_file.read_text()
+    assert capsys.readouterr() == (
+        "",
+        "Warning: No LLM API key set, skipping summarization. Set TAPEBACK_LLM_API_KEY or a "
+        "provider-specific API key environment variable.\n",
+    )
 
     # Empty transcript (no '# Meeting' header) → warning, file unchanged
     empty_md = tmp_vault / "meetings" / "empty.md"
     empty_md.write_text("---\ndate: 2026-03-20\n---\n\nNo transcript header here.\n")
     maybe_summarize(empty_md, settings_with_key)
     assert "## Summary" not in empty_md.read_text()
+    assert capsys.readouterr() == (
+        "",
+        "Warning: No transcript content found, skipping summarization.\n",
+    )
 
     # Happy path: file gets summary injected
     with patch("anthropic.Anthropic") as mock_cls:
@@ -318,6 +375,7 @@ def test_maybe_summarize_end_to_end(tmp_vault, monkeypatch):
             VALID_LLM_RESPONSE
         )
         maybe_summarize(md_file, settings_with_key)
+    assert capsys.readouterr() == ("", "Summary added.\n")
     content = md_file.read_text()
     assert "## Summary" in content
     assert "Discussed the project plan" in content

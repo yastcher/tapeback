@@ -84,18 +84,14 @@ def test_subtitle_corpus_hallucinations_are_stripped():
         ),
     )
 
-    lowered = markdown.lower()
-    for marker in (
-        "dimatorzok",
-        "субтитры",
-        "редактор субтитров",
-        "корректор",
-        "продолжение следует",
-    ):
-        assert marker not in lowered, marker
-    # The real speech around the hallucination must survive.
-    assert "куда ты вставляешь summary" in markdown
-    assert "как будто нам сейчас не нужно" in markdown.lower()
+    # The phrases are gone and the real speech around them survives; the last segment
+    # was nothing else, so it is gone too.
+    lines = [line for line in markdown.splitlines() if line.startswith("[")]
+    assert lines == [
+        "[00:00:00] **You:** Ведь решение. штука, куда ты вставляешь summary",
+        "[00:00:06] **You:** Как будто нам сейчас не нужно",
+        "[00:00:12] **You:** поскольку общаются",
+    ]
 
 
 def test_a_stripped_phrase_stays_out_of_a_segment_with_words():

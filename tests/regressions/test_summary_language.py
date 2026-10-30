@@ -42,7 +42,9 @@ def test_the_notes_language_is_named_in_the_prompt(tmp_vault, llm_endpoint):
 
     maybe_summarize(note, settings)
 
-    assert _system_prompt(llm_endpoint).endswith(NAMED)
+    assert _system_prompt(llm_endpoint).endswith(
+        "- Keep brief concise — 2-3 sentences max, no filler\n" + NAMED
+    )
 
 
 def test_a_note_without_a_language_keeps_the_general_rule(tmp_vault, llm_endpoint):
@@ -59,6 +61,7 @@ def test_a_note_without_a_language_keeps_the_general_rule(tmp_vault, llm_endpoin
     prompt = _system_prompt(llm_endpoint)
     assert "ISO 639-1" not in prompt
     assert "- Write in the same language as the transcript" in prompt
+    assert prompt.endswith("- Keep brief concise — 2-3 sentences max, no filler")
 
 
 def test_tapeback_summarize_names_the_language_too(runner, real_env_files, tmp_vault, llm_endpoint):

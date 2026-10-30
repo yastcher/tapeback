@@ -59,7 +59,9 @@ def test_no_raw_pii_reaches_the_provider(summarize_settings):
 def test_listed_terms_do_not_reach_the_provider(summarize_settings):
     """Names are what people say aloud, so the term list is the part that carries."""
     settings = summarize_settings.model_copy(update={"mask_pii": True, "mask_terms": "Ivan"})
-    response = _MASKED_RESPONSE.replace("Contact", "[TERM_1] contacts")
+    response = _MASKED_RESPONSE.replace("Contact", "[TERM_1] contacts").replace(
+        '"deadline": null', '"deadline": "before [TERM_1] leaves"'
+    )
 
     with patch("anthropic.Anthropic") as mock_cls:
         mock_cls.return_value.messages.create.return_value = mock_anthropic_response(response)
@@ -69,6 +71,7 @@ def test_listed_terms_do_not_reach_the_provider(summarize_settings):
     assert "Ivan" not in sent
     assert sent == "[TERM_1] said write to [EMAIL_1] or call [PHONE_1] today."
     assert summary.brief == "Ivan contacts ivan.petrov@example.com or +7 900 123-45-67."
+    assert summary.action_items[0].deadline == "before Ivan leaves"
 
 
 def test_retry_prompt_is_masked_too(summarize_settings):
@@ -82,11 +85,8 @@ def test_retry_prompt_is_masked_too(summarize_settings):
         summary = summarize(_TRANSCRIPT, settings)
 
     calls = mock_cls.return_value.messages.create.call_args_list
-    assert len(calls) == 2
-    for call in calls:
-        sent = str(call.kwargs["messages"][0]["content"])
-        assert "ivan.petrov@example.com" not in sent
-        assert "+7 900 123-45-67" not in sent
+    sent = [str(call.kwargs["messages"][0]["content"]) for call in calls]
+    assert sent == ["Ivan said write to [EMAIL_1] or call [PHONE_1] today."] * 2
     assert summary.brief == "Contact ivan.petrov@example.com or +7 900 123-45-67."
 
 
@@ -130,11 +130,17 @@ def test_masking_off_sends_the_transcript_unchanged(summarize_settings):
 def test_unresolved_placeholder_is_reported(summarize_settings, capsys):
     """The model invented an index — the value cannot be restored, so say so."""
     settings = summarize_settings.model_copy(update={"mask_pii": True})
-    invented = _MASKED_RESPONSE.replace("[PHONE_1]", "[PHONE_9]")
+    # Two of them, so the list in the warning has a separator.
+    invented = _MASKED_RESPONSE.replace("[PHONE_1]", "[PHONE_9]").replace(
+        "email [EMAIL_1]", "email [EMAIL_2]"
+    )
 
     with patch("anthropic.Anthropic") as mock_cls:
         mock_cls.return_value.messages.create.return_value = mock_anthropic_response(invented)
         summary = summarize(_TRANSCRIPT, settings)
 
     assert summary.key_decisions == ["reach out on [PHONE_9]"]
-    assert "[PHONE_9]" in capsys.readouterr().err
+    assert capsys.readouterr().err == (
+        "Warning: summary keeps unresolved placeholders ([EMAIL_2], [PHONE_9]) — the model "
+        "altered them, so those values could not be restored.\n"
+    )

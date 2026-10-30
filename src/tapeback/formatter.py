@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from tapeback import const
 from tapeback._quality import has_speech, strip_hallucinations
@@ -17,19 +17,21 @@ WORD_LOW_CONFIDENCE = 0.35
 MAX_BLOCK_SECONDS = 60.0
 
 
+def _hms(seconds: float) -> tuple[int, int, int]:
+    """Whole hours, minutes and seconds of a time, which is never negative here."""
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return hours, minutes, secs
+
+
 def _format_timecode(seconds: float) -> str:
     """Format seconds as [HH:MM:SS]."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    return f"[{hours:02d}:{minutes:02d}:{secs:02d}]"
+    return f"[{_format_duration_hms(seconds)}]"
 
 
 def _format_duration_human(seconds: float) -> str:
     """Format duration as human-readable string (e.g. '1h 23m 45s')."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
+    hours, minutes, secs = _hms(seconds)
 
     parts = []
     if hours:
@@ -42,9 +44,7 @@ def _format_duration_human(seconds: float) -> str:
 
 def _format_duration_hms(seconds: float) -> str:
     """Format duration as HH:MM:SS."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
+    hours, minutes, secs = _hms(seconds)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
@@ -139,13 +139,7 @@ def _strip_hallucinated_text(segment: Segment) -> Segment:
     cleaned = strip_hallucinations(segment.text)
     if cleaned == segment.text:
         return segment
-    return Segment(
-        start=segment.start,
-        end=segment.end,
-        text=cleaned,
-        words=None,
-        speaker=segment.speaker,
-    )
+    return replace(segment, text=cleaned, words=None)
 
 
 def _is_vad_artifact(segment: Segment) -> bool:
@@ -201,18 +195,20 @@ class TranscriptMeta:
     partial: bool = False
 
 
+def _session_date_time(session_name: str) -> tuple[str, str]:
+    """The date and HH:MM of a session named YYYY-MM-DD_HH-MM-SS; 00:00 if it has no time."""
+    parts = session_name.split("_")
+    time_str = parts[1].replace("-", ":") if len(parts) > 1 else "00:00"
+    return parts[0], ":".join(time_str.split(":")[:2])
+
+
 def format_markdown(segments: list[Segment], meta: TranscriptMeta) -> str:
     """Generate markdown with YAML front matter and one transcript.
 
     Segments Whisper returned shorter than 1 second are filtered out (VAD artifacts).
     Each segment starts with [HH:MM:SS] timecode.
     """
-    # Parse date and time from session name (format: YYYY-MM-DD_HH-MM-SS)
-    parts = meta.session_name.split("_")
-    date_str = parts[0] if parts else meta.session_name
-    time_str = parts[1].replace("-", ":") if len(parts) > 1 else "00:00"
-    # Only HH:MM for display
-    time_display = ":".join(time_str.split(":")[:2])
+    date_str, time_display = _session_date_time(meta.session_name)
 
     duration_hms = _format_duration_hms(meta.duration_seconds)
     duration_human = _format_duration_human(meta.duration_seconds)
@@ -263,10 +259,7 @@ def format_live_markdown(
     Updated atomically during recording so the user can open it mid-meeting.
     Replaced by the final polished transcript after recording stops.
     """
-    parts = session_name.split("_")
-    date_str = parts[0] if parts else session_name
-    time_str = parts[1].replace("-", ":") if len(parts) > 1 else "00:00"
-    time_display = ":".join(time_str.split(":")[:2])
+    date_str, time_display = _session_date_time(session_name)
 
     lines = [
         f"# Live Transcript {date_str} {time_display}",
