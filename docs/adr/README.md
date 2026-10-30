@@ -27,3 +27,4 @@ of the specs on 2026-10-28; each spec points here where the decision used to be.
 - [ADR-016](ADR-016-one-model-for-transcript-and-speakers-is-the-target.md) — One model for transcript and speakers is the target.
 - [ADR-017](ADR-017-only-the-release-script-writes-the-version.md) — Only the release script writes the version.
 - [ADR-018](ADR-018-recorders-are-bare-pids-that-log-to-the-session.md) — Recorders are bare pids, and each logs to its session directory.
+- [ADR-019](ADR-019-structure-risk-and-test-strength-are-checked-not-reviewed.md) — Structure, risk and test strength are checked, not reviewed.
