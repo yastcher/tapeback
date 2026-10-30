@@ -101,7 +101,8 @@ def test_channels_are_stored_as_int16(tmp_path):
     assert monitor.flags["C_CONTIGUOUS"]
 
 
-def test_a_file_cut_inside_a_frame_keeps_its_whole_frames(tmp_path):
+@pytest.mark.parametrize("half_frame", [0, 2], ids=["at a frame", "inside a frame"])
+def test_a_file_cut_inside_a_frame_keeps_its_whole_frames(tmp_path, half_frame):
     """A recording a killed process left behind can end anywhere, half a frame included.
 
     Bug: the half frame's single sample made the chunk odd, and reshaping it into
@@ -109,8 +110,8 @@ def test_a_file_cut_inside_a_frame_keeps_its_whole_frames(tmp_path):
     """
     path = tmp_path / "cut.wav"
     _write_stereo(path, np.arange(1000, dtype=np.int16), np.arange(1000, 2000, dtype=np.int16))
-    # The 44-byte header, 600 whole frames of 4 bytes, and half of the next one.
-    path.write_bytes(path.read_bytes()[: 44 + 600 * 4 + 2])
+    # The 44-byte header, 600 whole frames of 4 bytes, and maybe half of the next one.
+    path.write_bytes(path.read_bytes()[: 44 + 600 * 4 + half_frame])
 
     mic, monitor, sample_rate = load_stereo_channels(path)
 

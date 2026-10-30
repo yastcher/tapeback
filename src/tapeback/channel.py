@@ -94,13 +94,13 @@ def gate_inactive_regions(
     """
     out = target_16k.copy()
     out_sr = const.SAMPLE_RATE_16K
-    window_samples = max(1, int(const.SILENCE_WINDOW_SEC * out_sr))
+    window_samples = int(const.SILENCE_WINDOW_SEC * out_sr)
     for start in range(0, len(out), window_samples):
         t0 = start / out_sr
         t1 = (start + window_samples) / out_sr
         target_rms = _rms_for_range(t0, t1, target_raw, raw_sr)
         other_rms = _rms_for_range(t0, t1, other_raw, raw_sr)
-        listening = other_rms > 0 and target_rms < other_rms * const.SILENCE_MONITOR_FACTOR
+        listening = target_rms < other_rms * const.SILENCE_MONITOR_FACTOR
         if target_rms < rms_threshold or listening:
             out[start : start + window_samples] = 0.0
     return out
@@ -125,8 +125,8 @@ def _compute_window_rms(
         mic_rms_values.append((i / sample_rate, rms))
 
         if monitor_samples is not None:
-            ms = max(0, min(i, len(monitor_samples)))
-            me = max(0, min(end_i, len(monitor_samples)))
+            ms = min(i, len(monitor_samples))
+            me = min(end_i, len(monitor_samples))
             if me > ms:
                 mon_rms = float(np.sqrt(np.mean(monitor_samples[ms:me].astype(np.float64) ** 2)))
             else:
@@ -154,7 +154,7 @@ def _find_split_points(
 
         if not is_quiet and monitor_rms_values:
             mon_rms = monitor_rms_values[idx]
-            if mon_rms > 0 and mic_rms < mon_rms * const.SILENCE_MONITOR_FACTOR:
+            if mic_rms < mon_rms * const.SILENCE_MONITOR_FACTOR:
                 is_quiet = True
 
         if is_quiet:
@@ -227,7 +227,7 @@ def split_on_silence(
     segments: list[Segment],
     mic_samples: np.ndarray,
     sample_rate: int,
-    pause_threshold: float = 1.0,
+    pause_threshold: float,
     monitor_samples: np.ndarray | None = None,
 ) -> list[Segment]:
     """Split segments at silence gaps detected in raw mic audio.
