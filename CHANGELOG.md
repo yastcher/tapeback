@@ -12,6 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - Architecture tests: the rules of AGENTS.md that code can break fail the test suite, among them a heavy import at the CLI's start, an SDK imported outside its module, text sent past the masking seam and a file over 500 lines. Development-only.
+- A CRAP check before a release: `scripts/pre_release_qa.sh` fails on a function whose complexity outgrows its tests, and the limit only comes down. Development-only.
 
 ### Fixed
 - A recording no longer depends on a pipe nobody read. parecord's messages went there: 64 KiB of them would have stalled the recorder, and its next message after the starting process exited would have killed it. They now go to `monitor.log` and `mic.log` in the session directory, which a failed session keeps.

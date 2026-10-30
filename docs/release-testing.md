@@ -38,6 +38,13 @@ missing system dependencies, broken hooks — and a dependency release that brea
 transcription. CI's own runs install from `uv.lock`; the packages resolve their
 dependencies when they are built, as users get them, so only the stands see such a
 release. `--version` alone did not: the 0.9.9 stands passed with PyAV 19 inside.
+
+After the gate, a check on the tests themselves:
+
+- **CRAP** (`scripts/crap.py`): complexity squared times the uncovered share cubed, plus
+  complexity, per function, from the coverage the gate's pytest wrote. A function over
+  `--max` fails the run; the limit only comes down.
+
 On success it stamps the tree, and `scripts/release.sh` tags only a stamped tree.
 
 Optional extras (these run pip install during postinst, ~30 s + network):

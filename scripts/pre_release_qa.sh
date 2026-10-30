@@ -7,7 +7,8 @@
 #   1. the gate        — scripts/gate.sh --all: the CI checks, then every packaging
 #                        stand (.deb on the deb-e2e images, the Arch package)
 #                        whatever the diff — on main there is no diff to go by
-#   2. e2e quality     — tests/test_e2e_quality.py on real audio and real models.
+#   2. CRAP            — scripts/crap.py over the coverage the gate's pytest wrote
+#   3. e2e quality     — tests/test_e2e_quality.py on real audio and real models.
 #                        Needs the recordings in tests/data/, HF_TOKEN for
 #                        pyannote, and ideally a GPU; takes minutes.
 #
@@ -32,13 +33,21 @@ step() { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 step "gate"
 scripts/gate.sh --all
 
+# Scratch under the repository's tmp/, never /tmp: on some machines /tmp is a small
+# tmpfs with a per-user quota.
+mkdir -p tmp
+
+step "CRAP"
+# Complexity meeting missing tests, per function. The limit sat just above the worst
+# function when it was set, and only comes down: lower it as that function improves,
+# never raise it to let a change in.
+uv run coverage json -q -o tmp/coverage.json
+uv run python scripts/crap.py tmp/coverage.json --max 29
+
 step "e2e quality"
 # Every e2e test skips itself when something it needs is missing, and a run made
 # only of skips exits 0. Here a skip is a failure: the report is read for the
 # count, not the exit code alone.
-# Under the repository's tmp/, never /tmp: on some machines /tmp is a small tmpfs with
-# a per-user quota.
-mkdir -p tmp
 report=$(mktemp tmp/pre_release_qa.XXXXXX)
 trap 'rm -f "$report"' EXIT
 TAPEBACK_RUN_E2E=1 uv run pytest tests/test_e2e_quality.py --no-cov -rs --junitxml="$report"
