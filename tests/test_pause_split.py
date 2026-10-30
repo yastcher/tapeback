@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from tapeback.channel import _pause_points, split_on_silence
+from tapeback.channel import _pauses, split_on_silence
 from tapeback.models import Segment, Word
 
 SR = 16000
@@ -49,9 +49,9 @@ def test_a_missing_monitor_reads_as_silence():
 
 
 @pytest.mark.parametrize(
-    ("mic", "segment", "points"),
+    ("mic", "segment", "pauses"),
     [
-        (SPEECH_PAUSE_SPEECH, Segment(start=0.0, end=3.0, text="x"), [1.5]),
+        (SPEECH_PAUSE_SPEECH, Segment(start=0.0, end=3.0, text="x"), [(1.0, 2.0)]),
         (
             np.concatenate([_level(2.1, 7000), _level(0.9, 0)]),
             Segment(start=0.0, end=3.0, text="x"),
@@ -60,33 +60,45 @@ def test_a_missing_monitor_reads_as_silence():
         (
             np.concatenate([_level(2.0, 7000), _level(1.0, 0)]),
             Segment(start=0.0, end=3.0, text="x"),
-            [2.5],
+            [(2.0, 3.0)],
         ),
         (
             np.concatenate([_level(1.9, 7000), _level(1.1, 0)]),
             Segment(start=0.0, end=3.0, text="x"),
-            [2.45],
+            [(1.9, 3.0)],
         ),
         (
             np.concatenate([_level(2, 0), _level(3, 7000)]),
             Segment(start=2.0, end=5.0, text="x"),
             [],
         ),
+        (
+            np.concatenate([_level(1.0, 7000), _level(0.5, 0), _level(1.5, 7000)]),
+            Segment(start=0.0, end=3.0, text="x"),
+            [],
+        ),
     ],
-    ids=["middle", "short of the threshold", "at the end", "past the threshold", "late start"],
+    ids=[
+        "middle",
+        "short of the threshold",
+        "at the end",
+        "past the threshold",
+        "late start",
+        "a short silence between speech",
+    ],
 )
-def test_a_pause_is_cut_in_its_middle(mic, segment, points):
-    assert _pause_points(segment, mic, SR, 1.0, None) == points
+def test_a_pause_is_a_quiet_stretch_as_long_as_the_threshold(mic, segment, pauses):
+    assert _pauses(segment, mic, SR, 1.0, None) == pauses
 
 
 @pytest.mark.parametrize(
-    ("end", "points"),
-    [(1.0999375, []), (1.1, [1.05]), (1.1000625, [1.05003125])],
+    ("end", "pauses"),
+    [(1.0999375, []), (1.1, [(1.0, 1.1)]), (1.1000625, [(1.0, 1.1000625)])],
 )
-def test_a_pause_needs_one_full_window(end, points):
+def test_a_pause_needs_one_full_window(end, pauses):
     segment = Segment(start=1.0, end=end, text="x")
 
-    assert _pause_points(segment, _level(2, 0), SR, 0.05, _level(2, 1000)) == points
+    assert _pauses(segment, _level(2, 0), SR, 0.05, _level(2, 1000)) == pauses
 
 
 @pytest.mark.parametrize(
@@ -118,14 +130,82 @@ def test_a_pause_as_long_as_the_threshold_cuts():
     ]
 
 
-@pytest.mark.parametrize(
-    ("start", "end"),
-    [(1.45, 2.0), (1.46, 2.0), (1.0, 1.55), (1.0, 1.54)],
-)
-def test_a_word_within_a_twentieth_of_a_second_of_the_cut_stays(start, end):
-    word = _word(start, end, " edge")
-    segment = Segment(start=0.0, end=3.0, text="Edge.", words=[word], speaker="You")
+def _texts(segment: Segment, mic: np.ndarray) -> list[str]:
+    return [piece.text for piece in split_on_silence([segment], mic, SR, 1.0)]
 
-    assert split_on_silence([segment], SPEECH_PAUSE_SPEECH, SR, 1.0) == [
-        Segment(start=start, end=end, text="edge", words=[word], speaker="You")
-    ]
+
+def _said(*words: Word) -> Segment:
+    return Segment(start=0.0, end=words[-1].end + 0.1, text="x", words=list(words), speaker="You")
+
+
+def test_a_single_word_is_never_cut():
+    segment = Segment(
+        start=0.0, end=3.0, text="Hi.", words=[_word(0.1, 2.9, " Hi.")], speaker="You"
+    )
+
+    assert split_on_silence([segment], SPEECH_PAUSE_SPEECH, SR, 1.0) == [segment]
+
+
+def test_the_widest_gap_inside_the_pause_is_the_cut():
+    """Two words fell inside a 2 s pause; the longest silence between words wins."""
+    mic = np.concatenate([_level(1.5, 7000), _level(2.0, 0), _level(1.5, 7000)])
+    segment = _said(
+        _word(0.1, 1.4, " Hello"),
+        _word(1.6, 2.4, " um"),
+        _word(2.6, 2.7, " er"),
+        _word(3.6, 4.9, " Next."),
+    )
+
+    assert _texts(segment, mic) == ["Hello um er", "Next."]
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "texts"),
+    [
+        (0.7, 2.1, ["One long", "Two."]),
+        (0.9, 2.1, ["One", "long Two."]),
+        (0.95, 2.4, ["One", "long Two."]),
+    ],
+    ids=["middle before the pause's", "at the pause's middle", "after it"],
+)
+def test_a_word_across_the_whole_pause_goes_by_its_middle(start, end, texts):
+    """The pause runs from 1.0 to 2.0, so its middle is at 1.5."""
+    segment = _said(_word(0.1, 0.6, " One"), _word(start, end, " long"), _word(2.5, 2.9, " Two."))
+
+    assert _texts(segment, SPEECH_PAUSE_SPEECH) == texts
+
+
+def test_a_pause_before_the_first_word_cuts_nothing():
+    mic = np.concatenate([_level(1.2, 0), _level(2.8, 7000)])
+    segment = Segment(
+        start=0.0,
+        end=4.0,
+        text="First words.",
+        words=[_word(1.3, 2.0, " First"), _word(2.1, 3.9, " words.")],
+        speaker="You",
+    )
+
+    assert split_on_silence([segment], mic, SR, 1.0) == [segment]
+
+
+def test_a_pause_after_the_last_word_cuts_nothing():
+    mic = np.concatenate([_level(2.0, 7000), _level(1.2, 0)])
+    segment = Segment(
+        start=0.0,
+        end=3.2,
+        text="Both words.",
+        words=[_word(0.1, 0.9, " Both"), _word(1.0, 1.9, " words.")],
+        speaker="You",
+    )
+
+    assert split_on_silence([segment], mic, SR, 1.0) == [segment]
+
+
+def test_two_pauses_in_one_gap_cut_once():
+    """A click between two silences splits the pause in two; both pick the same gap."""
+    mic = np.concatenate(
+        [_level(2.0, 7000), _level(1.2, 0), _level(0.1, 7000), _level(1.2, 0), _level(2.0, 7000)]
+    )
+    segment = _said(_word(0.1, 1.9, " One."), _word(4.6, 6.4, " Two."))
+
+    assert _texts(segment, mic) == ["One.", "Two."]

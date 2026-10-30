@@ -359,10 +359,6 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   regular file with every line the FIFO gave, `TAPEBACK_HF_TOKEN` included. Refuse a
   file that is not regular, or read it and never write it; a mutant of `write` that only
   a FIFO tells apart survives until then.
-- **A word across a pause cut lands in both pieces or in neither.** Needs a decision.
-  `_build_sub_segments` gives a word to each piece it reaches within 0.05 s of the cut:
-  (1.47, 1.53) at a cut at 1.5 goes into both, and (1.4, 1.6) into neither. The piece
-  holding most of the word could take it.
 - **A pause longer than half its segment goes unfound when the monitor is silent.**
   Needs a decision. `_find_split_points` sets the silence level from the segment's median
   energy, so 0.5 s of speech, 2 s of silence and 0.5 s of speech put the median in the

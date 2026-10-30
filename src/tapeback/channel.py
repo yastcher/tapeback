@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from tapeback import const
-from tapeback.models import DiarizationSegment, Segment
+from tapeback.models import DiarizationSegment, Segment, Word
 
 
 def _rms_for_range(
@@ -136,18 +136,18 @@ def _compute_window_rms(
     return mic_rms_values, monitor_rms_values
 
 
-def _find_split_points(
+def _find_pauses(
     mic_rms_values: list[tuple[float, float]],
     monitor_rms_values: list[float],
     pause_threshold: float,
     seg_end: float,
-) -> list[float]:
-    """Find split points where mic is silent for >= pause_threshold seconds."""
+) -> list[tuple[float, float]]:
+    """The (start, end) of each stretch where the mic is silent for >= pause_threshold."""
     all_rms = [r for _, r in mic_rms_values]
     adaptive_threshold = float(np.median(all_rms)) * const.SILENCE_ADAPTIVE_FACTOR
 
     silence_start: float | None = None
-    split_points: list[float] = []
+    pauses: list[tuple[float, float]] = []
 
     for idx, (t, mic_rms) in enumerate(mic_rms_values):
         is_quiet = mic_rms < adaptive_threshold
@@ -161,27 +161,24 @@ def _find_split_points(
             if silence_start is None:
                 silence_start = t
         elif silence_start is not None:
-            silence_dur = t - silence_start
-            if silence_dur >= pause_threshold:
-                split_points.append(silence_start + silence_dur / 2)
+            if t - silence_start >= pause_threshold:
+                pauses.append((silence_start, t))
             silence_start = None
 
-    if silence_start is not None:
-        silence_dur = seg_end - silence_start
-        if silence_dur >= pause_threshold:
-            split_points.append(silence_start + silence_dur / 2)
+    if silence_start is not None and seg_end - silence_start >= pause_threshold:
+        pauses.append((silence_start, seg_end))
 
-    return split_points
+    return pauses
 
 
-def _pause_points(
+def _pauses(
     seg: Segment,
     mic_samples: np.ndarray,
     sample_rate: int,
     pause_threshold: float,
     monitor_samples: np.ndarray | None,
-) -> list[float]:
-    """Midpoints of the mic's pauses inside seg that last pause_threshold or longer."""
+) -> list[tuple[float, float]]:
+    """The mic's pauses inside seg that last pause_threshold or longer, as (start, end)."""
     window_samples = int(const.SILENCE_WINDOW_SEC * sample_rate)
     sf = max(0, min(int(seg.start * sample_rate), len(mic_samples)))
     ef = max(0, min(int(seg.end * sample_rate), len(mic_samples)))
@@ -193,33 +190,50 @@ def _pause_points(
     )
     if not mic_rms_values:
         return []
-    return _find_split_points(mic_rms_values, monitor_rms_values, pause_threshold, seg.end)
+    return _find_pauses(mic_rms_values, monitor_rms_values, pause_threshold, seg.end)
 
 
-def _build_sub_segments(seg: Segment, split_points: list[float]) -> list[Segment]:
-    """Build sub-segments from a segment's words and its internal split points."""
-    boundaries = [seg.start, *split_points, seg.end]
+def _cut_index(words: list[Word], pause: tuple[float, float]) -> int | None:
+    """Where a pause cuts a segment's words: before words[k], never through one.
+
+    The gap between two words that reaches furthest into the pause is the most like
+    silence, even where the monitor drowns the mic and nobody paused. When no gap
+    reaches into it, one word covers the pause, and each word falls on the side of the
+    pause's middle its own middle lies on. A pause before the first word or after the
+    last cuts nothing.
+    """
+    start, end = pause
+    cut: int | None = None
+    widest = 0.0
+    for k, (before, after) in enumerate(pairwise(words), start=1):
+        inside = min(after.start, end) - max(before.end, start)
+        if inside > widest:
+            cut, widest = k, inside
+    if cut is not None:
+        return cut
+    middle = (start + end) / 2
+    before = sum((word.start + word.end) / 2 < middle for word in words)
+    return before if 0 < before < len(words) else None
+
+
+def _build_sub_segments(seg: Segment, pauses: list[tuple[float, float]]) -> list[Segment]:
+    """Cut a segment's words at its pauses; each word lands in exactly one piece."""
+    words = seg.words or []
+    cuts = sorted({cut for pause in pauses if (cut := _cut_index(words, pause)) is not None})
+    if not cuts:
+        return [seg]
     result: list[Segment] = []
-
-    for i in range(len(boundaries) - 1):
-        sub_start = boundaries[i]
-        sub_end = boundaries[i + 1]
-
-        sub_words = [
-            w for w in seg.words or [] if w.start >= sub_start - 0.05 and w.end <= sub_end + 0.05
-        ]
-        if not sub_words:
-            continue
+    for first, last in pairwise([0, *cuts, len(words)]):
+        piece = words[first:last]
         result.append(
             Segment(
-                start=sub_words[0].start,
-                end=sub_words[-1].end,
-                text=" ".join(w.word.strip() for w in sub_words),
-                words=sub_words,
+                start=piece[0].start,
+                end=piece[-1].end,
+                text=" ".join(w.word.strip() for w in piece),
+                words=piece,
                 speaker=seg.speaker,
             )
         )
-
     return result
 
 
@@ -238,7 +252,8 @@ def split_on_silence(
     (mic_rms < monitor_rms * 0.3) — the user is quiet while the remote
     speaker is active.
 
-    A contiguous silent region >= pause_threshold seconds triggers a split.
+    A contiguous silent region >= pause_threshold seconds triggers a split, between
+    two words: a cut through a word put it into both pieces or into neither.
 
     A segment without word timestamps (a text-only remote upload) is returned whole:
     nothing says which of its text falls on which side of a pause, and every piece
@@ -246,12 +261,8 @@ def split_on_silence(
     """
     result: list[Segment] = []
     for seg in segments:
-        split_points = (
-            _pause_points(seg, mic_samples, sample_rate, pause_threshold, monitor_samples)
-            if seg.words
-            else []
-        )
-        result.extend(_build_sub_segments(seg, split_points) if split_points else [seg])
+        pauses = _pauses(seg, mic_samples, sample_rate, pause_threshold, monitor_samples)
+        result.extend(_build_sub_segments(seg, pauses))
     return result
 
 
@@ -298,8 +309,8 @@ def filter_mic_segments(
                 != "monitor"
             )
             continue
-        points = _pause_points(seg, mic_samples, sample_rate, pause_threshold, monitor_samples)
-        bounds = [seg.start, *points, seg.end]
+        pauses = _pauses(seg, mic_samples, sample_rate, pause_threshold, monitor_samples)
+        bounds = [seg.start, *((start + end) / 2 for start, end in pauses), seg.end]
         if any(
             _user_speaks(a, b, mic_samples, monitor_samples, sample_rate)
             for a, b in pairwise(bounds)

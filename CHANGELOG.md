@@ -22,6 +22,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A Cyrillic transcript no longer fails the run under a locale whose encoding is not UTF-8. Caching a finished channel for a resume wrote it in that encoding, which cannot hold Cyrillic; the cache is now ASCII.
 - A recording cut off inside an audio frame, as a killed process can leave one, is processed instead of failing with ValueError.
 - Diarization no longer merges two speakers through a third. A speaker joins a merged group only when it resembles every member, not just one of them.
+- A word said in a pause is no longer written twice or lost. A segment is cut between two words now, at the widest silence inside the pause, rather than through whatever word the pause's middle fell on.
 
 ## [0.10.1] — 2026-10-17
 
