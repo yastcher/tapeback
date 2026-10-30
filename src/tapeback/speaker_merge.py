@@ -43,7 +43,7 @@ def _speaker_spectral_profile(
         chunk = monitor_samples[sf:ef]
 
         hop = n_fft // 2
-        for start in range(0, len(chunk) - n_fft, hop):
+        for start in range(0, len(chunk) - n_fft + 1, hop):
             frame = chunk[start : start + n_fft].astype(np.float64)
             spectrum = np.abs(np.fft.rfft(frame * window))[min_bin:max_bin]
             spectra.append(spectrum)
