@@ -10,6 +10,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Added
+- Architecture tests: the rules of AGENTS.md that code can break fail the test suite, among them a heavy import at the CLI's start, an SDK imported outside its module, text sent past the masking seam and a file over 500 lines. Development-only.
+
 ### Fixed
 - A recording no longer depends on a pipe nobody read. parecord's messages went there: 64 KiB of them would have stalled the recorder, and its next message after the starting process exited would have killed it. They now go to `monitor.log` and `mic.log` in the session directory, which a failed session keeps.
 - File descriptors no longer leak: one per transcription, and one per readiness poll while a local summary's model loads.
