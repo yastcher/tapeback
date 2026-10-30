@@ -340,3 +340,26 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   `.env` open when it cannot create its temporary file; fixed upstream in 6a49d6d8,
   unreleased. When a release carries it, raise the bound in `pyproject.toml` and drop
   its two `filterwarnings` lines.
+
+## 13. Found 2026-10-30, while setting up mutation testing
+
+- **The transcription worker may load torch for nothing.** `ctranslate2/__init__.py`
+  imports its converters, and `ctranslate2/specs/model_spec.py` tries `import torch`:
+  where the diarize extra is installed, every process that imports faster-whisper loads
+  torch, several hundred MB, though transcription never uses it. Not measured in the
+  worker yet: compare the worker's peak RSS with torch installed and with its import
+  blocked (a `sys.meta_path` finder in `_worker.py`) before changing anything. Every
+  pytest process loads torch the same way: collecting
+  `tests/regressions/test_bench_measures_its_own_grid.py` loads the bench, which imports
+  the transcriber.
+- **A FIFO as the user's settings file becomes a plain file holding all it served.**
+  Needs a decision. pydantic-settings reads a FIFO env file, but `_user_env` asks
+  `Path.is_file()`, which is false for one: `tapeback setup` reports the values it
+  serves as defaults, and its first write (`set_key`, then `os.replace`) leaves a
+  regular file with every line the FIFO gave, `TAPEBACK_HF_TOKEN` included. Refuse a
+  file that is not regular, or read it and never write it; a mutant of `write` that only
+  a FIFO tells apart survives until then.
+- **A pause longer than half its segment goes unfound when the monitor is silent.**
+  Needs a decision. `_find_split_points` sets the silence level from the segment's median
+  energy, so 0.5 s of speech, 2 s of silence and 0.5 s of speech put the median in the
+  silence and nothing is split; a loud monitor during the pause still finds it.

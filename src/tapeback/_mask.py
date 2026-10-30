@@ -155,17 +155,12 @@ class Masker:
         return dict(self._counts)
 
     def unmask(self, text: str) -> str:
-        """Restore the originals this masker replaced."""
-        if not text or not self._to_original:
-            return text
-        out = text
-        # Longest placeholder first: the closing bracket already prevents [X_1] from
-        # matching inside [X_11], but be explicit and order-independent.
-        for placeholder, original in sorted(
-            self._to_original.items(), key=lambda kv: len(kv[0]), reverse=True
-        ):
-            out = out.replace(placeholder, original)
-        return out
+        """Restore the originals this masker replaced; a placeholder it never made stays.
+
+        One pass over the placeholders in the text: a restored value is never scanned
+        again, so an original that looks like a placeholder comes back as it was.
+        """
+        return _PLACEHOLDER_RE.sub(lambda m: self._to_original.get(m[0], m[0]), text)
 
     def residual_placeholders(self, text: str) -> list[str]:
         """Placeholder-shaped fragments left after unmasking — the model invented an

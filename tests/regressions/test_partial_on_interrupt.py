@@ -127,9 +127,31 @@ def test_partial_transcript_is_marked_in_the_note():
         ),
     )
 
-    assert "partial: true" in markdown
-    assert "  - partial" in markdown
-    assert "Interrupted" in markdown
+    assert markdown == (
+        "---\n"
+        "date: 2026-08-06\n"
+        'time: "12:00"\n'
+        'duration: "00:30:00"\n'
+        "language: ru\n"
+        'audio: "[[attachments/audio/x.wav]]"\n'
+        "tags:\n"
+        "  - meeting\n"
+        "  - transcript\n"
+        "  - partial\n"
+        "partial: true\n"
+        "---\n"
+        "\n"
+        "# Meeting 2026-08-06 12:00\n"
+        "\n"
+        "**Duration:** 30m 0s | **Language:** ru\n"
+        "\n"
+        "> [!warning] Interrupted — this transcript covers only part of the recording. "
+        "Re-run to complete it.\n"
+        "\n"
+        "---\n"
+        "\n"
+        "[00:00:00] **You:** реплика.\n"
+    )
 
 
 def test_complete_transcript_carries_no_partial_marker():

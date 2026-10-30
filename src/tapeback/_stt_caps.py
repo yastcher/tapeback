@@ -31,8 +31,6 @@ class RemoteSttCapabilities:
     word_timestamps: bool
     # Backend returns speaker-labeled segments.
     remote_diarize: bool
-    # Modern context API: languages[] + keywords[] (not language=).
-    modern_context: bool
     # Max seconds per upload the API accepts (None = size limit only).
     max_upload_seconds: float | None
 
@@ -60,21 +58,18 @@ def openai_capabilities_for(model: str) -> RemoteSttCapabilities:
         return RemoteSttCapabilities(
             word_timestamps=True,
             remote_diarize=False,
-            modern_context=False,
             max_upload_seconds=None,
         )
     if name == OPENAI_MODEL_GPT_DIARIZE:
         return RemoteSttCapabilities(
             word_timestamps=False,
             remote_diarize=True,
-            modern_context=False,
             max_upload_seconds=const.OPENAI_DIARIZE_MAX_UPLOAD_SECONDS,
         )
     if name == OPENAI_MODEL_GPT_TRANSCRIBE:
         return RemoteSttCapabilities(
             word_timestamps=False,
             remote_diarize=False,
-            modern_context=True,
             max_upload_seconds=const.OPENAI_GPT_TRANSCRIBE_MAX_UPLOAD_SECONDS,
         )
     supported = ", ".join(_OPENAI_SUPPORTED_MODELS)

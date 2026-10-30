@@ -29,19 +29,9 @@ from tapeback.settings import Settings
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _pyannote_available() -> bool:
-    try:
-        import pyannote.audio  # noqa: F401, PLC0415
-
-        return True
-    except ImportError:
-        return False
-
-
-requires_pyannote = pytest.mark.skipif(
-    not _pyannote_available(),
-    reason="pyannote-audio not installed (install tapeback[diarize])",
-)
+# A marker, not a skipif, so a run can leave these tests out with `-m "not pyannote"`;
+# tests/conftest.py skips them where pyannote is absent.
+requires_pyannote = pytest.mark.pyannote
 
 
 def _dbus_next_available() -> bool:

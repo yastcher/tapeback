@@ -10,9 +10,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Added
+- Architecture tests: the rules of AGENTS.md that code can break fail the test suite, among them a heavy import at the CLI's start, an SDK imported outside its module, text sent past the masking seam and a file over 500 lines. Development-only.
+- A CRAP check before a release: `scripts/pre_release_qa.sh` fails on a function whose complexity outgrows its tests, and the limit only comes down. Development-only.
+- Mutation testing before a release: mutmut changes the functions of nine modules, and `scripts/pre_release_qa.sh` fails when more of the changes go unnoticed by the tests than before. Development-only.
+
 ### Fixed
 - A recording no longer depends on a pipe nobody read. parecord's messages went there: 64 KiB of them would have stalled the recorder, and its next message after the starting process exited would have killed it. They now go to `monitor.log` and `mic.log` in the session directory, which a failed session keeps.
 - File descriptors no longer leak: one per transcription, and one per readiness poll while a local summary's model loads.
+- A subtitle credit cut out of the middle of a sentence no longer comes back in the note. Local Whisper gives every segment its words, and the pass that marks unsure words in italics rebuilt the text from them, credit included.
+- A Cyrillic transcript no longer fails the run under a locale whose encoding is not UTF-8. Caching a finished channel for a resume wrote it in that encoding, which cannot hold Cyrillic; the cache is now ASCII.
+- A recording cut off inside an audio frame, as a killed process can leave one, is processed instead of failing with ValueError.
+- Diarization no longer merges two speakers through a third. A speaker joins a merged group only when it resembles every member, not just one of them.
+- A word said in a pause is no longer written twice or lost. A segment is cut between two words now, at the widest silence inside the pause, rather than through whatever word the pause's middle fell on.
 
 ## [0.10.1] — 2026-10-17
 

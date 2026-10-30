@@ -101,7 +101,9 @@ def _summary_texts(summary: Summary) -> list[str]:
     """Every free-text field of a Summary, for scanning."""
     texts = [summary.brief, *summary.key_decisions]
     for item in summary.action_items:
-        texts.extend([item.assignee, item.action, item.deadline or ""])
+        texts += [item.assignee, item.action]
+        if item.deadline is not None:
+            texts.append(item.deadline)
     return texts
 
 
@@ -210,7 +212,7 @@ def extract_transcript_from_markdown(md_content: str) -> str:
     # Find the transcript header
     match = re.search(r"^# Meeting .+", md_content, re.MULTILINE)
     if match:
-        return _RAW_TRANSCRIPT.sub("", md_content[match.start() :], count=1)
+        return _RAW_TRANSCRIPT.sub("", md_content[match.start() :])
     return ""
 
 
@@ -250,7 +252,7 @@ def maybe_summarize(md_path: Path | str | None, settings: Settings) -> None:
     if md_path is None:
         return
 
-    path = Path(md_path) if isinstance(md_path, str) else md_path
+    path = Path(md_path)
 
     if not settings.summarize:
         return

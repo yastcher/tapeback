@@ -175,7 +175,8 @@ def store(
     try:
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / key.filename
-        path.write_text(json.dumps(_to_payload(segments, info), ensure_ascii=False))
+        # ASCII JSON, the rest escaped: no locale's encoding can fail to write it.
+        path.write_text(json.dumps(_to_payload(segments, info)))
         _prune(directory)
     except OSError:
         return None
@@ -185,9 +186,7 @@ def store(
 def _prune(directory: Path, keep: int = MAX_RESUME_ENTRIES) -> None:
     """Drop the least recently modified entries so the directory stays bounded."""
     entries = sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime)
-    if len(entries) <= keep:
-        return
-    for stale in entries[: len(entries) - keep]:
+    for stale in entries[: max(0, len(entries) - keep)]:
         stale.unlink(missing_ok=True)
 
 

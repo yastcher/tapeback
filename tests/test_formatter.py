@@ -1,8 +1,14 @@
 """Formatter tests — markdown generation and vault I/O pipelines."""
 
+import pytest
+
 from tapeback.formatter import (
     TranscriptMeta,
+    _format_duration_hms,
+    _format_duration_human,
+    _format_timecode,
     _mark_low_confidence_words,
+    _merge_consecutive_speakers,
     format_live_markdown,
     format_markdown,
 )
@@ -10,12 +16,30 @@ from tapeback.models import Segment, Word
 from tapeback.vault import remove_live_markdown, save_live_markdown, save_to_vault
 
 
+@pytest.mark.parametrize(
+    ("seconds", "hms", "human", "timecode"),
+    [
+        (59.0, "00:00:59", "59s", "[00:00:59]"),
+        (60.0, "00:01:00", "1m 0s", "[00:01:00]"),
+        (61.0, "00:01:01", "1m 1s", "[00:01:01]"),
+        (3599.0, "00:59:59", "59m 59s", "[00:59:59]"),
+        (3600.0, "01:00:00", "1h 0s", "[01:00:00]"),
+        (3601.0, "01:00:01", "1h 1s", "[01:00:01]"),
+    ],
+)
+def test_seconds_render_across_minute_and_hour_boundaries(seconds, hms, human, timecode):
+    assert _format_duration_hms(seconds) == hms
+    assert _format_duration_human(seconds) == human
+    assert _format_timecode(seconds) == timecode
+
+
 def test_format_markdown_pipeline():
     """format_markdown should produce complete markdown with frontmatter, timecodes,
     speaker labels, short-segment filtering, and consecutive-speaker merging."""
     segments = [
-        # Short segment — should be filtered out (< 1s)
-        Segment(start=0.0, end=0.5, text="Too short.", speaker="You"),
+        # Short segment — should be filtered out (< 1s). Not at 0, where its end
+        # minus its start equals its end plus its start.
+        Segment(start=0.3, end=0.8, text="Too short.", speaker="You"),
         # Two consecutive "You" segments — should merge
         Segment(start=1.0, end=5.0, text="Hello there.", speaker="You"),
         Segment(start=5.0, end=10.0, text="How are you?", speaker="You"),
@@ -36,31 +60,85 @@ def test_format_markdown_pipeline():
         ),
     )
 
-    # Frontmatter
-    assert result.startswith("---\n")
-    assert "date: 2026-03-17" in result
-    assert 'time: "14:30"' in result
-    assert 'duration: "01:23:45"' in result
-    assert "language: en" in result
-    assert "[[attachments/audio/2026-03-17_14-30-00.wav]]" in result
-    assert "  - meeting" in result
-    assert "  - transcript" in result
+    # The short segment is gone, and consecutive segments of a speaker merged.
+    assert result == (
+        "---\n"
+        "date: 2026-03-17\n"
+        'time: "14:30"\n'
+        'duration: "01:23:45"\n'
+        "language: en\n"
+        'audio: "[[attachments/audio/2026-03-17_14-30-00.wav]]"\n'
+        "tags:\n"
+        "  - meeting\n"
+        "  - transcript\n"
+        "---\n"
+        "\n"
+        "# Meeting 2026-03-17 14:30\n"
+        "\n"
+        "**Duration:** 1h 23m 45s | **Language:** en\n"
+        "\n"
+        "---\n"
+        "\n"
+        "[00:00:01] **You:** Hello there. How are you?\n"
+        "\n"
+        "[00:01:23] **Speaker 1:** I'm fine. Thanks.\n"
+        "\n"
+        "[00:02:45] **You:** Great.\n"
+    )
 
-    # Short segment filtered
-    assert "Too short" not in result
 
-    # Consecutive speakers merged
-    assert "**You:** Hello there. How are you?" in result
-    assert "**Speaker 1:** I'm fine. Thanks." in result
-    assert "**You:** Great." in result
+def test_a_session_without_a_time_shows_midnight():
+    """`start --name standup` names a session with no date and no time in it."""
+    lines = format_markdown(
+        segments=[],
+        meta=TranscriptMeta(
+            session_name="standup",
+            audio_rel_path="attachments/audio/standup.wav",
+            duration_seconds=5.0,
+            language="en",
+        ),
+    ).splitlines()
 
-    # Timecodes
-    assert "[00:00:01]" in result
-    assert "[00:01:23]" in result
-    assert "[00:02:45]" in result
+    assert lines[1] == "date: standup"
+    assert lines[2] == 'time: "00:00"'
+    assert lines[11] == "# Meeting standup 00:00"
+    assert format_live_markdown([], "standup", "en").splitlines()[0] == (
+        "# Live Transcript standup 00:00"
+    )
 
-    # 3 timecoded lines (not 5 or 6)
-    assert result.count("[00:") == 3
+
+@pytest.mark.parametrize(
+    ("second_start", "blocks"),
+    [
+        (5.5, [(0.0, "You", "First. Second.")]),
+        (6.0, [(0.0, "You", "First."), (6.0, "You", "Second.")]),
+        (6.5, [(0.0, "You", "First."), (6.5, "You", "Second.")]),
+    ],
+)
+def test_a_pause_of_a_second_splits_a_speakers_blocks(second_start, blocks):
+    segments = [
+        Segment(start=0.0, end=5.0, text="First.", speaker="You"),
+        Segment(start=second_start, end=second_start + 5.0, text="Second.", speaker="You"),
+    ]
+
+    assert _merge_consecutive_speakers(segments) == blocks
+
+
+@pytest.mark.parametrize(
+    ("second_end", "blocks"),
+    [
+        (59.0, [(0.0, "You", "First. Second.")]),
+        (60.0, [(0.0, "You", "First."), (30.0, "You", "Second.")]),
+        (61.0, [(0.0, "You", "First."), (30.0, "You", "Second.")]),
+    ],
+)
+def test_a_block_closes_at_sixty_seconds(second_end, blocks):
+    segments = [
+        Segment(start=0.0, end=30.0, text="First.", speaker="You"),
+        Segment(start=30.0, end=second_end, text="Second.", speaker="You"),
+    ]
+
+    assert _merge_consecutive_speakers(segments) == blocks
 
 
 def test_format_markdown_preserves_pauses():
@@ -212,6 +290,38 @@ def test_mark_low_confidence_words_no_words():
     assert result.text == "No words here."
 
 
+def test_a_word_at_the_threshold_is_not_marked():
+    segment = Segment(
+        start=0.0,
+        end=3.0,
+        text="below at above",
+        speaker="You",
+        words=[
+            Word(start=0.0, end=1.0, word=" below", probability=0.34),
+            Word(start=1.0, end=2.0, word=" at", probability=0.35),
+            Word(start=2.0, end=3.0, word=" above", probability=0.36),
+        ],
+    )
+
+    assert _mark_low_confidence_words(segment).text == "*below* at above"
+
+
+def test_a_blank_word_is_skipped_not_taken_for_the_end():
+    segment = Segment(
+        start=0.0,
+        end=3.0,
+        text="Hello world",
+        speaker="You",
+        words=[
+            Word(start=0.0, end=1.0, word=" Hello", probability=0.9),
+            Word(start=1.0, end=1.5, word=" ", probability=0.9),
+            Word(start=1.5, end=3.0, word=" world", probability=0.2),
+        ],
+    )
+
+    assert _mark_low_confidence_words(segment).text == "Hello *world*"
+
+
 # --- format_live_markdown ---
 
 
@@ -228,14 +338,22 @@ def test_format_live_markdown_with_segments():
         language="en",
     )
 
-    assert "# Live Transcript 2026-04-18 14:30" in result
-    assert "recording in progress" in result
-    assert "**You:** Hello there." in result
-    assert "**Other:** Hi, how are you?" in result
-    assert "Final transcript with diarization" in result
-    # No YAML front matter
-    assert "---\ndate:" not in result
-    assert "duration:" not in result
+    # No front matter and no duration: the recording is still going.
+    assert result == (
+        "# Live Transcript 2026-04-18 14:30\n"
+        "\n"
+        "**Language:** en | **Status:** recording in progress\n"
+        "\n"
+        "---\n"
+        "\n"
+        "[00:00:01] **You:** Hello there.\n"
+        "\n"
+        "[00:00:05] **Other:** Hi, how are you?\n"
+        "\n"
+        "---\n"
+        "\n"
+        "*Live preview. Final transcript with diarization will replace this file.*\n"
+    )
 
 
 def test_format_live_markdown_empty_segments():
@@ -246,8 +364,19 @@ def test_format_live_markdown_empty_segments():
         language="en",
     )
 
-    assert "Waiting for first transcription cycle" in result
-    assert "# Live Transcript" in result
+    assert result == (
+        "# Live Transcript 2026-04-18 14:30\n"
+        "\n"
+        "**Language:** en | **Status:** recording in progress\n"
+        "\n"
+        "---\n"
+        "\n"
+        "*Waiting for first transcription cycle...*\n"
+        "\n"
+        "---\n"
+        "\n"
+        "*Live preview. Final transcript with diarization will replace this file.*\n"
+    )
 
 
 # --- save_live_markdown / remove_live_markdown ---

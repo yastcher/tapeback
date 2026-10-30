@@ -11,6 +11,7 @@ import pytest
 
 from tapeback import cli as cli_module
 from tapeback.cli import cli
+from tapeback.settings import Settings
 
 
 def _lines(result) -> list[str]:
@@ -105,10 +106,35 @@ def test_no_diarization_question_when_the_stt_model_labels_speakers(
     )
 
 
+def test_a_single_env_file_is_the_user_file(runner, real_env_files, monkeypatch):
+    """Settings may name one file rather than a tuple of them."""
+    user_config, _ = real_env_files
+    monkeypatch.setitem(Settings.model_config, "env_file", user_config)
+
+    result = runner.invoke(cli, ["setup", "--no-diarize"])
+
+    assert result.exit_code == 0, result.output
+    assert user_config.read_text() == "TAPEBACK_DIARIZE=false\n"
+
+
+def test_run_from_the_config_directory_names_the_file_once(runner, real_env_files, monkeypatch):
+    """There ./.env is the user file itself, not a second file overriding it."""
+    user_config, _ = real_env_files
+    user_config.write_text("TAPEBACK_DIARIZE=false\n")
+    monkeypatch.chdir(user_config.parent)
+
+    result = runner.invoke(cli, ["setup"])
+
+    assert result.exit_code == 0, result.output
+    assert _lines(result)[0] == "Diarization: off (./.env)"
+
+
 def test_a_new_user_file_is_private(runner, real_env_files):
+    """Even where no ~/.config exists yet."""
     user_config, _ = real_env_files
     user_config.unlink()
     user_config.parent.rmdir()
+    user_config.parent.parent.rmdir()
 
     result = runner.invoke(cli, ["setup", "--no-summarize"])
 

@@ -76,6 +76,7 @@ dev = [
     "anthropic>=0.40.0",
     "openai>=1.50.0",
     "dbus-next>=0.2.3",
+    "mutmut>=3.8.1,<4",
 ]
 
 [tool.ruff]
@@ -124,8 +125,9 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=tapeback --cov-report=term-missing"
-# /tmp is a small tmpfs with a per-user quota on some machines; kept basetemps once
-# filled it and broke every command. A passing run keeps nothing; a failing one, its own.
+markers = ["pyannote: needs pyannote-audio, and so torch; skipped where it is not installed"]
+# Basetemps live under the repository's tmp/ (tests/conftest.py). A passing run keeps
+# nothing; a failing one, its own.
 tmp_path_retention_count = 1
 tmp_path_retention_policy = "failed"
 # A new warning fails the run. The known ones stay visible, each with its reason:
@@ -152,7 +154,7 @@ omit = ["src/tapeback/tray.py"]  # GUI module, requires X display — tested loc
 [tool.coverage.report]
 show_missing = true
 # A ratchet: raised as coverage grows, never lowered to let a change in (AGENTS.md, Testing).
-fail_under = 94.5
+fail_under = 94.8
 # The floor is compared with the total rounded to this many places: at the default 0,
 # 93.6% rounds to 94 and passes a floor of 94.
 precision = 2
@@ -160,6 +162,39 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "pragma: no cover",
 ]
+
+[tool.mutmut]
+# Mutation testing, run from scratch by scripts/pre_release_qa.sh. A slice of modules
+# whose behaviour unit tests pin, widened module by module as each one holds.
+source_paths = ["src/tapeback"]
+only_mutate = [
+    "src/tapeback/_mask.py",
+    "src/tapeback/_quality.py",
+    "src/tapeback/_resume.py",
+    "src/tapeback/_stt_caps.py",
+    "src/tapeback/_user_env.py",
+    "src/tapeback/channel.py",
+    "src/tapeback/formatter.py",
+    "src/tapeback/speaker_merge.py",
+    "src/tapeback/summarizer.py",
+]
+# What the tests read besides tests/: the gate and release scripts, packaging, README.
+also_copy = ["scripts", "packaging", ".github", "README.md", "CHANGELOG.md", "AGENTS.md"]
+# No coverage: its fail_under fails every partial run, and a failed run reads as a
+# killed mutant. The architecture tests read the sources, which mutmut rewrites. The
+# pyannote tests import pyannote.audio, 300 MB more in every worker that runs one;
+# without them no mutant of the slice is left untested.
+pytest_add_cli_args = [
+    "--no-cov",
+    "-p",
+    "no:cacheprovider",
+    "--ignore=tests/test_architecture.py",
+    "-m",
+    "not pyannote",
+]
+# Workers start from a clean server, not from the process whose first run of the whole
+# suite loaded torch: forked from that one, each grows towards its size.
+process_isolation = "forkserver"
 
 [tool.ty.environment]
 python-version = "3.13"

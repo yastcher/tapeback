@@ -126,7 +126,9 @@ def count_repeated_phrases(
     normal speech, whereas one repeating on its own heels is a decoding loop.
     """
     words = _words(text)
-    if size < 1 or len(words) < size * min_repeats:
+    # An empty phrase matches itself without end. Too few words need no check here:
+    # the loop below does not start.
+    if size < 1 or min_repeats < 1:
         return 0
 
     loops = 0

@@ -47,6 +47,10 @@ def test_no_hallucination_markers_in_clean_text():
         ("да да да потом нет нет нет", 2),
         ("совершенно обычная фраза", 0),
         ("", 0),
+        # A doubled word after another word is still emphasis.
+        ("ладно да да", 0),
+        # Different words, though they share an upper case.
+        ("Maße Masse Maße", 0),
     ],
 )
 def test_count_repeated_words(text, expected):
@@ -84,10 +88,30 @@ def test_count_repeated_words_splits_on_apostrophes():
         ("a b c a b c a b c", 1),
         ("совсем другая речь без повторов вообще", 0),
         ("", 0),
+        # Exactly two phrases' worth of words, nothing around them.
+        ("something happens wrong something happens wrong", 1),
+        # A loop that starts one word in.
+        ("so something happens wrong something happens wrong", 1),
+        # Two loops back to back.
+        ("we need the we need the rag is broken rag is broken", 2),
     ],
 )
 def test_count_repeated_phrases(text, expected):
     assert count_repeated_phrases(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "size", "min_repeats", "expected"),
+    [
+        ("да да ладно", 0, 2, 0),
+        ("да да ладно", 1, 2, 1),
+        ("да ладно да ладно", 2, 2, 1),
+        ("да ладно", 1, 0, 0),
+        ("да ладно", 1, 1, 2),
+    ],
+)
+def test_count_repeated_phrases_needs_a_word_and_a_repeat(text, size, min_repeats, expected):
+    assert count_repeated_phrases(text, size=size, min_repeats=min_repeats) == expected
 
 
 def test_count_repeated_phrases_ignores_non_adjacent_recurrence():
@@ -109,6 +133,18 @@ def test_strip_hallucinations_leaves_clean_text_byte_identical():
     """Clean text must come back untouched — an earlier version ate the full stop."""
     text = "Обычная реплика про pipeline."
     assert strip_hallucinations(text) is text
+
+
+@pytest.mark.parametrize(
+    ("text", "cleaned"),
+    [
+        ("решение Субтитры DimaTorzok, штука", "решение, штука"),
+        ("обсудили SpaceX Субтитры DimaTorzok", "обсудили SpaceX"),
+    ],
+)
+def test_strip_hallucinations_tidies_only_the_separators(text, cleaned):
+    """No space is left before a comma, and a word's last letter stays."""
+    assert strip_hallucinations(text) == cleaned
 
 
 def test_strip_hallucinations_can_empty_a_segment():

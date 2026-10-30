@@ -1,5 +1,7 @@
 """Spectral-profile clustering — merges over-segmented pyannote speakers."""
 
+from itertools import combinations
+
 import numpy as np
 
 from tapeback import const
@@ -43,8 +45,9 @@ def _speaker_spectral_profile(
         chunk = monitor_samples[sf:ef]
 
         hop = n_fft // 2
-        for start in range(0, len(chunk) - n_fft, hop):
-            frame = chunk[start : start + n_fft].astype(np.float64)
+        for start in range(0, len(chunk) - n_fft + 1, hop):
+            # The float64 window makes the product float64, whatever the samples are.
+            frame = chunk[start : start + n_fft]
             spectrum = np.abs(np.fft.rfft(frame * window))[min_bin:max_bin]
             spectra.append(spectrum)
 
@@ -63,13 +66,35 @@ def _similarity(a: np.ndarray, b: np.ndarray) -> float | None:
     return float(np.dot(a, b) / (norm_a * norm_b))
 
 
-def _apply_merge(merge_map: dict[str, str], sp_a: str, sp_b: str, speakers: list[str]) -> None:
-    """Point every speaker currently mapped to sp_b's root at sp_a's root."""
-    target = merge_map[sp_b]
-    canonical = merge_map[sp_a]
-    for s in speakers:
-        if merge_map[s] == target:
-            merge_map[s] = canonical
+def _weakest_link(
+    profiles: dict[str, np.ndarray], first: list[str], second: list[str]
+) -> float | None:
+    """The similarity of the least alike pair across two groups; None if one is silent."""
+    similarities = [_similarity(profiles[a], profiles[b]) for a in first for b in second]
+    known = [similarity for similarity in similarities if similarity is not None]
+    return min(known) if len(known) == len(similarities) else None
+
+
+def _merge_alike(
+    profiles: dict[str, np.ndarray], speakers: list[str], threshold: float
+) -> list[list[str]]:
+    """Group speakers so that every two in a group reach the threshold.
+
+    The most alike groups merge first. Merging any pair that reached it chained the
+    groups: A like B and B like C put A with C, whom A did not resemble.
+    """
+    groups = [[speaker] for speaker in speakers]
+    while True:
+        links = [
+            (link, i, j)
+            for i, j in combinations(range(len(groups)), 2)
+            if (link := _weakest_link(profiles, groups[i], groups[j])) is not None
+            and link >= threshold
+        ]
+        if not links:
+            return groups
+        _, i, j = max(links)
+        groups[i] += groups.pop(j)
 
 
 def merge_similar_speakers(
@@ -86,7 +111,8 @@ def merge_similar_speakers(
 
     Two-tier thresholds:
     - Standard merge (similarity_threshold, default 0.96): merges near-identical
-      profiles (over-segmented single speaker, cosine ~0.98-0.99).
+      profiles (over-segmented single speaker, cosine ~0.98-0.99), and only into a
+      group whose every member the speaker resembles.
     - Minor speaker absorption (MINOR_SPEAKER_MERGE_THRESHOLD = 0.92): when one
       speaker has very little speech (< 15s and < 20% of dominant), they are likely
       echo/crosstalk artifacts with unreliable spectral profiles. A lower threshold
@@ -125,14 +151,11 @@ def merge_similar_speakers(
 
     merge_map: dict[str, str] = {s: s for s in speakers}
 
-    # Real speakers merge with each other only at the standard threshold.
-    for i, sp_a in enumerate(majors):
-        for sp_b in majors[i + 1 :]:
-            if merge_map[sp_a] == merge_map[sp_b]:
-                continue
-            similarity = _similarity(profiles[sp_a], profiles[sp_b])
-            if similarity is not None and similarity >= similarity_threshold:
-                _apply_merge(merge_map, sp_a, sp_b, speakers)
+    # Real speakers merge with each other only at the standard threshold. A group takes
+    # the label of its first speaker in sorted order.
+    for group in _merge_alike(profiles, majors, similarity_threshold):
+        for sp in group:
+            merge_map[sp] = group[0]
 
     # A minor cluster joins the ONE speaker it resembles most. Merging it pair by pair
     # let a cluster that resembles two real speakers join them through itself.
@@ -146,9 +169,6 @@ def merge_similar_speakers(
             best_similarity, best = max(scored)
             if best_similarity >= MINOR_SPEAKER_MERGE_THRESHOLD:
                 merge_map[sp] = merge_map[best]
-
-    if all(merge_map[s] == s for s in speakers):
-        return diarization_segments
 
     return [
         DiarizationSegment(speaker=merge_map[seg.speaker], start=seg.start, end=seg.end)

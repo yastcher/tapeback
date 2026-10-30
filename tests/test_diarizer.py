@@ -694,8 +694,7 @@ def test_merge_similar_speakers_same_voice():
     ]
 
     merged = merge_similar_speakers(segments, audio, sr)
-    speakers = {seg.speaker for seg in merged}
-    assert len(speakers) == 1
+    assert merged == [DiarizationSegment("SPEAKER_00", s.start, s.end) for s in segments]
 
 
 def test_merge_similar_speakers_different_voices():

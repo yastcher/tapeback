@@ -38,6 +38,22 @@ missing system dependencies, broken hooks — and a dependency release that brea
 transcription. CI's own runs install from `uv.lock`; the packages resolve their
 dependencies when they are built, as users get them, so only the stands see such a
 release. `--version` alone did not: the 0.9.9 stands passed with PyAV 19 inside.
+
+After the gate, two checks on the tests themselves (ADR-019):
+
+- **CRAP** (`scripts/crap.py`): complexity squared times the uncovered share cubed, plus
+  complexity, per function, from the coverage the gate's pytest wrote. A function over
+  `--max` fails the run; the limit only comes down.
+- **Mutation testing** (mutmut, the slice in `[tool.mutmut]`): every function of the
+  slice is changed in small ways, and the tests must notice. It runs from scratch, two
+  workers at a time (`MUTMUT_CHILDREN` sets more, and the cap grows with them), in a
+  memory-capped systemd scope: a mutant can make code allocate without end, and the
+  kernel then kills that worker instead of the desktop. mutmut calls such a mutant a
+  segfault; the ratchet counts it as died, not survived. `scripts/mutation_ratchet.py`
+  fails the run when more mutants survive, or go untested, than the maxima
+  `pre_release_qa.sh` passes it, or when a mutant was left unchecked, and asks for the
+  maxima to come down when fewer do. `mutmut results` lists the survivors and `mutmut show <name>` shows one.
+
 On success it stamps the tree, and `scripts/release.sh` tags only a stamped tree.
 
 Optional extras (these run pip install during postinst, ~30 s + network):

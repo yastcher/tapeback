@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from tapeback.channel import (
+    _rms_for_range,
     classify_segment_by_channel,
     filter_mic_segments,
     filter_silent_segments,
@@ -14,6 +15,16 @@ from tapeback.channel import (
 )
 from tapeback.models import DiarizationSegment, Segment, Word
 from tests.fixtures import create_mono_wav, create_stereo_wav
+
+SR = 16000
+
+
+def _level(seconds: float, value: int) -> np.ndarray:
+    return np.full(round(seconds * SR), value, dtype=np.int16)
+
+
+def _word(start: float, end: float, text: str) -> Word:
+    return Word(start=start, end=end, word=text, probability=0.9)
 
 
 def test_stereo_channel_pipeline_flow(stereo_wav):
@@ -176,13 +187,83 @@ def test_filter_silent_segments_drops_zero_duration_segment():
     assert filter_silent_segments([seg], loud, sr) == []
 
 
+def test_rms_counts_the_first_sample_and_nothing_of_an_empty_range():
+    samples = np.array([4, 0, 0, 0], dtype=np.int16)
+
+    assert _rms_for_range(0.0, 1.0, samples, 4) == 2.0
+    assert _rms_for_range(0.0, 0.0, samples, 4) == 0.0
+
+
+@pytest.mark.parametrize(("level", "kept"), [(199, False), (200, True), (201, True)])
+def test_filter_silent_segments_keeps_audio_at_the_threshold(level, kept):
+    worded = Segment(start=0.0, end=1.0, text="Hi", words=[_word(0.0, 1.0, " Hi")])
+    plain = Segment(start=0.0, end=1.0, text="Hi.")
+
+    assert filter_silent_segments([worded], _level(1, level), SR) == ([worded] if kept else [])
+    assert filter_silent_segments([plain], _level(1, level), SR) == ([plain] if kept else [])
+
+
+def test_filter_silent_segments_rebuilds_the_segment_after_a_dropped_one():
+    channel = np.concatenate([_level(1, 0), _level(1, 7000)])
+    lost = Segment(
+        start=0.1, end=0.9, text="Lost.", words=[_word(0.1, 0.9, " Lost.")], speaker="You"
+    )
+    words = [_word(1.1, 1.4, " Hello"), _word(1.5, 1.9, " world.")]
+    said = Segment(start=1.1, end=1.9, text="Hello world.", words=words, speaker="You")
+
+    assert filter_silent_segments([lost, said], channel, SR) == [
+        Segment(start=1.1, end=1.9, text="Hello world.", words=words, speaker="You")
+    ]
+
+
+def test_classify_counts_the_first_sample():
+    mic = _level(1, 0)
+    mic[0] = 1000
+    monitor = _level(1, 0)
+
+    assert classify_segment_by_channel(0.0, 1.0, mic, monitor, SR) == "mic"
+    assert classify_segment_by_channel(0.0, 0.0, mic, monitor, SR) is None
+
+
+@pytest.mark.parametrize(
+    ("level", "first", "second"),
+    [(4194303.0, None, None), (4194304.0, None, None), (4194305.0, "mic", "monitor")],
+)
+def test_classify_needs_more_than_twice_the_energy(level, first, second):
+    """At 2**21 the epsilon is below float resolution, so the edge is exactly twice."""
+    louder = np.full(SR, level)
+    other = np.full(SR, 2097152.0)
+
+    assert classify_segment_by_channel(0.0, 1.0, louder, other, SR) == first
+    assert classify_segment_by_channel(0.0, 1.0, other, louder, SR) == second
+
+
+@pytest.mark.parametrize(("level", "kept"), [(199, False), (200, True), (201, True)])
+def test_mic_filter_keeps_a_wordless_segment_at_the_silence_threshold(level, kept):
+    segment = Segment(start=0.0, end=1.0, text="Hi.")
+
+    assert filter_mic_segments(
+        [segment], _level(1, level), _level(1, 0), SR, pause_threshold=1.0
+    ) == ([segment] if kept else [])
+
+
+def test_mic_filter_keeps_a_wordless_segment_after_one_with_words():
+    segments = [
+        Segment(start=0.0, end=2.0, text="Hi", words=[_word(0.0, 2.0, " Hi")], speaker="You"),
+        Segment(start=2.0, end=4.0, text="There.", speaker="You"),
+    ]
+
+    assert filter_mic_segments(segments, _level(4, 7000), _level(4, 0), SR, 1.0) == segments
+
+
 def test_classify_segment_by_channel_empty_range_is_none():
-    """An empty time range (end <= start) is ambiguous -> None."""
+    """An empty time range (end <= start) is ambiguous -> None, and so are two silences."""
     sr = 16000
     mic = np.zeros(sr, dtype=np.float32)
     monitor = np.zeros(sr, dtype=np.float32)
 
     assert classify_segment_by_channel(0.5, 0.5, mic, monitor, sr) is None
+    assert classify_segment_by_channel(0.0, 1.0, mic, monitor, sr) is None
 
 
 def test_gate_inactive_regions_silences_listening_windows():
@@ -198,9 +279,45 @@ def test_gate_inactive_regions_silences_listening_windows():
 
     gated = gate_inactive_regions(target_16k, mic_raw, monitor_raw, raw_sr)
 
-    assert np.any(gated[:out_sr] != 0)  # speech region preserved
+    assert np.all(gated[:out_sr] == 1000.0)  # speech region preserved
     assert np.all(gated[out_sr:] == 0)  # listening region silenced
     assert target_16k[out_sr] == 1000.0  # input not mutated
+
+
+@pytest.mark.parametrize(
+    ("target", "other", "kept"),
+    [
+        (199, 0, False),
+        (200, 0, True),
+        (201, 0, True),
+        (299, 1000, False),
+        (300, 1000, True),
+        (301, 1000, True),
+        (0, 0, False),
+    ],
+)
+def test_a_window_is_kept_when_loud_enough_and_not_drowned(target, other, kept):
+    out = gate_inactive_regions(
+        np.full(1600, 1000.0, dtype=np.float32),
+        np.full(1600, target, dtype=np.int16),
+        np.full(1600, other, dtype=np.int16),
+        SR,
+    )
+
+    assert out.tolist() == [1000.0 if kept else 0.0] * 1600
+
+
+def test_gate_windows_are_mapped_by_time():
+    """The raw channels run at 48 kHz, the gated audio at 16 kHz."""
+    target_raw = np.concatenate(
+        [np.zeros(4800), np.full(2400, 5000), np.zeros(2400), np.full(4800, 5000)]
+    ).astype(np.int16)
+    other_raw = np.zeros(14400, dtype=np.int16)
+    target_16k = np.full(4800, 1000.0, dtype=np.float32)
+
+    gated = gate_inactive_regions(target_16k, target_raw, other_raw, 48000)
+
+    assert gated.tolist() == [0.0] * 1600 + [1000.0] * 3200
 
 
 def test_load_stereo_channels_rejects_mono(tmp_path):
@@ -224,15 +341,16 @@ def test_identify_user_speaker_returns_none_for_mono(tmp_path):
     assert identify_user_speaker(dsegs, mono) is None
 
 
-def test_identify_user_speaker_none_when_segments_have_no_energy(tmp_path):
+@pytest.mark.parametrize("at", [0.5, 0.0])
+def test_identify_user_speaker_none_when_segments_have_no_energy(tmp_path, at):
     """Zero-length diarization segments contribute no frames -> no ratios -> None."""
     wav = tmp_path / "stereo.wav"
     create_stereo_wav(
         wav, duration=1.0, sample_rate=16000, left_amplitude=0.8, right_amplitude=0.05
     )
     dsegs = [
-        DiarizationSegment(speaker="SPEAKER_00", start=0.5, end=0.5),
-        DiarizationSegment(speaker="SPEAKER_01", start=0.5, end=0.5),
+        DiarizationSegment(speaker="SPEAKER_00", start=at, end=at),
+        DiarizationSegment(speaker="SPEAKER_01", start=at, end=at),
     ]
 
     assert identify_user_speaker(dsegs, wav) is None
