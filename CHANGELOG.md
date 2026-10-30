@@ -21,6 +21,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A subtitle credit cut out of the middle of a sentence no longer comes back in the note. Local Whisper gives every segment its words, and the pass that marks unsure words in italics rebuilt the text from them, credit included.
 - A Cyrillic transcript no longer fails the run under a locale whose encoding is not UTF-8. Caching a finished channel for a resume wrote it in that encoding, which cannot hold Cyrillic; the cache is now ASCII.
 - A recording cut off inside an audio frame, as a killed process can leave one, is processed instead of failing with ValueError.
+- Diarization no longer merges two speakers through a third. A speaker joins a merged group only when it resembles every member, not just one of them.
 
 ## [0.10.1] — 2026-10-17
 

@@ -359,12 +359,6 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   regular file with every line the FIFO gave, `TAPEBACK_HF_TOKEN` included. Refuse a
   file that is not regular, or read it and never write it; a mutant of `write` that only
   a FIFO tells apart survives until then.
-- **Major speakers merge in chains.** Needs a decision. `merge_similar_speakers` joins
-  the clusters of any two real speakers that reach the threshold, so A~B and B~C put A
-  and C together though A and C fall below it. A minor cluster is kept from bridging two
-  speakers on purpose; whether two majors may be bridged by a third is undecided, and a
-  test would pin either answer (the surviving `continue` → `break` mutant in the pair
-  loop is this question).
 - **A word across a pause cut lands in both pieces or in neither.** Needs a decision.
   `_build_sub_segments` gives a word to each piece it reaches within 0.05 s of the cut:
   (1.47, 1.53) at a cut at 1.5 goes into both, and (1.4, 1.6) into neither. The piece
