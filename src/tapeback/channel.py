@@ -343,7 +343,9 @@ def load_stereo_channels(stereo_wav: Path) -> tuple[np.ndarray, np.ndarray, int]
             raw = wf.readframes(min(const.READ_CHUNK_FRAMES, total - written))
             if not raw:
                 break
-            chunk = np.frombuffer(raw, dtype=np.int16).reshape(-1, 2)
+            # A file cut inside a frame ends in half of one; only whole frames count.
+            samples = np.frombuffer(raw, dtype=np.int16)
+            chunk = samples[: len(samples) // 2 * 2].reshape(-1, 2)
             end = written + len(chunk)
             mic[written:end] = chunk[:, 0]
             monitor[written:end] = chunk[:, 1]
