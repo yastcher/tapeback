@@ -5,6 +5,7 @@ import ctypes
 import gc
 import importlib
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -325,12 +326,11 @@ def sample_gpu(
 
 
 def free_gpu_memory() -> None:
-    """Release Python refs and clear CUDA cache so the next model fits in VRAM."""
-    gc.collect()
-    try:
-        import torch  # noqa: PLC0415 — optional dependency, guarded by try/except
+    """Release Python refs and clear torch's CUDA cache so the next model fits in VRAM.
 
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except ImportError:
-        pass
+    Only a torch already imported can hold that cache: importing it here would load
+    several hundred MB of native code to free nothing."""
+    gc.collect()
+    torch = sys.modules.get("torch")
+    if torch is not None and torch.cuda.is_available():
+        torch.cuda.empty_cache()
