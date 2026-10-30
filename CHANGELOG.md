@@ -10,6 +10,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+## [0.10.2] — 2026-10-30
+
 ### Added
 - Architecture tests: the rules of AGENTS.md that code can break fail the test suite, among them a heavy import at the CLI's start, an SDK imported outside its module, text sent past the masking seam and a file over 500 lines. Development-only.
 - A CRAP check before a release: `scripts/pre_release_qa.sh` fails on a function whose complexity outgrows its tests, and the limit only comes down. Development-only.
