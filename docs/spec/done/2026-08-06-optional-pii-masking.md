@@ -1,6 +1,6 @@
 # Spec: optional PII masking at the LLM boundary
 
-Status: all stages landed (1, 2, 3).
+Status: all stages landed (1, 2, 3). Decision: ADR-009 in `docs/adr/`.
 
 ## Context
 

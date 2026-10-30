@@ -66,12 +66,19 @@ touches() {
 }
 
 failed=()
+skipped=()
 
 # Colour for a terminal only: the gate is also run into a log file, read later.
-bold='' green='' red='' reset=''
+bold='' green='' red='' yellow='' reset=''
 if [ -t 1 ]; then
-  bold=$'\033[1m' green=$'\033[32m' red=$'\033[31m' reset=$'\033[0m'
+  bold=$'\033[1m' green=$'\033[32m' red=$'\033[31m' yellow=$'\033[33m' reset=$'\033[0m'
 fi
+
+# A stand that does not run says so: silence would read as a stand that passed.
+skip() {
+  printf '\n%sskip%s — %s (the diff does not touch its paths)\n' "$yellow" "$reset" "$1"
+  skipped+=("$1")
+}
 
 step() {
   local name="$1"
@@ -94,12 +101,20 @@ step "pytest"         uv run pytest --tb=short
 
 if touches "${DEB_PATHS[@]}"; then
   step ".deb smoke"   scripts/deb-smoke.sh
+else
+  skip ".deb smoke"
 fi
 if touches "${ARCH_PATHS[@]}"; then
   step "Arch smoke"   docker run --rm -v "$root:/src:ro" archlinux:latest /src/scripts/arch-smoke.sh
+else
+  skip "Arch smoke"
 fi
 
 printf '\n'
+if [ ${#skipped[@]} -gt 0 ]; then
+  list="$(printf '%s, ' "${skipped[@]}")"
+  printf 'skipped: %s\n' "${list%, }"
+fi
 if [ ${#failed[@]} -eq 0 ]; then
   printf '%sall gates passed%s\n' "$green" "$reset"
   exit 0

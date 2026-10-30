@@ -34,6 +34,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
+
 from tapeback._gpu import sample_gpu, wait_for_clamp_release
 from tapeback._quality import (
     count_hallucination_markers,
@@ -204,6 +206,37 @@ def _summary(results: list[Result]) -> str:
     return "\n".join(lines)
 
 
+class GridSettings(Settings):
+    """The code's defaults and the grid's values, nothing else: a `TAPEBACK_*` variable
+    in the shell or a line in `.env` would make the table measure the developer's
+    configuration under the default's name."""
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings,)
+
+
+def grid_settings(model: str, compute: str, device: str, language: str, hotwords: str) -> Settings:
+    """The settings of one grid point. No resume cache: a repeated grid would time a
+    cache hit, and the first run would write into the developer's cache."""
+    return GridSettings(
+        stt_model=model,
+        compute_type=compute,
+        device=device,
+        language=language,
+        hotwords=hotwords,
+        run_log=False,
+        resume_cache=False,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
@@ -262,13 +295,12 @@ def main() -> int:
                             args.clamp_timeout,
                             report=lambda m: print(f"  {m}", flush=True),
                         )
-                    settings = Settings(
-                        stt_model=model,
-                        compute_type=compute,
+                    settings = grid_settings(
+                        model=model,
+                        compute=compute,
                         device=args.device,
                         language=args.language,
                         hotwords=args.hotwords if mode == "on" else "",
-                        run_log=False,
                     )
                     result = run_one(audio, entry.get("terms", []), settings, hotwords_mode=mode)
                     results.append(result)

@@ -614,6 +614,10 @@ a transcript looks wrong and you need to know which configuration produced it, o
 run died and the terminal is long gone. Credentials are never recorded — the stored
 settings are an explicit allow-list. Disable with `TAPEBACK_RUN_LOG=false`.
 
+A recording that failed to process stays in `~/.local/state/tapeback/sessions/<name>/`,
+next to `monitor.log` and `mic.log`: what each `parecord` said while it recorded, a
+missing or busy device for one.
+
 ### Transcription is suddenly very slow, and the GPU is not even hot
 
 On laptops where the CPU and GPU share one heatsink, the embedded controller responds to

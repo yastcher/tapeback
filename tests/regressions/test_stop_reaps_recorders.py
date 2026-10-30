@@ -18,16 +18,16 @@ import subprocess
 import time
 from pathlib import Path
 
-from tapeback.recorder import Recorder, _terminate_process, _wait_and_kill
+from tapeback.recorder import Recorder, _spawn_recorder, _terminate_process, _wait_and_kill
 from tests.fixtures import process_state
 
 # Bounds a wait for a state the kernel reaches within milliseconds; never asserted on.
 _STATE_WAIT_SECONDS = 2.0
 
 
-def _start_like_recorder() -> int:
-    """A child started the way Recorder.start() starts parecord: the Popen is dropped."""
-    return subprocess.Popen(["sleep", "100"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE).pid
+def _start_like_recorder(log: Path) -> int:
+    """A child started the way Recorder.start() starts parecord: a bare pid."""
+    return _spawn_recorder(["sleep", "100"], log)
 
 
 def _wait_for_state(pid: int, state: str) -> None:
@@ -62,7 +62,7 @@ def _session(recorder: Recorder, tmp_path: Path, monitor_pid: int, mic_pid: int)
 
 def test_stop_reaps_the_recorders_it_started(tmp_path):
     """The Ctrl+C and tray path: the stopping process is the parent."""
-    pids = [_start_like_recorder(), _start_like_recorder()]
+    pids = [_start_like_recorder(tmp_path / "a.log"), _start_like_recorder(tmp_path / "b.log")]
     recorder = Recorder(state_dir=tmp_path)
     _session(recorder, tmp_path, *pids)
 
@@ -96,13 +96,15 @@ def test_a_zombie_left_for_another_process_reads_as_stopped(tmp_path):
     finally:
         parent.kill()
         parent.wait()
+        assert parent.stdout is not None
+        parent.stdout.close()
 
 
 def test_is_recording_notices_a_recorder_that_died(tmp_path):
     """A parecord that exits mid-meeting (device gone) is a zombie of the `start`
     process, and must not keep the recording looking alive."""
-    alive = _start_like_recorder()
-    dead = _start_like_recorder()
+    alive = _start_like_recorder(tmp_path / "alive.log")
+    dead = _start_like_recorder(tmp_path / "dead.log")
     os.kill(dead, signal.SIGTERM)
     _wait_for_state(dead, "Z")
     recorder = Recorder(state_dir=tmp_path)
@@ -114,14 +116,10 @@ def test_is_recording_notices_a_recorder_that_died(tmp_path):
         os.waitpid(alive, 0)
 
 
-def test_a_recorder_that_ignores_sigterm_is_killed_and_reaped():
+def test_a_recorder_that_ignores_sigterm_is_killed_and_reaped(tmp_path):
     """The last resort must not leave a zombie behind either. `exec` keeps the ignored
     SIGTERM, so the recorder outlives the polite stop and needs SIGKILL."""
-    pid = subprocess.Popen(
-        ["bash", "-c", "trap '' TERM; exec sleep 100"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    ).pid
+    pid = _spawn_recorder(["bash", "-c", "trap '' TERM; exec sleep 100"], tmp_path / "log")
     _wait_for_state(pid, "S")
     _terminate_process(pid)
 

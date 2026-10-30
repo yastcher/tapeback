@@ -6,11 +6,14 @@ is asserted is how tapeback started it, what reached it and whether it is gone a
 
 import fcntl
 import hashlib
+import io
 import json
 import subprocess
 import sys
 import threading
 import time
+import urllib.error
+from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
@@ -517,3 +520,17 @@ def test_summarize_takes_the_local_provider_on_the_command_line(
     assert result.exit_code == 0, result.output
     assert "Discussed the project plan and assigned tasks." in note.read_text()
     assert len(fake_llama_server.starts()) == 1
+
+
+def test_a_503_while_the_model_loads_is_closed(monkeypatch):
+    """llama-server answers 503 until the model is loaded, and the error carries an
+    open response: left unclosed, every readiness poll leaked a descriptor."""
+    body = io.BytesIO(b'{"error": "Loading model"}')
+
+    def loading(*_args, **_kwargs):
+        raise urllib.error.HTTPError("http://127.0.0.1:1/health", 503, "Loading", Message(), body)
+
+    monkeypatch.setattr(_llama_server.urllib.request, "urlopen", loading)
+
+    assert _llama_server._healthy(1) is False
+    assert body.closed

@@ -124,6 +124,26 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=tapeback --cov-report=term-missing"
+# /tmp is a small tmpfs with a per-user quota on some machines; kept basetemps once
+# filled it and broke every command. A passing run keeps nothing; a failing one, its own.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
+# A new warning fails the run. The known ones stay visible, each with its reason:
+filterwarnings = [
+    "error",
+    # dbus-next 0.2.3, the tray extra, imports typing.no_type_check_decorator, which
+    # Python 3.15 removes; the move to dbus-fast is BACKLOG §7.
+    "default:.typing.no_type_check_decorator. is deprecated:DeprecationWarning:dbus_next",
+    # pyannote turns TF32 off for reproducibility and says so; Turing has no TF32.
+    "default:TensorFloat-32 \\(TF32\\) has been disabled::pyannote",
+    # pyannote's statistics pooling over a one-frame chunk (e2e only).
+    "default:std\\(\\). degrees of freedom is <= 0:UserWarning:pyannote",
+    # python-dotenv up to 1.2.4 leaves the .env open when set_key cannot create its
+    # temporary file (setup on a read-only directory); fixed upstream in 6a49d6d8,
+    # unreleased. The finalizer reports it during whichever test runs next.
+    "default:unclosed file <_io.FileIO name='.*\\.env':ResourceWarning",
+    "default:Exception ignored while finalizing file <_io.FileIO name='.*\\.env':pytest.PytestUnraisableExceptionWarning",
+]
 
 [tool.coverage.run]
 source = ["src/tapeback"]

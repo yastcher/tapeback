@@ -6,6 +6,8 @@ Stack: Python 3.13+, click, faster-whisper, pyannote, pydantic-settings, python-
 
 No databases, and no server of tapeback's own: the `llama-server` a local summary starts is llama.cpp's.
 
+The project's words (session, channel, stage, clamp, stand, the gate, companion...) are defined in `docs/GLOSSARY.md`; a word used otherwise in a discussion is corrected there.
+
 ## Safety rules
 
 - Always fix the cause of a problem, never the symptom.
@@ -16,11 +18,11 @@ No databases, and no server of tapeback's own: the `llama-server` a local summar
 - Never delete or overwrite files without backup or user confirmation
 - Never delete files not tracked in git. Run `git ls-files <path>` before removing any file. If untracked — ask user.
 - Before deleting a directory, grep its name in this file first: every session reads AGENTS.md, so a pointer here into a deleted path costs more than one in README.
-- **An agent's working files go to `./tmp`, never to `/tmp`.** Gate logs, PR and commit bodies, probe scripts and what they print, downloaded artifacts: `mkdir -p tmp` at the repo root (git-ignored) and write there. The user opens and edits them by a short path (`gh pr create --body-file tmp/pr.md`), and a meeting's audio or transcript stays in the user's home instead of a world-writable directory. Tests keep pytest's `tmp_path`; shipped code is not affected.
+- **Development writes to `./tmp`, never to `/tmp`.** An agent's working files (gate logs, PR and commit bodies, probe scripts and what they print, downloaded artifacts) and the scratch directories of the repo's own scripts (`aur-publish.sh`, `pre_release_qa.sh`): `mkdir -p tmp` at the repo root (git-ignored) and write there. The user opens and edits them by a short path (`gh pr create --body-file tmp/pr.md`), a meeting's audio or transcript stays in the user's home instead of a world-writable directory, and `/tmp` on some machines is a small tmpfs with a per-user quota: once full, every command fails. Tests keep pytest's `tmp_path`, whose root stays in `/tmp`, capped by `tmp_path_retention_*` in pyproject.toml; shipped code is not affected.
 - Never simplify architecture by removing existing features unless explicitly asked.
 - Any file with API keys, tokens or credentials is read-only.
 - **`.env`, certificates and private keys are never opened.** `tapeback status` (`uv run tapeback status` in the repo) shows which keys are set, never their values; `.env.example` is the template.
-- The LLM summarizer is the usual thing that leaves the machine, and a meeting transcript is personal data. `summarizer.summarize()` is the masking seam for *text* (`_mask.py`) — a new outbound *text* call must go through it, never past it. Masking is opt-in (`TAPEBACK_MASK_PII`) because it is the user's data and their call. Opt-in remote STT (`TAPEBACK_STT_BACKEND`, currently `openai`) is a second outbound path that uploads *audio*; masking cannot apply there — document it clearly and keep the default local.
+- The LLM summarizer is the usual thing that leaves the machine, and a meeting transcript is personal data. `summarizer.summarize()` is the masking seam for *text* (`_mask.py`) — a new outbound *text* call must go through it, never past it. Masking is opt-in (`TAPEBACK_MASK_PII`, ADR-009). Opt-in remote STT (`TAPEBACK_STT_BACKEND`, currently `openai`) is a second outbound path that uploads *audio*; masking cannot apply there — document it clearly and keep the default local (ADR-010).
 - When fixing linter/import issues: fix one file at a time, run tests after each change.
 - When renaming or refactoring across the project, grep for ALL old names (module, package, repo, env prefix, URLs) across the entire tree before considering the task done. Don't skip files that seem unimportant (PKGBUILD, .install, flake.nix, demo.tape, etc.).
 - Understand the purpose of a config file before changing it.
@@ -31,11 +33,11 @@ No databases, and no server of tapeback's own: the `llama-server` a local summar
 
 - Source: `src/tapeback/` — cli.py, recorder.py, audio.py, channel.py, transcriber.py, remote_stt.py, diarizer.py, speaker_merge.py, formatter.py, vault.py, summarizer.py, glossary.py, live.py, tray.py, pipeline.py + models.py, settings.py, const.py
 - Private helpers are `_`-prefixed: `_gpu.py` (nvidia-smi, thermal clamp, VRAM), `_device.py` (the device Whisper and pyannote run on, chosen per stage, and Whisper's compute type), `_worker.py` + `_isolated.py` (out-of-process transcription), `_resume.py` (reusing a finished channel or remote STT chunk), `_quality.py` (transcript metrics and the hallucination filter), `_mask.py` (PII masking at the LLM boundary), `_llm.py` (LLM providers in one table, keys, the fallback chain, SDK calls), `_llama_server.py` (the llama-server a local summary starts and stops, and its pinned model), `_user_env.py` (the user's settings file: what `tapeback setup` writes and where a value comes from), `_stt_openai.py` + `_stt_openai_chunks.py` + `_stt_openai_fmt.py` + `_stt_caps.py` + `_stt_media.py` + `_stt_retry.py` (remote STT: OpenAI backend, chunking/resume, response mapping, capabilities, ffmpeg upload helpers, retries/heartbeats), `_sni.py` + `_dbusmenu.py` + `_tray_env.py` (tray protocol), `_runlog.py`, `_timing.py`, `_lazy.py`. The prefix means "internal to tapeback", not "pure" — `_gpu.py` shells out and `_worker.py` spawns processes.
-- Benchmarks live in `scripts/bench_transcribe.py` — it drives the real `Transcriber`, so it measures what ships. Configuration choices here are made from its table, not from reasoning; see `docs/spec/BACKLOG.md` for what that has already overturned.
+- Benchmarks live in `scripts/bench_transcribe.py` — it drives the real `Transcriber`, so it measures what ships. Configuration choices here are made from its table, not from reasoning (ADR-001, ADR-002).
 - Constants: `src/tapeback/const.py` — import as `from tapeback import const`, use as `const.SPEAKER_YOU`
 - Domain models (Segment, Word, DiarizationSegment, Summary, ActionItem) live in models.py — never in infrastructure modules
 - Settings: pydantic-settings with `TAPEBACK_` prefix, env vars and `.env` only
-- No config files (TOML, YAML) besides pyproject.toml
+- No config files (TOML, YAML) besides pyproject.toml (ADR-014)
 - Max 500 lines per file — decompose if exceeded
 
 ## Commands
@@ -72,6 +74,8 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - E2E tests in `tests/test_e2e_quality.py` — run with `TAPEBACK_RUN_E2E=1`
 - Regression tests (bug-fix) in `tests/regressions/`
 - **Assert with a value the code under test cannot produce by accident.** A note that exists does not prove both channels were transcribed; the mic phrase under **You** does (`tests/smoke/transcribe.sh`).
+- **A fake SDK reply is built from the SDK's own types** (`anthropic.types.TextBlock`, `ThinkingBlock`), not `MagicMock(text=...)`: a MagicMock has every attribute, so it can never show that a reply's first block has no `.text`.
+- **A smoke check prints the value it compares before comparing it**: a `grep -Fx` filter hid `/usr/sbin/llama-server`, and the Arch stand failed with nothing in the log.
 - **What leaves the machine is asserted on the serialized request body**, not on an object the test built itself; the absence of a secret or personal data is asserted over the whole body, not over a list of fields.
 - **A setup path hides the branch a regression was written for.** Walk the lifecycle, but test every independently required branch on its own as well, without a neighbour that creates its postcondition first.
 - **"Rerun and it passed" reads as "go find the cause".** A test red on one machine and green on another reads the environment: find what it reads (in 2026-10 twelve transcriber tests read the real GPU's free VRAM).
@@ -89,7 +93,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 
 - Semantic Versioning: MAJOR.MINOR.PATCH
 - **Between releases the top CHANGELOG section is always `## [Unreleased]`.** It claims no number, so a branch has nothing to decide — two branches that each opened `## [0.9.9]` with their own date once merged into a conflict over a number neither had the right to pick.
-- **A branch never touches the version** — not `pyproject.toml`, not `uv.lock`, not `packaging/`, not the install commands in README. Only `scripts/release.sh` writes it, into every copy at once; `tests/test_release_scripts.py` fails a PR in which the copies disagree.
+- **A branch never touches the version** — not `pyproject.toml`, not `uv.lock`, not `packaging/`, not the install commands in README. Only `scripts/release.sh` writes it, into every copy at once; `tests/test_release_scripts.py` fails a PR in which the copies disagree (ADR-017).
 - **A CHANGELOG entry lands by command, not by editing the file:** `python3 scripts/changelog_add.py Fixed "- **Topic.** What changed."` (or `--file entry.md`). It writes into `[Unreleased]`, creates the subsection in the order Security / Added / Changed / Fixed / Removed / Docs, and refuses a section a tag has closed. What it cannot decide stays with you:
   - the text — passed verbatim, so hand it a finished markdown bullet (dry it in Chekhov style);
   - the subsection — documentation-only changes go under `### Docs`;
@@ -97,8 +101,8 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - Released sections are immutable. An outdated entry is superseded by a new one, never rewritten.
 - **Release flow — maintainer only, on `main`, after the PRs are merged:** `scripts/pre_release_qa.sh` → `scripts/release.sh patch|minor|major` → the tag publishes to PyPI and GitHub (`publish.yml`) → `scripts/aur-publish.sh <version>`. `release.sh` refuses a tree `pre_release_qa.sh` has not stamped (`SKIP_PRERELEASE_QA=1` for a hotfix that cannot wait), bumps every copy of the version, closes `[Unreleased]` into `## [X.Y.Z] — <date>`, commits, pushes `main`, then tags. `publish.yml` checks the tag against every copy with `scripts/release_from_tag.py` before building, and publishes that section as the release notes. An agent never runs `release.sh` — it commits and pushes.
 - `scripts/pre_release_qa.sh` runs `scripts/gate.sh --all` (every stand, whatever the diff), then the e2e quality suite (needs the `tests/data/` recordings and `HF_TOKEN` — a skipped test fails the run). Needs docker and nfpm.
-- Bundled interpreters in distro packages come from a pinned tarball URL (`scripts/build-deb.sh`), not from a tool that fetches one (`uv python install`). The URL is deterministic and so is the archive layout; a tool's layout varies by its own version and by the runner's platform, which once put a broken python into the `.deb`.
-- PKGBUILD in this repo keeps `sha256sums=('SKIP')` — the real checksum is set by `scripts/aur-publish.sh` in the AUR repo, once the tarball exists.
+- Bundled interpreters in distro packages come from a pinned tarball URL (`scripts/build-deb.sh`), not from a tool that fetches one (`uv python install`): ADR-015.
+- PKGBUILD in this repo keeps `sha256sums=('SKIP')`; `scripts/aur-publish.sh` sets the real checksum in the AUR repo (ADR-015).
 
 ## Git
 
@@ -106,8 +110,10 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - Always PR, never push to main. The one exception is `scripts/release.sh`, run by the maintainer: the release commit is mechanical and has nothing to review.
 - **Do not run git push, checkout, switch, reset, clean, stash, rebase, restore or branch -d/-D** — `.claude/settings.json` denies them. Ask user if needed. Commit only when the user asks.
 - Max ~500 lines of diff and ~15 files per commit — stop and propose a commit before continuing. A separable refactor, its tests and its docs go in separate commits; inseparable code and test travel together, so no knowingly broken commit is born.
+- **Commit in its own call, after you have read the checks' exit code**: `(pytest …; ruff check) && git commit` commits over a failed test, since a subshell returns the code of its last command; `… | tail -1 && git commit` returns `tail`'s.
 - Always work in the current branch — never switch branches
 - Don't run git network operations you don't need (remote, fetch): work with the local state.
+- **Before any history rewrite, `git for-each-ref refs/remotes/origin/<branch>`**: `git log origin/main..HEAD` does not show that a feature branch was already pushed.
 
 ## Workflow
 
@@ -118,7 +124,9 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 - **Change only the minimal cone of the current step.** No drive-by refactors, reformatting, renames, rewritten tests or docs "while at it". Before widening the scope, look at `git diff --stat`, say why the extra files are needed, and finish or split off what is already started.
 - **A bug goes first.** A found defect is fixed before the started feature continues; if the fix needs a product decision that does not exist yet, it goes to `docs/spec/BACKLOG.md` marked as such, not silently.
 - **The maintainer's technical proposals are hypotheses, not a spec.** When implementation shows details the proposal lacks (data, migrations, who changes it and how), stop, lay out the options with their consequences and ask. Only a direct "do exactly this" is carried out without question.
-- **A measurement, decision or found defect goes into `docs/spec/` or `docs/spec/BACKLOG.md` right away**, not at the end of the session: the context gets compacted, the files stay.
+- **A measurement or found defect goes into `docs/spec/` or `docs/spec/BACKLOG.md` right away**, not at the end of the session: the context gets compacted, the files stay. A decision that holds and has a reason goes into `docs/adr/` as `ADR-NNN-<the-decision-as-a-phrase>.md`, listed in its README; the spec keeps a pointer.
+- **Don't write down what a command can check.** Docs keep the mechanism and the decision; a number or a count, if unavoidable, comes with the command that checks it ("920 lines" in BACKLOG went stale within a day).
+- **Two copies of one list are one source, or a test that compares them.** The image list, the version copies and the packages in README are kept by tests (`tests/test_release_scripts.py`, `tests/test_gate.py`, `tests/test_docs.py`); a new copy gets the same.
 - **Read-only work goes to a subagent:** searching, inventory, comparing files, reading logs, waiting for a state. Edits, fixes and writes to external systems stay with whoever owns the result. Model names are not written into rules: they age faster than the rules.
 - **Bash: absolute paths, no `cd`.** `cd` in the same command as a file read hits the `.env` read deny, since the harness cannot prove the path is not the denied one; use `git -C` and `uv run --directory` instead.
 - **Wait for a background task by PID** (`while kill -0 <pid>`), not by `pgrep -f <name>`: the pattern also matches the grep itself and its neighbours.
@@ -137,7 +145,7 @@ Do not duplicate ruff rules here — if ruff can check it, ruff owns it.
 3. Security review (see checklist below)
 4. **Tech lead review**: re-read your own diff as a strict reviewer. Look for overengineering, antipatterns copied from existing code, unnecessary complexity, and assertions weakened to make a test pass. Fix what you find before finishing.
 5. **Always update README.md** — re-read it and verify it still matches current functionality, settings, commands and architecture. It rots silently; check, don't assume: grep the docs for the old wording of every behaviour the diff changes, put a new option where readers choose among options (Features, the tables, the CLI reference) and not only in a section of its own, and run an install or uninstall command before writing it down. `tests/test_docs.py` checks names, not prose. Docs change in the same task, but only those whose facts changed; one fact lives with one owner, and the others link to it instead of retelling it.
-6. **Always add a CHANGELOG entry** — under `[Unreleased]`, with `scripts/changelog_add.py`; never pick a version number.
+6. **Add a CHANGELOG entry for what a release is worth making for** — under `[Unreleased]`, with `scripts/changelog_add.py`; never pick a version number. A small docs, template or infrastructure touch-up gets none.
 7. **Propose a commit message** (Conventional Commits) — hand the user the exact message, and commit yourself only when asked. Split into several commits when the diff exceeds ~500 lines or mixes concerns (e.g. `docs:` separate from `feat:`).
 8. **Name what you ran**, with what result, and which risks remain open.
 
@@ -158,3 +166,5 @@ Before completing any change, verify:
 - **Everything committed to git is in English** — code, comments, logs, README, CHANGELOG, AGENTS.md, specs in `docs/spec/`, commit messages. Chat replies to the user follow the user's language; files do not.
 - At the end of each non-trivial session, write 1–3 items into `.claude/insights-inbox.md` right away, without asking: only what will improve the next piece of work; with nothing worth it, write nothing.
 - A spec cites code as `file:line`, not from memory. Closing it, run its criteria as measurements, not a checklist of finished phases: a phase closed by reasoning instead of code must become a test.
+- GPU probes on a machine with the AUR package run with `/opt/tapeback/bin/python` and `PYTHONPATH=src`: the repo venv has no `nvidia-cublas-cu12`, so Whisper falls back to the CPU with one warning line. Read the "Whisper: ... on cuda" line before waiting on a result.
+- After `scripts/aur-publish.sh` the AUR RPC (what `yay` reads) lags; read `.SRCINFO` through cgit (`https://aur.archlinux.org/cgit/aur.git/plain/.SRCINFO?h=<pkg>`) before suspecting the publish.

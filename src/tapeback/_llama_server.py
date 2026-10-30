@@ -295,6 +295,10 @@ def _healthy(port: int) -> bool:
     try:
         with urllib.request.urlopen(f"http://{HOST}:{port}/health", timeout=HEALTH_TIMEOUT):
             return True
+    except urllib.error.HTTPError as answer:
+        # A 503 carries an open response: unclosed, one descriptor leaked per poll.
+        answer.close()
+        return False
     except (urllib.error.URLError, ConnectionError, TimeoutError):
         return False
 

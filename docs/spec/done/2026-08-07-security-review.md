@@ -3,7 +3,8 @@
 First full-repository security pass. Scope: all of `src/tapeback/` (30 modules),
 `scripts/`, `.github/workflows/`, and packaging configuration. Reviewed at v0.9.8.
 
-Status: done. The rerun it asks for after each new outbound path is open: BACKLOG §10.
+Status: done; its decision is ADR-008 in `docs/adr/`. The rerun it asks for after each
+new outbound path is open: BACKLOG §10.
 
 ## Threat model
 

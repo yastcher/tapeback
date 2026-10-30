@@ -10,6 +10,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Fixed
+- A recording no longer depends on a pipe nobody read. parecord's messages went there: 64 KiB of them would have stalled the recorder, and its next message after the starting process exited would have killed it. They now go to `monitor.log` and `mic.log` in the session directory, which a failed session keeps.
+- File descriptors no longer leak: one per transcription, and one per readiness poll while a local summary's model loads.
+
 ## [0.10.1] — 2026-10-17
 
 ### Changed

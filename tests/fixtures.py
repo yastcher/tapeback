@@ -293,6 +293,7 @@ for arg in "$@"; do
   esac
 done
 cp "$FAKE_PARECORD_AUDIO/$device.wav" "$out"
+printf 'fake parecord recording %s\\n' "$device" >&2
 printf '%s %s %s\\n' "$$" "$device" "$(stat -c %a "$(dirname "$out")")" >> "$FAKE_PARECORD_LOG"
 while :; do sleep 0.05; done
 """
@@ -450,12 +451,14 @@ def run_gate(tmp_path):
 
 
 # What aur-publish.sh asks besides git: curl finds the tag's tarball and hands back the
-# same bytes every time, and makepkg --printsrcinfo reads the PKGBUILD it is run next to.
+# same bytes every time, and makepkg --printsrcinfo reads the PKGBUILD it is run next to
+# and logs where that was.
 _FAKE_CURL = (
     '#!/usr/bin/env bash\ncase "$*" in *http_code*) printf 200 ;; *) printf tarball ;; esac\n'
 )
 _FAKE_MAKEPKG = (
-    "#!/usr/bin/env bash\nsed -n 's/^pkgname=/pkgbase = /p; s/^pkgver=/pkgver = /p' PKGBUILD\n"
+    '#!/usr/bin/env bash\npwd >> "$MAKEPKG_CWD_LOG"\n'
+    "sed -n 's/^pkgname=/pkgbase = /p; s/^pkgver=/pkgver = /p' PKGBUILD\n"
 )
 
 
@@ -466,7 +469,9 @@ def run_aur_publish(tmp_path):
     The script and packaging/ are copies of the real ones, git is real, curl and makepkg
     are stubs, and the package of every PKGBUILD starts with an empty repository. Returns
     a callable that runs the script for a version and gives back the finished process
-    and, per package, the subjects of the commits its repository holds."""
+    and, per package, the subjects of the commits its repository holds. Each directory
+    makepkg ran in is logged to `makepkg-cwd.log`; the system temp directory is
+    `system-tmp/`."""
     # The PKGBUILDs and their hooks only: packaging/ also holds makepkg's output.
     for source in [REPO_ROOT / "packaging" / "PKGBUILD", *REPO_ROOT.glob("packaging/*/PKGBUILD")]:
         target = tmp_path / source.parent.relative_to(REPO_ROOT)
@@ -481,6 +486,7 @@ def run_aur_publish(tmp_path):
     for name, body in (("curl", _FAKE_CURL), ("makepkg", _FAKE_MAKEPKG)):
         (stubs / name).write_text(body)
         (stubs / name).chmod(0o755)
+    (tmp_path / "system-tmp").mkdir()
     aur = tmp_path / "aur"
     env = os.environ | {
         "PATH": f"{stubs}:{os.environ['PATH']}",
@@ -488,7 +494,8 @@ def run_aur_publish(tmp_path):
         # Only local repositories: a script that still names the real AUR fails here
         # instead of pushing with the developer's SSH key.
         "GIT_ALLOW_PROTOCOL": "file",
-        "TMPDIR": str(tmp_path),
+        "MAKEPKG_CWD_LOG": str(tmp_path / "makepkg-cwd.log"),
+        "TMPDIR": str(tmp_path / "system-tmp"),
         # The developer's git config (signing, hooks, the default branch) stays out.
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
@@ -720,6 +727,9 @@ def load_script(name: str) -> ModuleType:
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Registered first, as importlib's own recipe does: a dataclass in the script looks
+    # its module up in sys.modules while the module is still executing.
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 

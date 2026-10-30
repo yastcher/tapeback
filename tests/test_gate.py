@@ -72,6 +72,23 @@ def test_stands_run_when_the_diff_touches_their_paths(run_gate, changed, stands)
     assert result.returncode == 0
 
 
+def test_a_stand_the_diff_does_not_need_is_reported_as_skipped(run_gate):
+    """A stand that did not run used to leave no line at all, so a green gate read as
+    if the packages had been checked."""
+    result, _ = run_gate(changed=["scripts/arch-smoke.sh"])
+
+    lines = result.stdout.splitlines()
+    assert "skip — .deb smoke (the diff does not touch its paths)" in lines
+    assert "ok — Arch smoke" in lines
+    assert lines[-2:] == ["skipped: .deb smoke", "all gates passed"]
+
+
+def test_a_gate_that_skips_nothing_lists_no_skips(run_gate):
+    result, _ = run_gate("--all", changed=["README.md"])
+
+    assert "skip" not in result.stdout
+
+
 def test_all_runs_every_stand_whatever_the_diff(run_gate):
     _, commands = run_gate("--all", changed=["README.md"])
 

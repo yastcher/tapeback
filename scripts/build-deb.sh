@@ -72,6 +72,9 @@ echo "    Wheel/spec: $WHEEL_SPEC"
 
 # Clean previous venv build but keep dist/ (wheel artifact may live there)
 rm -rf "$REPO_ROOT/build"
+# build/ is only nfpm's input, about 600 MB; the packages land in dist/. Removed on
+# every exit, a failed checksum included.
+trap 'rm -rf "$REPO_ROOT/build"' EXIT
 mkdir -p "$BUILD_ROOT" "$DIST_DIR"
 
 echo "==> Downloading and extracting standalone Python"

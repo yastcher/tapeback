@@ -72,7 +72,7 @@ reached the run record. Fixed on 2026-10-16, below.
    from the bench, not from the four clips above.
 4. **Clamp-aware diarization**: measure a clamped GPU against the CPU on a long file,
    then pick the policy transcription already has (check before the stage, fall back
-   when the alternative wins).
+   when the alternative wins). Done without the measurement: ADR-004.
 5. **Observability**: diarization device and a GPU telemetry line for the stage in the
    run record; Diarizer warnings through the status callback.
 
@@ -84,10 +84,7 @@ reached the run record. Fixed on 2026-10-16, below.
   `TAPEBACK_THERMAL_CLAMP_*` settings). It reports its device, its progress through
   the recording for each pyannote step, and the GPU's clocks for the stage, and its
   warnings go through the status callback into the run record.
-- Decided: the target is one model that transcribes and tells the speakers apart,
-  in place of Whisper and pyannote. pyannote's own speed-ups (a longer segmentation
-  step, speech-only input, diarizing on the CPU while Whisper holds the GPU) are
-  measured only if pyannote stays.
+- The target is one model that transcribes and tells the speakers apart: ADR-016.
 
 ## Done in 0.9.9
 

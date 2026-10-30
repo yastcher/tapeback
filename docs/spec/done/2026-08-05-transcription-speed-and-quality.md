@@ -1,6 +1,7 @@
 # Spec: transcription speed and quality
 
 Status: all stages landed (1a, 1b, 1c, 2, 3a, 3, 3b, 3c, 4) plus process isolation and resume.
+The decisions it led to are ADR-001 to ADR-007 in `docs/adr/`.
 
 ## Stage 3a result — defaults chosen
 
@@ -509,7 +510,7 @@ it was taken while a GPU transcription was competing for the same cores. So pers
 a clamped card is strictly worse than moving to CPU: it turns a ~15-minute job into a
 multi-hour one.
 
-**Proposed behaviour** (needs a decision before implementing):
+**Proposed behaviour** (decided since: ADR-004):
 
 1. **Check for the clamp before transcribing.** If it is active, wait a short, bounded
    time for release; if it does not clear, transcribe on CPU and say so. Reuses

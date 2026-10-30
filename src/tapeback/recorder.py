@@ -33,6 +33,9 @@ class SessionData(TypedDict):
 _SESSION_NAME_RE = re.compile(r"^[\w-]+$")
 
 _SESSIONS_DIR_NAME = "sessions"
+# What each parecord writes to stderr, next to its WAV in the session directory.
+MONITOR_LOG = "monitor.log"
+MIC_LOG = "mic.log"
 
 
 def default_state_dir() -> Path:
@@ -172,7 +175,7 @@ def _probe_source(source_name: str) -> bool:
                 "/dev/null",
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
         )
         time.sleep(0.2)
         proc.terminate()
@@ -271,6 +274,32 @@ def _is_zombie(pid: int) -> bool:
     return stat_line.rsplit(")", 1)[1].split()[0] == "Z"
 
 
+def _spawn_recorder(command: list[str], log: Path) -> int:
+    """Start a parecord and return its pid; its stderr goes to `log`, private to the user.
+
+    No Popen: the recorder outlives any one object here — `tapeback stop` or the tray
+    stops it by pid from session.json, and `_reap` collects it — and a dropped Popen
+    warns that its child still runs. Not a pipe for stderr either: nobody would read it,
+    so 64 KiB of messages would block the recorder and the starter's exit would kill it
+    with SIGPIPE. A file outlives both, and stays with a session that failed.
+    """
+    log_fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        return os.posix_spawnp(
+            command[0],
+            command,
+            os.environ,
+            file_actions=[
+                (os.POSIX_SPAWN_OPEN, 1, os.devnull, os.O_WRONLY, 0),
+                (os.POSIX_SPAWN_DUP2, log_fd, 2),
+            ],
+            # Python ignores these in itself; Popen gives a child the defaults back.
+            setsigdef=(signal.SIGPIPE, signal.SIGXFSZ),
+        )
+    finally:
+        os.close(log_fd)
+
+
 def _terminate_process(pid: int) -> None:
     """Send SIGTERM to a single process, ignore if already dead."""
     with contextlib.suppress(ProcessLookupError):
@@ -346,23 +375,20 @@ class Recorder:
             "--file-format=wav",
         ]
 
-        monitor_proc = subprocess.Popen(
+        monitor_pid = _spawn_recorder(
             [*base_cmd, f"--device={monitor_source}", str(monitor_path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            tmp_dir / MONITOR_LOG,
         )
-
-        mic_proc = subprocess.Popen(
+        mic_pid = _spawn_recorder(
             [*base_cmd, f"--device={mic_source}", str(mic_path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            tmp_dir / MIC_LOG,
         )
 
         # Save session state
         self._state_dir.mkdir(parents=True, exist_ok=True)
         session_data = {
-            "pid_monitor": monitor_proc.pid,
-            "pid_mic": mic_proc.pid,
+            "pid_monitor": monitor_pid,
+            "pid_mic": mic_pid,
             "session_name": session_name,
             "monitor_path": str(monitor_path),
             "mic_path": str(mic_path),
