@@ -186,9 +186,7 @@ def store(
 def _prune(directory: Path, keep: int = MAX_RESUME_ENTRIES) -> None:
     """Drop the least recently modified entries so the directory stays bounded."""
     entries = sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime)
-    if len(entries) <= keep:
-        return
-    for stale in entries[: len(entries) - keep]:
+    for stale in entries[: max(0, len(entries) - keep)]:
         stale.unlink(missing_ok=True)
 
 

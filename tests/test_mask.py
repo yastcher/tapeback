@@ -167,8 +167,13 @@ def test_term_matching_is_case_insensitive_and_restores_what_was_written():
     assert masker.unmask(masked) == "Ivan and ivan"
 
 
-def test_longest_term_wins():
-    masker = Masker(enabled=True, terms="Ivan, Ivan Petrov")
+@pytest.mark.parametrize(
+    "terms",
+    ["Ivan, Ivan Petrov", "ivan, Ivan Petrov"],
+    ids=["same case", "a lowercase prefix"],
+)
+def test_longest_term_wins(terms):
+    masker = Masker(enabled=True, terms=terms)
 
     masked = masker.mask("Ivan Petrov called Ivan")
 
@@ -194,12 +199,20 @@ def test_term_ending_in_punctuation():
 
 
 def test_blank_and_duplicate_entries_are_dropped():
-    masker = Masker(enabled=True, terms=" Ivan , , Ivan ,")
+    """A blank entry is skipped, and the terms after it still count."""
+    masker = Masker(enabled=True, terms=" Ivan , , Petrov , Ivan ,")
 
-    masked = masker.mask("Ivan and Ivan")
+    masked = masker.mask("Ivan and Petrov and Ivan")
 
-    assert masked == "[TERM_1] and [TERM_1]"
-    assert masker.mapping == {"[TERM_1]": "Ivan"}
+    assert masked == "[TERM_1] and [TERM_2] and [TERM_1]"
+    assert masker.mapping == {"[TERM_1]": "Ivan", "[TERM_2]": "Petrov"}
+
+
+def test_no_terms_unless_given():
+    masker = Masker(enabled=True)
+
+    assert masker.mask("PIN XXXX") == "PIN XXXX"
+    assert masker.mapping == {}
 
 
 @pytest.mark.parametrize(

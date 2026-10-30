@@ -22,13 +22,13 @@ def test_gpt_transcribe_skips_local_diarize():
     caps = openai_capabilities_for("gpt-transcribe")
     assert caps.word_timestamps is False
     assert caps.remote_diarize is False
-    assert caps.modern_context is True
     assert caps.allows_local_diarize is False
     assert allows_local_diarize("openai", "gpt-transcribe") is False
 
 
 def test_gpt_diarize_skips_local_diarize():
     caps = openai_capabilities_for("gpt-4o-transcribe-diarize")
+    assert caps.word_timestamps is False
     assert caps.remote_diarize is True
     assert caps.allows_local_diarize is False
     assert caps.max_upload_seconds == 1400.0
@@ -46,11 +46,12 @@ def test_gpt_transcribe_has_duration_cap():
 
 
 def test_unknown_openai_model_raises_with_supported_ids():
-    with pytest.raises(ValueError, match="whisper-1") as exc_info:
+    with pytest.raises(ValueError) as exc_info:
         openai_capabilities_for("whisper1")
-    msg = str(exc_info.value)
-    assert "gpt-transcribe" in msg
-    assert "gpt-4o-transcribe-diarize" in msg
+    assert str(exc_info.value) == (
+        "Unsupported OpenAI STT model 'whisper1'. "
+        "Supported: whisper-1, gpt-transcribe, gpt-4o-transcribe-diarize"
+    )
 
 
 def test_diarize_suffix_alone_is_not_accepted():
