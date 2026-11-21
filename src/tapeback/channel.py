@@ -29,6 +29,15 @@ def _rms_for_range(
     return float(np.sqrt(np.mean(samples[sf:ef].astype(np.float64) ** 2)))
 
 
+def is_silent_throughout(samples: np.ndarray, sample_rate: int) -> bool:
+    """No second of a channel reaches const.SILENCE_RMS_THRESHOLD: nothing was recorded."""
+    seconds = len(samples) / sample_rate
+    return all(
+        _rms_for_range(second, second + 1, samples, sample_rate) < const.SILENCE_RMS_THRESHOLD
+        for second in range(int(seconds) + 1)
+    )
+
+
 def filter_silent_segments(
     segments: list[Segment],
     channel_samples: np.ndarray,

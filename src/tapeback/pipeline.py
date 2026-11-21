@@ -28,6 +28,7 @@ from tapeback.channel import (
     filter_mic_segments,
     filter_silent_segments,
     identify_user_speaker,
+    is_silent_throughout,
     load_stereo_channels,
     split_on_silence,
 )
@@ -105,6 +106,7 @@ def stop_and_process(
                 duration_seconds=float(info.get("duration", 0.0)),
                 language=str(info.get("language", settings.language)),
                 partial=bool(info.get("partial")),
+                monitor_silent=bool(info.get("monitor_silent")),
             ),
         )
 
@@ -161,6 +163,7 @@ def process_file(
                 duration_seconds=float(info.get("duration", 0.0)),
                 language=str(info.get("language", settings.language)),
                 partial=bool(info.get("partial")),
+                monitor_silent=bool(info.get("monitor_silent")),
             ),
         )
 
@@ -198,6 +201,12 @@ def process_stereo_file(
     """
     with stage_timer("load channels", on_status):
         mic_raw, monitor_raw, raw_sr = load_stereo_channels(stereo_path)
+    monitor_silent = is_silent_throughout(monitor_raw, raw_sr)
+    if monitor_silent:
+        on_status(
+            "Warning: the system audio is silent for the whole recording, so the other "
+            "side was not recorded."
+        )
 
     on_status("Splitting channels...")
     with stage_timer("split", on_status):
@@ -237,6 +246,11 @@ def process_stereo_file(
     monitor_segments = filter_silent_segments(monitor_segments, monitor_raw, raw_sr)
 
     want_diarize = diarize and settings.diarize
+    if want_diarize and monitor_silent:
+        # Silence has nobody to tell apart, and on a CPU pyannote takes longer than the
+        # recording over it.
+        on_status("Skipping diarization: the system audio is silent.")
+        want_diarize = False
     if want_diarize and not allows_local_diarize(settings.stt_backend, settings.stt_model):
         on_status(
             "Skipping local diarization — remote STT model "
@@ -278,6 +292,7 @@ def process_stereo_file(
             for s in monitor_segments
         ]
 
+    info["monitor_silent"] = monitor_silent
     return merge_channel_segments(mic_segments, monitor_segments, settings.pause_threshold), info
 
 

@@ -64,6 +64,9 @@ SILENCE_MONITOR_FACTOR = 0.3
 # RMS energy floor (raw int16 scale) below which audio counts as silence
 SILENCE_RMS_THRESHOLD = 200.0
 
+# parecord records s16le: two bytes a sample, and a sample of digital silence is two zero bytes.
+BYTES_PER_SAMPLE = 2
+
 # Upper bound on how much audio one block of the note may span, in seconds.
 # Merging is driven by speaker identity and pause length, neither of which bounds the
 # result: a long uninterrupted monologue merged into a single block, so a 31-minute

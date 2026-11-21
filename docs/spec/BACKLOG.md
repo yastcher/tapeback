@@ -366,12 +366,12 @@ the recording. A check made before a stage cannot see a clamp that latches durin
 
 ## 14. Found 2026-11-16, in a Zoom call whose other side was not recorded
 
-- **The other side can go unrecorded without a word.** A meeting app that plays to an
-  output other than the one whose monitor the recording takes leaves the monitor
-  digitally silent, and the note reads as the whole meeting with only the user in it.
-  Owed without a decision: a line in the note when the monitor stayed silent. Needs a
-  decision: when a warning during recording fires
-  (digital zero for N seconds, or another output playing while the recorded one is
-  silent), and whether to record the meeting app's own stream or every output's monitor
-  (the latter also takes music and notifications). Same class as §12: one side lost, the
-  user not told.
+- **A recording started from the tray is not told that the other side is missing.** A
+  meeting app that plays to an output other than the recorded one leaves the monitor
+  digitally silent. `tapeback start` warns in the terminal (`_monitor_watch.py`: the app
+  and the command that moves it, or silence alone after a longer wait), the note says so,
+  and diarization is skipped; the tray runs no watch, and has only its tooltip and icon to
+  say it with. Needs a decision: those, or a desktop notification. Also needs a decision:
+  whether to record the meeting app's own stream or every output's monitor (the latter
+  also takes music and notifications). Same class as §12: one side lost, the user not
+  told.

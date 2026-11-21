@@ -21,9 +21,6 @@ from tapeback.vault import save_live_markdown
 # Tolerance for deduplication: segments within this many seconds are considered duplicates
 DEDUP_TOLERANCE_SEC = 0.5
 
-# Bytes per sample for s16le mono
-BYTES_PER_SAMPLE = 2
-
 
 def find_data_offset(path: Path) -> int:
     """Find the byte offset where PCM data starts in a WAV file.
@@ -222,10 +219,10 @@ class LiveTranscriber:
     def _process_chunk(self) -> None:
         """Read new audio from both channels, transcribe, update markdown."""
         min_bytes = int(
-            self._settings.live_min_chunk * self._settings.sample_rate * BYTES_PER_SAMPLE
+            self._settings.live_min_chunk * self._settings.sample_rate * const.BYTES_PER_SAMPLE
         )
         overlap_bytes = int(
-            self._settings.live_overlap * self._settings.sample_rate * BYTES_PER_SAMPLE
+            self._settings.live_overlap * self._settings.sample_rate * const.BYTES_PER_SAMPLE
         )
 
         mic_pcm, mic_new_offset = self._read_new_pcm(
@@ -316,8 +313,8 @@ class LiveTranscriber:
             pcm_bytes = f.read(read_length)
 
         # Ensure even number of bytes (s16le = 2 bytes per sample)
-        if len(pcm_bytes) % BYTES_PER_SAMPLE != 0:
-            pcm_bytes = pcm_bytes[: len(pcm_bytes) - (len(pcm_bytes) % BYTES_PER_SAMPLE)]
+        if len(pcm_bytes) % const.BYTES_PER_SAMPLE != 0:
+            pcm_bytes = pcm_bytes[: len(pcm_bytes) - (len(pcm_bytes) % const.BYTES_PER_SAMPLE)]
 
         new_offset = available_pcm
         return pcm_bytes, new_offset
@@ -349,7 +346,7 @@ class LiveTranscriber:
 
         # Calculate absolute time offset
         read_start = max(0, byte_offset - overlap_bytes)
-        chunk_start_seconds = read_start / (self._settings.sample_rate * BYTES_PER_SAMPLE)
+        chunk_start_seconds = read_start / (self._settings.sample_rate * const.BYTES_PER_SAMPLE)
 
         # Adjust timestamps to absolute
         segments = adjust_timestamps(segments, chunk_start_seconds)
@@ -368,7 +365,7 @@ class LiveTranscriber:
         ]
 
         # Deduplicate overlap with existing segments
-        overlap_boundary = byte_offset / (self._settings.sample_rate * BYTES_PER_SAMPLE)
+        overlap_boundary = byte_offset / (self._settings.sample_rate * const.BYTES_PER_SAMPLE)
         segments = deduplicate_overlap(self._segments, segments, overlap_boundary)
 
         return segments

@@ -186,6 +186,9 @@ class TranscriptMeta:
     # recording. A partial transcript that looks complete is worse than none, because
     # nothing prompts a re-run.
     partial: bool = False
+    # True when the system audio held no sound for the whole recording: the note then
+    # carries the user's side only, which nothing else in it would say.
+    monitor_silent: bool = False
 
 
 def _session_date_time(session_name: str) -> tuple[str, str]:
@@ -234,6 +237,13 @@ def format_markdown(segments: list[Segment], meta: TranscriptMeta) -> str:
         lines.append(
             "> [!warning] Interrupted — this transcript covers only part of the "
             "recording. Re-run to complete it."
+        )
+        lines.append("")
+    if meta.monitor_silent:
+        lines.append(
+            "> [!warning] The system audio was silent for the whole recording, so only your "
+            "side is here: if others spoke, the meeting app played to an output tapeback "
+            "did not record."
         )
         lines.append("")
     lines += ["---", ""]
