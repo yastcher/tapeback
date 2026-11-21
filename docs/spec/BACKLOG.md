@@ -375,3 +375,15 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   whether to record the meeting app's own stream or every output's monitor (the latter
   also takes music and notifications). Same class as §12: one side lost, the user not
   told.
+
+## 15. Found 2026-11-21, surveying diarization on real notes
+
+- **A quiet monitor loses the other side's quiet words before diarization.**
+  `filter_silent_segments` drops every monitor word whose RMS is under the fixed
+  `SILENCE_RMS_THRESHOLD` (200, about -44 dBFS). On a monitor recorded at -31 to -41 dBFS
+  overall, as a quiet meeting app leaves it, that cut up to two words in five of what
+  Whisper heard, and most of the cut words were above -50 dBFS: quiet speech, not text
+  invented on silence. The floor was set for the mic, where it drops crosstalk; the
+  monitor has no acoustic crosstalk. Needs a decision, from a measurement: a floor
+  relative to the channel's own speech level, or a lower one for the monitor, checked
+  against the hallucinations it keeps out.
