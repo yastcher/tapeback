@@ -9,13 +9,6 @@ from tapeback.models import Segment
 # (code-switching) often come back with 0.3-0.5 probability even when correct.
 WORD_LOW_CONFIDENCE = 0.35
 
-# Upper bound on how much audio one merged block may span, in seconds.
-# Merging is driven by speaker identity and pause length, neither of which bounds the
-# result: a long uninterrupted monologue merged into a single block, so a 31-minute
-# recording rendered with its last timecode at [00:00:45]. The text was intact but
-# unnavigable. 60s keeps a block readable while still giving a timecode a minute.
-MAX_BLOCK_SECONDS = 60.0
-
 
 def _hms(seconds: float) -> tuple[int, int, int]:
     """Whole hours, minutes and seconds of a time, which is never negative here."""
@@ -51,7 +44,7 @@ def _format_duration_hms(seconds: float) -> str:
 def _merge_consecutive_speakers(
     segments: list[Segment],
     pause_threshold: float = 1.0,
-    max_block_seconds: float = MAX_BLOCK_SECONDS,
+    max_block_seconds: float = const.MAX_BLOCK_SECONDS,
 ) -> list[tuple[float, str | None, str]]:
     """Merge consecutive segments from the same speaker into one block.
 

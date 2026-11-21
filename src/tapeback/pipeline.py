@@ -278,7 +278,7 @@ def process_stereo_file(
             for s in monitor_segments
         ]
 
-    return merge_channel_segments(mic_segments, monitor_segments), info
+    return merge_channel_segments(mic_segments, monitor_segments, settings.pause_threshold), info
 
 
 def process_mono_file(

@@ -10,6 +10,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+### Fixed
+- A long stretch of one speaker no longer becomes a single block of the note. With the other side silent, a whole call came out as one block under one timecode; a block now closes at a pause or after a minute, as everywhere else.
+
 ## [0.10.2] — 2026-10-30
 
 ### Added

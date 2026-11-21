@@ -505,7 +505,7 @@ def test_consolidate_merges_same_speaker():
         Segment(start=2.5, end=4.0, text="world", speaker="You"),
         Segment(start=5.0, end=6.0, text="foo", speaker="Speaker 1"),
     ]
-    result = consolidate_segments(segments)
+    result = consolidate_segments(segments, pause_threshold=1.0)
     assert len(result) == 2
     assert result[0].text == "hello world"
     assert result[0].start == 0.0
@@ -521,13 +521,13 @@ def test_consolidate_different_speakers_kept():
         Segment(start=2.0, end=4.0, text="B", speaker="Speaker 1"),
         Segment(start=4.0, end=6.0, text="C", speaker="You"),
     ]
-    result = consolidate_segments(segments)
+    result = consolidate_segments(segments, pause_threshold=1.0)
     assert len(result) == 3
 
 
 def test_consolidate_empty():
     """Empty list should return empty."""
-    assert consolidate_segments([]) == []
+    assert consolidate_segments([], pause_threshold=1.0) == []
 
 
 # --- assign_speakers word-level split ---
@@ -587,7 +587,7 @@ def test_assign_speakers_splits_multi_speaker_segment():
 )
 def test_merge_channel_segments(mic_segs, mon_segs, expected_starts):
     """Segments from both channels merged and sorted by start time."""
-    result = merge_channel_segments(mic_segs, mon_segs)
+    result = merge_channel_segments(mic_segs, mon_segs, pause_threshold=1.0)
     assert [s.start for s in result] == expected_starts
 
 
@@ -595,10 +595,10 @@ def test_merge_channel_segments_consolidates_same_speaker():
     """Adjacent same-speaker segments should be consolidated after merge."""
     mic = [
         Segment(start=0.0, end=2.0, text="A", speaker="You"),
-        Segment(start=3.0, end=5.0, text="B", speaker="You"),
+        Segment(start=2.5, end=5.0, text="B", speaker="You"),
     ]
     mon = [Segment(start=6.0, end=8.0, text="C", speaker="Speaker 1")]
-    result = merge_channel_segments(mic, mon)
+    result = merge_channel_segments(mic, mon, pause_threshold=1.0)
     assert len(result) == 2
     assert result[0].text == "A B"
     assert result[0].speaker == "You"

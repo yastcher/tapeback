@@ -360,6 +360,18 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   file that is not regular, or read it and never write it; a mutant of `write` that only
   a FIFO tells apart survives until then.
 - **A pause longer than half its segment goes unfound when the monitor is silent.**
-  Needs a decision. `_find_split_points` sets the silence level from the segment's median
+  Needs a decision. `_find_pauses` sets the silence level from the segment's median
   energy, so 0.5 s of speech, 2 s of silence and 0.5 s of speech put the median in the
   silence and nothing is split; a loud monitor during the pause still finds it.
+
+## 14. Found 2026-11-16, in a Zoom call whose other side was not recorded
+
+- **The other side can go unrecorded without a word.** A meeting app that plays to an
+  output other than the one whose monitor the recording takes leaves the monitor
+  digitally silent, and the note reads as the whole meeting with only the user in it.
+  Owed without a decision: a line in the note when the monitor stayed silent. Needs a
+  decision: when a warning during recording fires
+  (digital zero for N seconds, or another output playing while the recorded one is
+  silent), and whether to record the meeting app's own stream or every output's monitor
+  (the latter also takes music and notifications). Same class as §12: one side lost, the
+  user not told.

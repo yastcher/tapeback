@@ -193,7 +193,9 @@ def test_segments_whose_words_span_under_a_second_survive_consolidation():
     second = Segment(start=1.2, end=2.4, text="sure.", words=[_word(1.2, 1.6, "sure.")])
     turns = [_turn("SPEAKER_00", 0.0, 2.4)]
 
-    segments = merge_channel_segments([], assign_speakers([first, second], turns))
+    segments = merge_channel_segments(
+        [], assign_speakers([first, second], turns), pause_threshold=1.0
+    )
 
     assert _transcript_lines(format_markdown(segments, META)) == [
         "[00:00:00] **Speaker 1:** Yes, sure."
