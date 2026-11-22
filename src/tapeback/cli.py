@@ -11,6 +11,7 @@ import click
 from tapeback import _user_env, const
 from tapeback._llama_server import find_binary, model_name
 from tapeback._llm import ENDPOINT, LOCAL, endpoint_address, has_api_key
+from tapeback._monitor_watch import MonitorWatch
 from tapeback._stt_caps import allows_local_diarize, openai_capabilities_for
 from tapeback.recorder import NoActiveRecording, Recorder, detect_devices, session_dir
 from tapeback.settings import LLMProvider, Settings, get_settings
@@ -111,8 +112,12 @@ def start(name: str | None, no_diarize: bool, no_summarize: bool, no_live: bool)
     click.echo("Run 'tapeback stop' to finish and transcribe.", err=True)
     click.echo("Or press Ctrl+C to stop and transcribe now.", err=True)
 
+    watch = MonitorWatch(session_path / const.FILE_MONITOR, settings)
     try:
         while recorder.is_recording():
+            warning = watch.poll()
+            if warning:
+                click.echo(warning, err=True)
             time.sleep(1)
     except KeyboardInterrupt:
         pass

@@ -188,6 +188,13 @@ class Settings(BaseSettings):
     monitor_source: str = "auto"
     mic_source: str = "auto"
     sample_rate: int = 48000
+    # How long the monitor may record digital silence before `tapeback start` looks for
+    # an app playing to another output, and warns with the command that moves it there;
+    # 0 turns the check off. See _monitor_watch.
+    monitor_silence_check_seconds: float = Field(default=20.0, ge=0.0)
+    # How long before a warning even with no such app: before a call starts the monitor
+    # is silent too, so this waits longer. 0 turns it off.
+    monitor_silence_warn_seconds: float = Field(default=120.0, ge=0.0)
     # Where recordings in progress live. None → XDG state dir
     # (~/.local/state/tapeback/sessions). Must be private to this user — see
     # recorder.session_root().

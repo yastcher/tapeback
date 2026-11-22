@@ -9,13 +9,6 @@ from tapeback.models import Segment
 # (code-switching) often come back with 0.3-0.5 probability even when correct.
 WORD_LOW_CONFIDENCE = 0.35
 
-# Upper bound on how much audio one merged block may span, in seconds.
-# Merging is driven by speaker identity and pause length, neither of which bounds the
-# result: a long uninterrupted monologue merged into a single block, so a 31-minute
-# recording rendered with its last timecode at [00:00:45]. The text was intact but
-# unnavigable. 60s keeps a block readable while still giving a timecode a minute.
-MAX_BLOCK_SECONDS = 60.0
-
 
 def _hms(seconds: float) -> tuple[int, int, int]:
     """Whole hours, minutes and seconds of a time, which is never negative here."""
@@ -51,7 +44,7 @@ def _format_duration_hms(seconds: float) -> str:
 def _merge_consecutive_speakers(
     segments: list[Segment],
     pause_threshold: float = 1.0,
-    max_block_seconds: float = MAX_BLOCK_SECONDS,
+    max_block_seconds: float = const.MAX_BLOCK_SECONDS,
 ) -> list[tuple[float, str | None, str]]:
     """Merge consecutive segments from the same speaker into one block.
 
@@ -193,6 +186,9 @@ class TranscriptMeta:
     # recording. A partial transcript that looks complete is worse than none, because
     # nothing prompts a re-run.
     partial: bool = False
+    # True when the system audio held no sound for the whole recording: the note then
+    # carries the user's side only, which nothing else in it would say.
+    monitor_silent: bool = False
 
 
 def _session_date_time(session_name: str) -> tuple[str, str]:
@@ -241,6 +237,13 @@ def format_markdown(segments: list[Segment], meta: TranscriptMeta) -> str:
         lines.append(
             "> [!warning] Interrupted — this transcript covers only part of the "
             "recording. Re-run to complete it."
+        )
+        lines.append("")
+    if meta.monitor_silent:
+        lines.append(
+            "> [!warning] The system audio was silent for the whole recording, so only your "
+            "side is here: if others spoke, the meeting app played to an output tapeback "
+            "did not record."
         )
         lines.append("")
     lines += ["---", ""]

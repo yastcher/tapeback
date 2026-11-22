@@ -360,6 +360,30 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   file that is not regular, or read it and never write it; a mutant of `write` that only
   a FIFO tells apart survives until then.
 - **A pause longer than half its segment goes unfound when the monitor is silent.**
-  Needs a decision. `_find_split_points` sets the silence level from the segment's median
+  Needs a decision. `_find_pauses` sets the silence level from the segment's median
   energy, so 0.5 s of speech, 2 s of silence and 0.5 s of speech put the median in the
   silence and nothing is split; a loud monitor during the pause still finds it.
+
+## 14. Found 2026-11-16, in a Zoom call whose other side was not recorded
+
+- **A recording started from the tray is not told that the other side is missing.** A
+  meeting app that plays to an output other than the recorded one leaves the monitor
+  digitally silent. `tapeback start` warns in the terminal (`_monitor_watch.py`: the app
+  and the command that moves it, or silence alone after a longer wait), the note says so,
+  and diarization is skipped; the tray runs no watch, and has only its tooltip and icon to
+  say it with. Needs a decision: those, or a desktop notification. Also needs a decision:
+  whether to record the meeting app's own stream or every output's monitor (the latter
+  also takes music and notifications). Same class as §12: one side lost, the user not
+  told.
+
+## 15. Found 2026-11-21, surveying diarization on real notes
+
+- **A quiet monitor loses the other side's quiet words before diarization.**
+  `filter_silent_segments` drops every monitor word whose RMS is under the fixed
+  `SILENCE_RMS_THRESHOLD` (200, about -44 dBFS). On a monitor recorded at -31 to -41 dBFS
+  overall, as a quiet meeting app leaves it, that cut up to two words in five of what
+  Whisper heard, and most of the cut words were above -50 dBFS: quiet speech, not text
+  invented on silence. The floor was set for the mic, where it drops crosstalk; the
+  monitor has no acoustic crosstalk. Needs a decision, from a measurement: a floor
+  relative to the channel's own speech level, or a lower one for the monitor, checked
+  against the hallucinations it keeps out.

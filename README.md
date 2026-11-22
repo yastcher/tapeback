@@ -491,6 +491,8 @@ setting may start with `~`, your home directory.
 | Variable | Default | Description |
 |---|---|---|
 | `TAPEBACK_MONITOR_SOURCE` | `auto` | PulseAudio monitor source name |
+| `TAPEBACK_MONITOR_SILENCE_CHECK_SECONDS` | `20` | Seconds of digital silence on the monitor after which `tapeback start` looks for an app playing to another output, and names it with the command that moves it ([the other side is missing](#the-other-side-is-missing-from-the-note)). `0` = off |
+| `TAPEBACK_MONITOR_SILENCE_WARN_SECONDS` | `120` | Seconds of digital silence after which `tapeback start` warns even with no such app. `0` = off |
 | `TAPEBACK_MIC_SOURCE` | `auto` | PulseAudio mic source name |
 | `TAPEBACK_SAMPLE_RATE` | `48000` | Recording sample rate |
 | `TAPEBACK_SESSIONS_DIR` | *(XDG)* | Where recordings in progress live, about 1.6 GB per hour until processed. Default `~/.local/state/tapeback/sessions`. Must be private to you (mode `0700`); tapeback refuses one other users can reach. A session that failed to process stays here, so it can be recovered |
@@ -692,6 +694,27 @@ They install alongside the CUDA 13 libraries without conflict. No `LD_LIBRARY_PA
 needed: when `TAPEBACK_DEVICE=cuda` (the default), tapeback finds and preloads them
 on startup. If they're not installed, transcription falls back to CPU with the message
 above.
+
+### The other side is missing from the note
+
+tapeback records one output: the default one, or the monitor `TAPEBACK_MONITOR_SOURCE`
+names. A meeting app set to play to another output, such as HDMI or a headset, is not
+recorded: the monitor stays digitally silent, and the note holds only your side.
+
+`tapeback start` watches for this while it records. Once the monitor has been silent for
+20 seconds, it looks for an app playing elsewhere and names it, with the command that
+moves it:
+
+```
+Warning: the monitor has recorded silence for 20 s, and the other side is not being recorded: tapeback records alsa_output.pci-0000_00_1f.3.analog-stereo, but
+  ZOOM VoiceEngine plays to alsa_output.pci-0000_01_00.1.hdmi-stereo. To record it, move it: pactl move-sink-input 57 alsa_output.pci-0000_00_1f.3.analog-stereo
+  (or pick that output in the app's audio settings)
+```
+
+With no such app it warns after two minutes of silence, since the monitor is silent
+before a call starts too. Both waits are in [Audio](#audio). A recording whose system
+audio was silent throughout says so at the top of its note, and is not diarized. A
+recording started from the tray is not watched yet.
 
 ### Wrong language or repeated/garbled text on the "You" channel
 

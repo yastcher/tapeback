@@ -152,7 +152,7 @@ def test_stereo_pipeline_to_markdown(tmp_path):
     mic_filtered = filter_silent_segments(mic_segments, mic_raw, sr)
     monitor_filtered = filter_silent_segments(monitor_segments, monitor_raw, sr)
 
-    merged = merge_channel_segments(mic_filtered, monitor_filtered)
+    merged = merge_channel_segments(mic_filtered, monitor_filtered, pause_threshold=1.0)
 
     markdown = format_markdown(
         segments=merged,

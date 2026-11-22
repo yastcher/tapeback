@@ -193,22 +193,25 @@ class Diarizer:
 def merge_channel_segments(
     mic_segments: list[Segment],
     monitor_segments: list[Segment],
+    pause_threshold: float,
 ) -> list[Segment]:
     """Merge segments from both channels, sorted by start time.
 
     After sorting, consecutive segments from the same speaker are consolidated
-    into a single segment.  Overlapping segments from different speakers are
+    (see consolidate_segments).  Overlapping segments from different speakers are
     kept separate.
     """
     merged = sorted(mic_segments + monitor_segments, key=lambda s: s.start)
-    return consolidate_segments(merged)
+    return consolidate_segments(merged, pause_threshold)
 
 
-def consolidate_segments(segments: list[Segment]) -> list[Segment]:
-    """Merge consecutive segments from the same speaker into one.
+def consolidate_segments(segments: list[Segment], pause_threshold: float) -> list[Segment]:
+    """Merge consecutive segments from the same speaker into one, as the note's blocks are.
 
-    Handles both adjacent and overlapping segments.  Preserves word lists
-    by concatenation.
+    Only across a gap shorter than pause_threshold, and not past const.MAX_BLOCK_SECONDS:
+    merging every run of one speaker made a call in which only the user was heard one
+    segment, which the note's block cap could not cut. Handles both adjacent and
+    overlapping segments.  Preserves word lists by concatenation.
     """
     if not segments:
         return []
@@ -216,7 +219,12 @@ def consolidate_segments(segments: list[Segment]) -> list[Segment]:
     result: list[Segment] = [segments[0]]
     for seg in segments[1:]:
         prev = result[-1]
-        if prev.speaker and prev.speaker == seg.speaker:
+        if (
+            prev.speaker
+            and prev.speaker == seg.speaker
+            and seg.start - prev.end < pause_threshold
+            and max(prev.end, seg.end) - prev.start < const.MAX_BLOCK_SECONDS
+        ):
             # Merge: extend previous segment
             words = None
             if prev.words and seg.words:
