@@ -387,3 +387,20 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   monitor has no acoustic crosstalk. Needs a decision, from a measurement: a floor
   relative to the channel's own speech level, or a lower one for the monitor, checked
   against the hallucinations it keeps out.
+
+## 16. Found 2026-11-22, reviewing the release QA
+
+- **The mutation ratchet can pass with a survivor uncounted.** Under the memory cap
+  `scripts/pre_release_qa.sh` sets, the kernel kills the scope's largest process, not
+  necessarily the mutant that grew; mutmut records any worker killed by a signal as a
+  segfault, which counts as killed, and a starved worker as a timeout. Nothing runs those
+  mutants again alone, so a survivor among them leaves the ratchet green. The workers'
+  count is a constant too, so a cap above the memory actually free protects nothing.
+  Owed without a decision: after the run, `mutmut run <names>` for each timeout and
+  segfault, one at a time, then export again; size `--max-children` from `free -m`.
+- **No static analysis runs anywhere.** Neither the gate nor CI runs Semgrep or CodeQL,
+  and nothing audits `uv.lock` for known vulnerabilities. Owed: a Semgrep step in the gate
+  and CI (`p/python`, `p/github-actions`), a CodeQL workflow, and a lockfile audit
+  (pip-audit over `uv.lock`, an accepted finding listed with its date). Needs a decision:
+  the audit reads a vulnerability database over the network, and the gate otherwise runs
+  without one.
