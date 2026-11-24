@@ -406,3 +406,16 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   (pip-audit over `uv.lock`, an accepted finding listed with its date). Needs a decision:
   the audit reads a vulnerability database over the network, and the gate otherwise runs
   without one.
+
+## 17. Found 2026-11-24, diarizing a batch of recorded calls on the test laptop
+
+- **A quiet CPU beats moving diarization to the CPU.** On the test laptop (4 GB Turing
+  GPU) the embedded controller clamps the GPU on the combined heat of both chips, so a
+  CPU stage running beside the GPU keeps it clamped. With the CPU capped (no turbo, 15/25 W)
+  and the GPU's clock locked at 1050 MHz, the GPU stayed unclamped and diarized a
+  long call in under a tenth of the time the CPU took. ADR-004 sends a
+  clamped stage to the CPU; for diarization, keeping the CPU idle while the GPU works, and
+  waiting out a clamp instead of fleeing it, may finish sooner. Needs a decision, from a
+  measurement of both policies on the same recordings; the caps need root, so tapeback
+  can only document them, not apply them.
+
