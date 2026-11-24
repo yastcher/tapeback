@@ -135,13 +135,6 @@ def test_settings_live_from_env(monkeypatch, vault_env):
 # --- Validation ---
 
 
-def test_spectral_merge_threshold_out_of_range_rejected(tmp_vault):
-    with pytest.raises(ValidationError):
-        Settings(vault_path=tmp_vault, spectral_merge_threshold=1.5)
-    with pytest.raises(ValidationError):
-        Settings(vault_path=tmp_vault, spectral_merge_threshold=-0.1)
-
-
 def test_clustering_threshold_out_of_range_rejected(tmp_vault):
     with pytest.raises(ValidationError):
         Settings(vault_path=tmp_vault, clustering_threshold=1.5)

@@ -1,5 +1,6 @@
 """Domain models — data structures shared across modules."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 
@@ -30,6 +31,18 @@ class DiarizationSegment:
     speaker: str  # "SPEAKER_00", "SPEAKER_01", ...
     start: float  # seconds
     end: float  # seconds
+
+
+@dataclass(frozen=True)
+class Diarization:
+    """What the diarizer found: who spoke when, and how each speaker sounds.
+
+    voices maps a speaker to the embedding pyannote gives its voice, compared by cosine;
+    a speaker pyannote gave none, or an empty one, is absent.
+    """
+
+    segments: list[DiarizationSegment]
+    voices: Mapping[str, tuple[float, ...]]
 
 
 @dataclass

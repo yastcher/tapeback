@@ -83,8 +83,6 @@ def test_a_short_piece_keeps_its_words_and_adds_no_speaker(tmp_path, source):
         vault_path=tmp_path,
         hf_token=SecretStr("hf_fake"),
         device="cpu",
-        # Both voices are the same synthetic tone, which the spectral merge would fuse.
-        spectral_merge_threshold=0.0,
     )
 
     with (

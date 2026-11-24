@@ -202,6 +202,11 @@ To enable diarization, you need a HuggingFace token with access to pyannote mode
 TAPEBACK_HF_TOKEN=hf_your_token_here
 ```
 
+pyannote splits the other side into clusters and embeds each one's voice; tapeback
+tells the speakers apart by those embeddings. A small cluster — a few words garbled by a
+lagging connection, two people at once — joins the speaker whose voice it clearly is,
+or its words go to the nearest speaker, instead of showing up as a speaker of its own.
+
 > First run downloads the pyannote model (~1 GB). An NVIDIA GPU is strongly
 > recommended: on the CPU, diarization takes about two thirds of the recording's
 > length. A thermally clamped GPU is slower still, so tapeback checks for the clamp
@@ -506,7 +511,6 @@ setting may start with `~`, your home directory.
 | `TAPEBACK_HF_TOKEN` | *(empty)* | HuggingFace token ([setup](#speaker-diarization)) |
 | `TAPEBACK_MAX_SPEAKERS` | *(auto)* | Maximum number of speakers |
 | `TAPEBACK_CLUSTERING_THRESHOLD` | *(pyannote default)* | Speaker-clustering threshold passed to pyannote. Lower splits speakers more readily, higher merges them |
-| `TAPEBACK_SPECTRAL_MERGE_THRESHOLD` | `0.96` | Spectral speaker merging (0 = off; lower merges more aggressively) |
 
 ### LLM summarization
 

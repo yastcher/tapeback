@@ -41,7 +41,9 @@ SDK_USERS = frozenset({"_llm.py", "_stt_openai.py"})
 SDKS = frozenset({"anthropic", "openai"})
 # What sends a transcript out; only the masking seam may call it (ADR-009).
 SENDERS = frozenset({"connected", "call"})
-MODELS = frozenset({"Segment", "Word", "DiarizationSegment", "Summary", "ActionItem"})
+MODELS = frozenset(
+    {"Segment", "Word", "DiarizationSegment", "Diarization", "Summary", "ActionItem"}
+)
 CONFIG_PARSERS = frozenset({"configparser", "toml", "tomli", "tomllib", "yaml"})
 MAX_LINES = 500
 # Files already over the limit, each capped at its size on 2026-10-29: one may shrink,

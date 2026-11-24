@@ -74,11 +74,6 @@ BYTES_PER_SAMPLE = 2
 # unnavigable. 60s keeps a block readable while still giving a timecode a minute.
 MAX_BLOCK_SECONDS = 60.0
 
-# Spectral analysis
-SPECTRAL_FFT_SIZE = 2048
-SPECTRAL_MIN_FREQ_HZ = 100.0
-SPECTRAL_MAX_FREQ_HZ = 4000.0
-
 # Pyannote
 PYANNOTE_MODEL = "pyannote/speaker-diarization-3.1"
 
