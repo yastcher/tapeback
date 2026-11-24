@@ -202,7 +202,9 @@ merge of real speakers is too weak a signal to rely on; diarization ran at rough
 recording's length because it met the thermal clamp with no check, no telemetry and
 warnings that bypassed the run record. 0.9.9 fixed only the bridging defect; the clamp
 check, the telemetry and the warnings came on 2026-10-16. The rest belongs with
-pluggable diarization models, chosen from a bench table.
+pluggable diarization models, chosen from a bench table. Now (2026-11-23): pyannote's
+voice embeddings replaced the spectral merge (ADR-020); the bench and the pluggable
+models remain.
 
 Measured on 2026-10-16 with a recording of about an hour, before that check: the clamp
 latched three minutes into the first channel's transcription and held for the next
