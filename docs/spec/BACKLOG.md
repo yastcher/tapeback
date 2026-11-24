@@ -226,14 +226,14 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   packages through `--system-site-packages`. Redesign undecided: build from the lock,
   or create the venv in `post_install`.
 - **The user's own short replies are dropped.** The VAD-artifact rule
-  (`formatter.py:151`, under a second) measures diarization's pieces by the segment
-  they were cut from, but not the mic's: pause splitting (`channel.py:226`) and the
-  trim to loud words (`channel.py:32`) leave a "Да." between the other side's turns
+  (`formatter.py:138`, under a second) measures diarization's pieces by the segment
+  they were cut from, but not the mic's: pause splitting (`channel.py:249`) and the
+  trim to loud words (`channel.py:41`) leave a "Да." between the other side's turns
   shorter than a second, and it is dropped. Needs a decision, not a fix: shown as lines
   of their own, the user's backchannels cut the other side's speech into more blocks,
   and noise Whisper took for a word would show as well.
 - **A note can open with Speaker 2.** Labels are numbered as diarization assigns them
-  (`diarizer.py:346`), before the formatter drops artifacts under a second, so an
+  (`diarizer.py:384`), before the formatter drops artifacts under a second, so an
   artifact that carried a new voice first takes "Speaker 1" with it. Numbering by first
   appearance in the note would fix it.
 - The setup and local-LLM work and the defects it turned up: `2026-10-15-setup-and-local-llm.md`.
@@ -310,8 +310,8 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   sends the transcript to an address the user gives, and `local` downloads its model
   from Hugging Face.
 - **A second stop at the same moment dies with a raw error.** The tray and `tapeback
-  stop` both read `session.json` (`recorder.py:384`); the first removes it after up to
-  5 s of waiting for the recorders (`recorder.py:394`), and the second then fails with
+  stop` both read `session.json` (`recorder.py:410`); the first removes it after up to
+  5 s of waiting for the recorders (`recorder.py:420`), and the second then fails with
   `FileNotFoundError` instead of "No recording in progress". Read from the code, not
   reproduced: no second note should come of it.
 

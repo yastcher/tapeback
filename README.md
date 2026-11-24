@@ -19,6 +19,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Optional remote STT**: set `TAPEBACK_STT_BACKEND=openai` to use a remote transcription backend instead of local Whisper. OpenAI is the only remote backend today (requires `tapeback[stt]` + `TAPEBACK_STT_API_KEY`; meeting audio leaves the machine). Uploads retry on timeouts/transient errors with status heartbeats; finished chunks are cached so `tapeback process` on the same WAV only re-uploads what is missing.
 - **Speaker diarization**: pyannote identifies who said what
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
+- **Says when the other side is not recorded**: while you record, it names a meeting app that plays to an output tapeback does not record, with the command that moves it ([details](#the-other-side-is-missing-from-the-note))
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
 - **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback), any OpenAI-compatible API, or a model on this machine (`TAPEBACK_LLM_PROVIDER=local`, no key needed); the summary comes in the meeting's language
 - **System tray**: start/stop recording from the tray icon, no terminal needed
