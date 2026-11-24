@@ -136,5 +136,5 @@ Only defects, nothing tuned:
   untouched. The remaining over-count is the small third cluster pyannote produces,
   left for the next release.
 - The e2e test lost its recording and now uses `2026-04-02_22-01-53` (two remote
-  speakers), asserting exactly two. It reads the token from `HF_TOKEN` only:
-  `TAPEBACK_HF_TOKEN` never reached it under the settings isolation.
+  speakers), asserting exactly two. Where it takes the HF token from is the
+  `e2e_settings` fixture's to say (`tests/fixtures.py`).

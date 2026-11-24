@@ -27,6 +27,9 @@ from tapeback.recorder import Recorder
 from tapeback.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The project's .env, which isolate_settings_sources cuts off for every test: the e2e
+# suite reads its HF token there.
+PROJECT_ENV = REPO_ROOT / ".env"
 
 
 # A marker, not a skipif, so a run can leave these tests out with `-m "not pyannote"`;
@@ -197,15 +200,19 @@ def stereo_wav(tmp_path):
 
 
 @pytest.fixture
-def e2e_settings(tmp_path):
-    """Settings for e2e tests, with the HF token from HF_TOKEN.
+def e2e_settings(tmp_path, monkeypatch):
+    """Settings for e2e tests, with the HF token from the project's .env.
 
-    Only HF_TOKEN: isolate_settings_sources has already removed every TAPEBACK_
-    variable by the time this runs, so TAPEBACK_HF_TOKEN could never reach it.
+    Only the token comes back from the file isolate_settings_sources cut off: the rest of
+    the developer's settings cannot change what the suite measures. Read by Settings, as
+    tapeback reads it, so the value never leaves its SecretStr.
     """
     vault = tmp_path / "vault"
     vault.mkdir()
-    return Settings(vault_path=vault, hf_token=SecretStr(os.environ.get("HF_TOKEN", "")))
+    with monkeypatch.context() as project:
+        project.setitem(Settings.model_config, "env_file", (PROJECT_ENV,))
+        token = Settings(vault_path=vault).hf_token
+    return Settings(vault_path=vault, hf_token=token)
 
 
 @pytest.fixture
