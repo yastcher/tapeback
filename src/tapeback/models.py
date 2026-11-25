@@ -45,6 +45,25 @@ class Diarization:
     voices: Mapping[str, tuple[float, ...]]
 
 
+@dataclass(frozen=True)
+class VoiceSample:
+    """One hearing of a person's voice: pyannote's embedding of a speaker in a session,
+    kept with where it came from, so a profile can be rebuilt from the recording."""
+
+    vector: tuple[float, ...]
+    session: str
+    speaker: str  # pyannote's label in that session
+
+
+@dataclass(frozen=True)
+class VoiceProfile:
+    """A person tapeback can name in a note, by the samples of their voice it keeps."""
+
+    id: str
+    name: str
+    samples: tuple[VoiceSample, ...]
+
+
 @dataclass
 class ActionItem:
     assignee: str

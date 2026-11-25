@@ -171,12 +171,14 @@ only_mutate = [
     "src/tapeback/_mask.py",
     "src/tapeback/_quality.py",
     "src/tapeback/_resume.py",
+    "src/tapeback/_speaker_name.py",
     "src/tapeback/_stt_caps.py",
     "src/tapeback/_user_env.py",
     "src/tapeback/channel.py",
     "src/tapeback/formatter.py",
     "src/tapeback/speaker_merge.py",
     "src/tapeback/summarizer.py",
+    "src/tapeback/voice_profiles.py",
 ]
 # What the tests read besides tests/: the gate and release scripts, packaging, README.
 also_copy = ["scripts", "packaging", ".github", "README.md", "CHANGELOG.md", "AGENTS.md"]

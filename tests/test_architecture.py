@@ -42,7 +42,16 @@ SDKS = frozenset({"anthropic", "openai"})
 # What sends a transcript out; only the masking seam may call it (ADR-009).
 SENDERS = frozenset({"connected", "call"})
 MODELS = frozenset(
-    {"Segment", "Word", "DiarizationSegment", "Diarization", "Summary", "ActionItem"}
+    {
+        "Segment",
+        "Word",
+        "DiarizationSegment",
+        "Diarization",
+        "VoiceSample",
+        "VoiceProfile",
+        "Summary",
+        "ActionItem",
+    }
 )
 CONFIG_PARSERS = frozenset({"configparser", "toml", "tomli", "tomllib", "yaml"})
 MAX_LINES = 500
