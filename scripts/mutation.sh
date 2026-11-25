@@ -42,4 +42,4 @@ if [ $# -gt 0 ]; then
 fi
 # Survivors and untested mutants only come down.
 uv run python scripts/mutation_ratchet.py mutants/mutmut-cicd-stats.json \
-  --survived-max 23 --no-tests-max 0
+  --survived-max 22 --no-tests-max 0
