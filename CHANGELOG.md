@@ -10,6 +10,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+## [0.10.3] — 2026-11-24
+
 ### Added
 - `tapeback start` warns when the other side is not being recorded. A meeting app playing to another output leaves the monitor silent; after 20 seconds of that, tapeback names the app and the command that moves it, and after two minutes it warns on the silence alone. A note whose system audio was silent throughout says so, and is not diarized: on a CPU that took longer than the recording, for nothing.
 
