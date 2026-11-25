@@ -10,6 +10,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- New entries go HERE, via scripts/changelog_add.py — never under a dated release. -->
 <!-- Subsections in order: Security / Added / Changed / Fixed / Removed / Docs. -->
 
+## [0.11.0] — 2026-11-25
+
 ### Added
 - Known voices go by name in the note. A speaker whose voice matches a voice profile in `~/.local/share/tapeback/voices/`, readable by you alone, takes that person's name; anyone else stays Speaker N. `tapeback voices learn <note> "Speaker 2=Anna"` makes a profile from a note's speaker and names it there, `voices list` shows who is known, `voices forget` deletes a voice. With `TAPEBACK_MASK_PII` on, these names are masked before the summary request.
 - `TAPEBACK_YOUR_NAME` puts your own name in place of You, in the note and in its summary.
