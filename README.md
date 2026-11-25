@@ -230,6 +230,19 @@ closer to that person than to anyone else, takes their name; anyone else stays
 pyannote sometimes hears one person as two. The processing output lists each speaker's
 similarity, without names, so the run record stays shareable.
 
+To make a profile, name the speakers of a note:
+
+```bash
+tapeback voices learn ~/tapeback/meetings/2026-11-26_20-00-00.md "Speaker 2=Anna" "Speaker 3=Boris"
+```
+
+The note says Anna and Boris from then on, and their voices are kept. You can also rename
+the speakers in the note yourself and give the note alone: every name in it is learned,
+the known ones gaining a sample from this call, which helps when someone's microphone
+changes. The note's recording in the vault is diarized again, which takes about as long as
+the first time. `tapeback voices list` shows who is known, and `tapeback voices forget
+Anna` deletes a voice.
+
 Names come only from the stereo pipeline's diarization: a mono recording, a remote STT
 backend's own speakers and the live note get none. A voice profile is biometric data, it
 identifies a person by their voice: keep profiles of people who agreed to it, as
@@ -385,6 +398,9 @@ tapeback process <FILE> [--name N] Transcribe an existing audio file
 tapeback summarize <FILE>          Add LLM summary to transcript
 tapeback status                    Show recording status, settings and which keys are set
 tapeback setup                     Turn diarization and the summary on or off
+tapeback voices learn <NOTE> [L=N] Learn the voices of the people a note names
+tapeback voices list               The people tapeback knows by voice
+tapeback voices forget <NAME>      Delete a person's voice profile
 ```
 
 ```bash
@@ -397,6 +413,7 @@ tapeback summarize notes.md --provider local   # a model on this machine, no key
 tapeback summarize notes.md --show-masked   # print what would be sent, send nothing
 tapeback setup                     # in a terminal, asks; then says where each setting comes from
 tapeback setup --no-diarize --summarize     # writes ~/.config/tapeback/.env, other lines kept
+tapeback voices learn meetings/2026-11-26_20-00-00.md "Speaker 2=Anna" "Speaker 3=Boris"
 ```
 
 ## Output format
@@ -784,7 +801,6 @@ not yet processed.
 
 ## Roadmap
 
-- **Speaker profiles**: learn and remember recurring speakers across meetings
 - **Multi-language meetings**: detect and handle language switches mid-meeting
 - **Windows support**: WASAPI loopback capture
 

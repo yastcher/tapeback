@@ -103,6 +103,8 @@ max-args = 6  # Settings + 5 domain args is a common shape in this codebase
 # Lazy imports to keep CLI startup (--help, status) free of ~10s ML model load
 # (faster_whisper/torch are pulled in transitively from pipeline/live/tray).
 "src/tapeback/cli.py" = ["PLC0415"]
+# The voices commands load the profile code (numpy) when they run, for the same reason.
+"src/tapeback/cli_voices.py" = ["PLC0415"]
 # pyannote.audio + torch are `[diarize]` extras — must import inside functions
 # so users without the extra don't get ImportError on module load.
 "src/tapeback/diarizer.py" = ["PLC0415"]

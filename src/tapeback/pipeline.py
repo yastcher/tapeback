@@ -417,6 +417,20 @@ def _maybe_diarize_segments(
     return result
 
 
+def voices_of_recording(
+    stereo_path: Path, settings: Settings, on_status: StatusCallback = _noop_status
+) -> tuple[list[DiarizationSegment], Diarization]:
+    """The other side of a recording diarized as for its note: the speakers after the
+    voice merge, and pyannote's own output with their voices."""
+    tmp_dir = Path(tempfile.mkdtemp(prefix="tapeback_"))
+    try:
+        _mic_16k, monitor_16k = split_channels_16k(stereo_path, tmp_dir)
+        diarization = _diarize(settings, monitor_16k, on_status)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return merge_speakers_by_voice(diarization), diarization
+
+
 def _diarize(settings: Settings, audio_path: Path, on_status: StatusCallback) -> Diarization:
     """Run pyannote, with the GPU sampled as for Whisper, then give its VRAM back.
 

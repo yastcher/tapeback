@@ -15,13 +15,18 @@ the model that made them, which the file records.
 
 import json
 import os
+import re
+import uuid
+from collections import defaultdict
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
 from tapeback import const
 from tapeback._speaker_name import speaker_name_problem
+from tapeback.formatter import SPEAKER_LINE
 from tapeback.models import DiarizationSegment, VoiceProfile, VoiceSample
 from tapeback.recorder import ensure_private_dir
 
@@ -31,7 +36,12 @@ from tapeback.recorder import ensure_private_dir
 PERSON_SIMILARITY = 0.8
 # ...and no other person's samples come within this of it.
 PERSON_MARGIN = 0.15
+# A name is learned from the voice heard most in their lines, when it holds at least
+# this share of the speech heard there; below it, the lines are as much someone else's.
+LEARN_MAJORITY = 0.5
 PROFILES_FILE = "profiles.json"
+# The note's recording, as formatter writes it: `audio: "[[attachments/audio/x.wav]]"`.
+_AUDIO_FIELD = re.compile(r'^audio: "\[\[(.+)\]\]"$', re.MULTILINE)
 
 
 class ProfileError(Exception):
@@ -147,6 +157,96 @@ def name_speakers(
             continue
         names[label] = person
     return names, closest
+
+
+def note_recording(markdown: str) -> str | None:
+    """The recording a note points to, relative to the vault; None when it names none."""
+    match = _AUDIO_FIELD.search(markdown)
+    return match[1] if match else None
+
+
+def note_speakers(markdown: str, end: float) -> dict[str, list[tuple[float, float]]]:
+    """Each speaker label of a note's transcript and the spans of its lines: from a line's
+    timecode to the next line's, the last one to `end`."""
+    lines = [
+        (float(int(h) * 3600 + int(m) * 60 + int(s)), label)
+        for h, m, s, label in SPEAKER_LINE.findall(markdown)
+    ]
+    spans: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for i, (start, label) in enumerate(lines):
+        stop = lines[i + 1][0] if i + 1 < len(lines) else end
+        if stop > start:
+            spans[label].append((start, stop))
+    return dict(spans)
+
+
+def rename_speakers(markdown: str, renames: Mapping[str, str]) -> str:
+    """The note with each label of renames replaced by its name, wherever the label stands
+    whole: the transcript's lines, the action items' assignees, the brief."""
+    for label, name in renames.items():
+        whole = re.compile(rf"(?<!\w){re.escape(label)}(?!\w)")
+        # A function, not a template: a name is put in as it is, backslashes and all.
+        markdown = whole.sub(lambda _match, name=name: name, markdown)
+    return markdown
+
+
+def voices_for_names(
+    spans: Mapping[str, list[tuple[float, float]]],
+    turns: Iterable[DiarizationSegment],
+    voices: Mapping[str, tuple[float, ...]],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Each name's speaker in a diarization of the note's recording: the one heard most in
+    the name's lines, by LEARN_MAJORITY of the speech there, with a voice, and no other
+    name's. Returns (name -> pyannote label, name -> why it was not found)."""
+    turns = list(turns)
+    found: dict[str, str] = {}
+    missed: dict[str, str] = {}
+    for name, name_spans in spans.items():
+        heard: dict[str, float] = defaultdict(float)
+        for start, stop in name_spans:
+            for turn in turns:
+                overlap = min(stop, turn.end) - max(start, turn.start)
+                if overlap > 0:
+                    heard[turn.speaker] += overlap
+        label = max(heard, key=heard.__getitem__, default=None)
+        if label is None or heard[label] < LEARN_MAJORITY * sum(heard.values()):
+            missed[name] = "no one voice holds most of their lines"
+        elif label not in voices:
+            missed[name] = "pyannote gave their voice no embedding"
+        else:
+            found[name] = label
+    labels = list(found.values())
+    for name in [name for name, label in found.items() if labels.count(label) > 1]:
+        missed[name] = "their lines are the same voice as another name's"
+        del found[name]
+    return found, missed
+
+
+def add_samples(
+    profiles: list[VoiceProfile], samples: Mapping[str, VoiceSample]
+) -> list[VoiceProfile]:
+    """The profiles with each name's sample kept: a new name makes a new profile, and a
+    sample of a session and label already kept replaces the old one."""
+    out = list(profiles)
+    for name, sample in samples.items():
+        index = next((i for i, profile in enumerate(out) if profile.name == name), None)
+        if index is None:
+            out.append(VoiceProfile(id=str(uuid.uuid4()), name=name, samples=(sample,)))
+            continue
+        same = (sample.session, sample.speaker)
+        kept = tuple(s for s in out[index].samples if (s.session, s.speaker) != same)
+        out[index] = replace(out[index], samples=(*kept, sample))
+    return out
+
+
+def forget(
+    profiles: list[VoiceProfile], name: str
+) -> tuple[list[VoiceProfile], list[VoiceProfile]]:
+    """The profiles split into those kept and the ones of the person of that name."""
+    return (
+        [profile for profile in profiles if profile.name != name],
+        [profile for profile in profiles if profile.name == name],
+    )
 
 
 def _unit(vector: Iterable[float]) -> np.ndarray:
