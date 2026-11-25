@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from tapeback import const
+from tapeback._speaker_name import speaker_name_problem
 from tapeback._stt_caps import openai_capabilities_for
 from tapeback.glossary import DEFAULT_HOTWORDS
 
@@ -210,6 +212,8 @@ class Settings(BaseSettings):
     diarize: bool = True
     max_speakers: int | None = None
     clustering_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    # The mic side's label in notes and summaries: the user's own name in place of "You".
+    your_name: str = const.SPEAKER_YOU
 
     # Post-processing
     pause_threshold: float = Field(default=1.0, ge=0.0)  # split on word gaps >= this
@@ -297,6 +301,14 @@ class Settings(BaseSettings):
         """`~` is the home directory, as in a shell: README's quick start writes the vault
         that way, and neither a .env file nor pydantic expands it."""
         return value.expanduser() if value is not None else None
+
+    @field_validator("your_name")
+    @classmethod
+    def _validate_your_name(cls, value: str) -> str:
+        problem = speaker_name_problem(value)
+        if problem:
+            raise ValueError(f"{value!r} cannot stand for you in a note: {problem}")
+        return value
 
     @field_validator("timezone")
     @classmethod

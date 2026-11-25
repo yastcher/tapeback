@@ -724,3 +724,18 @@ def test_split_on_silence_monitor_relative(stereo_wav):
     assert len(result) == 2
     assert result[0].text == "hello"
     assert result[1].text == "world"
+
+
+def test_a_known_voice_takes_its_name_and_the_others_count_from_one():
+    segments = [
+        Segment(start=float(i), end=float(i + 1), text=text, words=None)
+        for i, text in enumerate(["First", "Second", "Third"])
+    ]
+    dsegs = [
+        DiarizationSegment(speaker=f"SPEAKER_0{i}", start=float(i), end=float(i + 1))
+        for i in range(3)
+    ]
+
+    result = assign_speakers(segments, dsegs, names={"SPEAKER_01": "Ann"})
+
+    assert [s.speaker for s in result] == ["Speaker 1", "Ann", "Speaker 2"]

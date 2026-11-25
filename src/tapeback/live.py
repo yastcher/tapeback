@@ -352,7 +352,7 @@ class LiveTranscriber:
         segments = adjust_timestamps(segments, chunk_start_seconds)
 
         # Assign speaker
-        speaker = const.SPEAKER_YOU if is_mic else const.SPEAKER_OTHER
+        speaker = self._settings.your_name if is_mic else const.SPEAKER_OTHER
         segments = [
             Segment(
                 start=s.start,

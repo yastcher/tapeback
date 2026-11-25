@@ -301,3 +301,27 @@ def test_write_chunk_wav_creates_valid_wav(tmp_path):
         assert wf.getframerate() == 16000
         assert wf.getsampwidth() == 2
         assert wf.getnframes() == 5
+
+
+def test_the_live_note_gives_the_mic_side_your_name(tmp_path, tmp_vault):
+    settings = Settings(
+        vault_path=tmp_vault,
+        live_interval=60,
+        live_min_chunk=0.01,
+        live_overlap=0.0,
+        sample_rate=48000,
+        your_name="Mira",
+    )
+    mic_path = tmp_path / "mic.wav"
+    monitor_path = tmp_path / "monitor.wav"
+    create_mono_wav(mic_path, duration=1.0, sample_rate=48000)
+    create_mono_wav(monitor_path, duration=1.0, sample_rate=48000)
+
+    with patch(
+        "tapeback.transcriber.WhisperModel",
+        return_value=mock_whisper_transcribe([(0.0, 1.0, "Hello world.")]),
+    ):
+        live = LiveTranscriber(settings, "name-test", mic_path, monitor_path)
+        live._process_chunk()
+
+    assert {s.speaker for s in live._segments} == {"Mira", "Other"}

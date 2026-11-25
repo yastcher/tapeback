@@ -18,6 +18,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Local transcription**: faster-whisper on CPU or CUDA GPU (default)
 - **Optional remote STT**: set `TAPEBACK_STT_BACKEND=openai` to use a remote transcription backend instead of local Whisper. OpenAI is the only remote backend today (requires `tapeback[stt]` + `TAPEBACK_STT_API_KEY`; meeting audio leaves the machine). Uploads retry on timeouts/transient errors with status heartbeats; finished chunks are cached so `tapeback process` on the same WAV only re-uploads what is missing.
 - **Speaker diarization**: pyannote identifies who said what
+- **Known voices by name**: a speaker whose voice matches a voice profile is named in the note, and your own side can carry your name instead of "You" ([details](#speaker-names))
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
 - **Says when the other side is not recorded**: while you record, it names a meeting app that plays to an output tapeback does not record, with the command that moves it ([details](#the-other-side-is-missing-from-the-note))
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
@@ -215,6 +216,25 @@ or its words go to the nearest speaker, instead of showing up as a speaker of it
 > [below](#transcription-is-suddenly-very-slow-and-the-gpu-is-not-even-hot)). It
 > prints the device it chose and its progress through the recording.
 
+### Speaker names
+
+Your side of the call is "You"; set `TAPEBACK_YOUR_NAME` to have your own name there
+instead, in the note and in its summary.
+
+A remote speaker whose voice tapeback knows goes by name. Voice profiles live in
+`~/.local/share/tapeback/voices/profiles.json`, readable by you alone: each holds a
+person's name and samples of their voice, pyannote's embeddings from past calls. A
+speaker whose voice reaches cosine 0.8 to one of a person's samples, and is clearly
+closer to that person than to anyone else, takes their name; anyone else stays
+"Speaker N", counted among the speakers without a name. Two speakers can take one name:
+pyannote sometimes hears one person as two. The processing output lists each speaker's
+similarity, without names, so the run record stays shareable.
+
+Names come only from the stereo pipeline's diarization: a mono recording, a remote STT
+backend's own speakers and the live note get none. A voice profile is biometric data, it
+identifies a person by their voice: keep profiles of people who agreed to it, as
+data-protection law may require (GDPR art. 9).
+
 ## LLM summarization
 
 After transcription, tapeback can add a brief summary, action items, and key
@@ -320,7 +340,8 @@ TAPEBACK_MASK_PII=true
 Emails and phone numbers are then replaced with `[EMAIL_1]` / `[PHONE_1]`
 placeholders before the transcript is sent — including on the retry and on every
 fallback provider — and the real values are restored in the summary saved to your
-vault. The transcript on disk is never masked.
+vault. The transcript on disk is never masked. The names tapeback itself writes in as
+speakers, yours and the [known voices'](#speaker-names), are masked too.
 
 **Add the names yourself.** Whisper writes what people say, and what people say
 aloud in meetings is names, not email addresses — so on a typical transcript the
@@ -441,6 +462,7 @@ setting may start with `~`, your home directory.
 | `TAPEBACK_VAULT_PATH` | `~/tapeback` | Path to output directory (Obsidian vault) |
 | `TAPEBACK_MEETINGS_DIR` | `meetings` | Subdirectory for meeting notes |
 | `TAPEBACK_ATTACHMENTS_DIR` | `attachments/audio` | Subdirectory for audio files |
+| `TAPEBACK_YOUR_NAME` | `You` | Your label in notes and summaries ([speaker names](#speaker-names)) |
 
 ### Transcription
 
@@ -756,9 +778,9 @@ rm -rf ~/.cache/huggingface/
 `apt remove tapeback` alone would leave the extras installed: apt does not remove
 packages installed from files along with the package they depend on.
 
-tapeback's own files stay: settings in `~/.config/tapeback`, run records in
-`~/.local/share/tapeback`, and in `~/.local/state/tapeback` the recordings not yet
-processed.
+tapeback's own files stay: settings in `~/.config/tapeback`, run records and voice
+profiles in `~/.local/share/tapeback`, and in `~/.local/state/tapeback` the recordings
+not yet processed.
 
 ## Roadmap
 

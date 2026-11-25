@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, replace
 
 from tapeback import const
@@ -8,6 +9,9 @@ from tapeback.models import Segment
 # 0.35 is tuned for multilingual speech: English loanwords inside Russian sentences
 # (code-switching) often come back with 0.3-0.5 probability even when correct.
 WORD_LOW_CONFIDENCE = 0.35
+# A transcript line as _format_segments_block writes it, `[01:02:03] **Name:** text`:
+# its hours, minutes, seconds and speaker, for the code that reads a note back.
+SPEAKER_LINE = re.compile(r"^\[(\d{2}):(\d{2}):(\d{2})\] \*\*([^*\n]+):\*\* ", re.MULTILINE)
 
 
 def _hms(seconds: float) -> tuple[int, int, int]:

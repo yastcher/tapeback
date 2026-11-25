@@ -6,8 +6,10 @@ from pathlib import Path
 
 import click
 
-from tapeback import _llm
+from tapeback import _llm, const
 from tapeback._mask import Masker
+from tapeback._speaker_name import speaker_name_problem
+from tapeback.formatter import SPEAKER_LINE
 from tapeback.models import ActionItem, Summary
 from tapeback.settings import Settings
 
@@ -16,17 +18,18 @@ You analyze meeting transcripts and extract structured information.
 
 You MUST respond with valid JSON only. No markdown, no explanation, no preamble.
 
-Each transcript line is a timecode, a speaker label and what was said. "You" is the \
-person who recorded the meeting. The others are "Speaker 1", "Speaker 2" and so on, \
-or "Other" when their voices were not told apart. These labels come from audio \
-analysis and may be wrong where voices overlap.
+Each transcript line is a timecode, a speaker label and what was said. "<recorder>" is \
+the person who recorded the meeting. The others go by name where their voices are \
+known, otherwise "Speaker 1", "Speaker 2" and so on, or "Other" when their voices were \
+not told apart. These labels come from audio analysis and may be wrong where voices \
+overlap.
 
 JSON schema:
 {
   "brief": "2-3 sentence summary of the meeting",
   "action_items": [
     {
-      "assignee": "exact speaker label from transcript (e.g. 'You', 'Speaker 1')",
+      "assignee": "exact speaker label from transcript (e.g. '<recorder>', 'Speaker 1')",
       "action": "what was promised or assigned",
       "deadline": "deadline if mentioned, null otherwise"
     }
@@ -36,7 +39,7 @@ JSON schema:
 }
 
 Rules:
-- Use EXACT speaker labels from the transcript (e.g. "You", "Speaker 1")
+- Use EXACT speaker labels from the transcript (e.g. "<recorder>", "Speaker 1")
 - action_items: only explicit commitments. "I'll send the report by Friday" = action item. \
 "We should think about it" = NOT an action item.
 - key_decisions: only decisions that were agreed upon, not suggestions or open questions
@@ -47,6 +50,8 @@ Rules:
 - Keep brief concise — 2-3 sentences max, no filler"""
 
 _RETRY_PROMPT = "Respond with valid JSON only. No other text."
+# Where the prompt names the person who recorded: their label as the transcript sent has it.
+_RECORDER = "<recorder>"
 
 # "The same language as the transcript" was not enough: a 4B local model followed the
 # language of these English instructions and summarised a Russian meeting in English.
@@ -141,8 +146,18 @@ def masked_preview(transcript: str, settings: Settings) -> tuple[str, dict[str, 
     nothing on a typical spoken transcript, so "masking is on" is otherwise unfalsifiable
     from the outside.
     """
-    masker = Masker(enabled=settings.mask_pii, terms=settings.mask_terms)
+    masker = _masker(transcript, settings)
     return masker.mask(transcript), masker.counts
+
+
+def _masker(transcript: str, settings: Settings) -> Masker:
+    """The call's masker: the user's terms, and the names tapeback itself wrote in as
+    speakers, the user's own and the known voices'. Masking that left them out would send
+    in the clear the names tapeback added."""
+    names = {settings.your_name, *(line[3] for line in SPEAKER_LINE.findall(transcript))}
+    names = {n for n in names if speaker_name_problem(n, reserved=[const.SPEAKER_YOU]) is None}
+    terms = ",".join([settings.mask_terms, *sorted(names)])
+    return Masker(enabled=settings.mask_pii, terms=terms)
 
 
 def summarize(transcript: str, settings: Settings, *, language: str | None = None) -> Summary:
@@ -150,15 +165,17 @@ def summarize(transcript: str, settings: Settings, *, language: str | None = Non
 
     With `mask_pii` on, the transcript is masked once and every provider in the fallback
     chain — and the JSON retry — receives that same masked text; the real values are
-    restored in the returned Summary. The system prompt holds no user data, only the
-    note's language code when it has one, so it is not masked.
+    restored in the returned Summary. The system prompt names the person who recorded by
+    the label the masked transcript gives them; besides, it holds only the note's
+    language code when it has one.
     """
-    masker = Masker(enabled=settings.mask_pii, terms=settings.mask_terms)
+    masker = _masker(transcript, settings)
     masked = masker.mask(transcript)
+    prompt = _SYSTEM_PROMPT.replace(_RECORDER, masker.mask(settings.your_name))
     rule = "\n" + _LANGUAGE_RULE.format(language=language) if language else ""
     with _llm.connected(settings) as ask:
         try:
-            raw = ask(_SYSTEM_PROMPT + rule, masked)
+            raw = ask(prompt + rule, masked)
             summary = _parse_response(raw)
         except (json.JSONDecodeError, KeyError):
             # Retry once with shorter prompt
