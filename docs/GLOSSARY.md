@@ -47,6 +47,10 @@ in [`docs/adr/`](adr/README.md).
   has spoken ten seconds at a stretch, or has a voice like no one else's. A **fragment**
   (a minor cluster) is any other, usually garbled or overlapping; it joins the speaker
   whose voice it clearly is, or goes, its words falling to the nearest speaker.
+- **Voice profile**: a person's name and samples of their voice, pyannote's embeddings
+  from past calls (`voice_profiles.py`, ADR-021), learned from the speakers a note names
+  (`tapeback voices learn`). A speaker whose voice is clearly one profile's person takes
+  that name in the note; any other stays **Speaker N**.
 - **Hallucination markers**: subtitle-corpus phrases Whisper invents on silence
   ("Продолжение следует..."), counted and filtered by `_quality.py`.
 

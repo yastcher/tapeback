@@ -419,3 +419,11 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   measurement of both policies on the same recordings; the caps need root, so tapeback
   can only document them, not apply them.
 
+
+## 18. Found 2026-11-24, naming known voices (ADR-021)
+
+- **A participant under a twentieth of the speech loses their words** (ADR-020) even
+  when a profile knows the voice: the voice merge drops the fragment before naming sees
+  it. Naming could run first and keep a fragment that is clearly a known person.
+- **Mono recordings, a remote STT backend's own speakers and the live note get no
+  names.** The mono path does no voice merge, and the live note does not diarize.
