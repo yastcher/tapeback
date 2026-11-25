@@ -87,8 +87,6 @@ def test_a_diarized_meeting_writes_its_transcript_once(
     """The note holds the diarized transcript alone. It used to print the raw
     You/Other transcript first and the same text again with the speakers told apart."""
     monkeypatch.setenv("TAPEBACK_HF_TOKEN", "hf_fake")
-    # The two remote voices are one synthetic tone, which the spectral merge would fuse.
-    monkeypatch.setenv("TAPEBACK_SPECTRAL_MERGE_THRESHOLD", "0")
     meeting = mock_whisper_by_channel(
         mic_segments=[(0.0, 2.0, "I will send the report.")],
         monitor_segments=[

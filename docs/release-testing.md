@@ -51,10 +51,13 @@ After the gate, two checks on the tests themselves (ADR-019):
   kernel then kills that worker instead of the desktop. mutmut calls such a mutant a
   segfault; the ratchet counts it as died, not survived. `scripts/mutation_ratchet.py`
   fails the run when more mutants survive, or go untested, than the maxima
-  `pre_release_qa.sh` passes it, or when a mutant was left unchecked, and asks for the
+  `scripts/mutation.sh` passes it, or when a mutant was left unchecked, and asks for the
   maxima to come down when fewer do. `mutmut results` lists the survivors and `mutmut show <name>` shows one.
+  `scripts/mutation.sh <names>` runs only the mutants those names match, from a fresh
+  `mutants/` as the whole run does.
 
-On success it stamps the tree, and `scripts/release.sh` tags only a stamped tree.
+On success it stamps the tree it started with, if no commit or edit has changed it
+since, and `scripts/release.sh` tags only a stamped tree.
 
 Optional extras (these run pip install during postinst, ~30 s + network):
 

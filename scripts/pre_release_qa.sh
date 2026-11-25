@@ -9,10 +9,12 @@
 #                        whatever the diff — on main there is no diff to go by
 #   2. CRAP            — scripts/crap.py over the coverage the gate's pytest wrote
 #   3. e2e quality     — tests/test_e2e_quality.py on real audio and real models.
-#                        Needs the recordings in tests/data/, HF_TOKEN for
-#                        pyannote, and ideally a GPU; takes minutes.
-#   4. mutation        — mutmut over the slice in [tool.mutmut], from scratch, in a
-#                        memory-capped scope; about an hour with two workers
+#                        Needs the recordings in tests/data/, TAPEBACK_HF_TOKEN
+#                        in the project's .env for pyannote, read as tapeback
+#                        reads it, and ideally a GPU; takes minutes.
+#   4. mutation        — scripts/mutation.sh: mutmut over the slice in [tool.mutmut],
+#                        from scratch, in a memory-capped scope; about an hour with
+#                        two workers
 #
 # Needs docker, nfpm and a systemd user session. Writes the tree hash into the git
 # directory on success; `release.sh` compares it with the tree it is about to tag.
@@ -65,24 +67,13 @@ if tests == 0 or skipped:
 EOF
 
 step "mutation"
-# Every function of the slice in [tool.mutmut], changed in small ways, against the tests
-# that cover it (ADR-019); survivors and untested mutants only come down. From scratch:
-# mutmut keeps a copied file unmutated when only the slice changed. Capped in memory: a
-# mutant can make code allocate without end (one that dropped a loop's step passed 2 GB
-# on a minute of audio), and the cap kills that worker, counted as died, instead of the
-# desktop. The cap allows 1.2 GB for mutmut and its fork server and 0.5 GB per worker;
-# with two workers the run peaked at 1.5 GB.
-children=${MUTMUT_CHILDREN:-2}
-if ! [[ $children =~ ^[1-9][0-9]*$ ]]; then
-  echo "pre_release_qa: MUTMUT_CHILDREN must be a positive whole number, not '$children'" >&2
+scripts/mutation.sh
+
+# The tree stamped is the tree checked: a commit or an edit during the run would
+# otherwise stamp a tree no step saw as it is.
+if [ -n "$(git status --porcelain)" ] || [ "$(git rev-parse 'HEAD^{tree}')" != "$tree" ]; then
+  echo "pre_release_qa: the tree changed during the run; nothing stamped" >&2
   exit 1
 fi
-rm -rf mutants
-systemd-run --user --scope --quiet -p MemoryMax=$((1200 + 500 * children))M \
-  -p MemorySwapMax=0 -p OOMPolicy=continue uv run mutmut run --max-children "$children"
-uv run mutmut export-cicd-stats
-uv run python scripts/mutation_ratchet.py mutants/mutmut-cicd-stats.json \
-  --survived-max 23 --no-tests-max 0
-
 echo "$tree" > "$stamp"
 printf '\n\033[32mpre_release_qa: passed for tree %s\033[0m\n' "$tree"

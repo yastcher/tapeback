@@ -3,6 +3,7 @@ import sys
 import wave
 from collections.abc import Callable
 from dataclasses import replace
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +14,15 @@ from tapeback._device import resolve_device
 from tapeback._gpu import is_cuda_error
 from tapeback._timing import ProgressReporter
 from tapeback.channel import classify_segment_by_channel, load_stereo_channels
-from tapeback.models import DiarizationSegment, Segment, Word
+from tapeback.models import Diarization, DiarizationSegment, Segment, Word
 from tapeback.settings import Settings
-from tapeback.speaker_merge import merge_similar_speakers
 
 # pyannote segmentation + embedding models need ~1-1.5 GB VRAM during inference
 DIARIZATION_VRAM_MIN_MIB = 1500
+# The first pyannote.audio whose output carries the speakers' embeddings unasked.
+PYANNOTE_OUTPUT_WITH_EMBEDDINGS = 4
+# pyannote's embeddings: one row per speaker, one column per dimension.
+EMBEDDING_MATRIX_NDIM = 2
 
 __all__ = [
     "Diarizer",
@@ -26,7 +30,6 @@ __all__ = [
     "consolidate_segments",
     "diarization_available",
     "merge_channel_segments",
-    "merge_similar_speakers",
 ]
 
 
@@ -82,15 +85,23 @@ class _Progress:
         self._steps[step].update(completed / total * self._duration)
 
 
-def _unwrap_diarization(result: Any) -> Any:
-    """Extract Annotation from pyannote output.
+def _unwrap_diarization(result: Any) -> tuple[Any, Any]:
+    """The Annotation in pyannote's output, and its speakers' embeddings if it has them.
 
-    pyannote 4.x returns DiarizeOutput (with .speaker_diarization),
-    older versions return Annotation directly (with .itertracks).
+    pyannote 4.x returns DiarizeOutput (.speaker_diarization, .speaker_embeddings); 3.x,
+    asked for embeddings, an (Annotation, embeddings) pair; a bare Annotation has none.
     """
-    if hasattr(result, "itertracks"):
+    if isinstance(result, tuple):
         return result
-    return result.speaker_diarization
+    if hasattr(result, "itertracks"):
+        return result, None
+    return result.speaker_diarization, result.speaker_embeddings
+
+
+def _asks_for_embeddings() -> bool:
+    """pyannote 3.x returns embeddings only when asked; 4.x always does, and warns about
+    the argument."""
+    return int(version("pyannote.audio").split(".")[0]) < PYANNOTE_OUTPUT_WITH_EMBEDDINGS
 
 
 class Diarizer:
@@ -118,6 +129,7 @@ class Diarizer:
         if pipeline is None:
             raise RuntimeError("Failed to load pyannote diarization pipeline")
         self._pipeline = pipeline
+        self._run_kwargs = {"return_embeddings": True} if _asks_for_embeddings() else {}
 
         if settings.clustering_threshold is not None:
             params = self._pipeline.parameters(instantiated=True)
@@ -145,14 +157,16 @@ class Diarizer:
         progress = _Progress(_wav_seconds(audio_path), self._report)
         if self._settings.max_speakers is not None:
             return self._pipeline(
-                audio_path, max_speakers=self._settings.max_speakers, hook=progress
+                audio_path,
+                max_speakers=self._settings.max_speakers,
+                hook=progress,
+                **self._run_kwargs,
             )
-        return self._pipeline(audio_path, hook=progress)
+        return self._pipeline(audio_path, hook=progress, **self._run_kwargs)
 
-    def diarize(self, audio_path: Path) -> list[DiarizationSegment]:
-        """Run diarization on audio file.
+    def diarize(self, audio_path: Path) -> Diarization:
+        """Run diarization on audio file: the speakers' turns, and their voices.
 
-        Returns list of DiarizationSegment sorted by start time.
         Falls back to CPU if CUDA runs out of memory during inference.
         """
         try:
@@ -166,8 +180,7 @@ class Diarizer:
             self._fallback_to_cpu()
             diarization = self._run_pipeline(audio_path)
 
-        # pyannote 4.x returns DiarizeOutput wrapping Annotation
-        annotation = _unwrap_diarization(diarization)
+        annotation, embeddings = _unwrap_diarization(diarization)
 
         segments: list[DiarizationSegment] = []
         for turn, _, speaker in annotation.itertracks(yield_label=True):
@@ -179,7 +192,24 @@ class Diarizer:
                 )
             )
 
-        return segments
+        return Diarization(segments=segments, voices=self._voices(annotation, embeddings))
+
+    def _voices(self, annotation: Any, embeddings: Any) -> dict[str, tuple[float, ...]]:
+        """Each speaker's embedding, in the order pyannote lists its speakers; an all-zero
+        row, pyannote's stand-in for a speaker it has no centroid for, is left out."""
+        if embeddings is None:
+            return {}
+        labels = list(annotation.labels())
+        rows = np.asarray(embeddings, dtype=float)
+        if rows.ndim != EMBEDDING_MATRIX_NDIM or len(rows) != len(labels):
+            self._report(
+                f"Warning: pyannote gave {len(rows)} voice embeddings for {len(labels)} "
+                "speakers; speakers are not merged by voice."
+            )
+            return {}
+        return {
+            label: tuple(row.tolist()) for label, row in zip(labels, rows, strict=True) if row.any()
+        }
 
     def _fallback_to_cpu(self) -> None:
         """Move pipeline to CPU and free CUDA memory."""

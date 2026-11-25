@@ -1,10 +1,11 @@
 """End-to-end quality tests for the transcription + diarization pipeline.
 
 These tests use real audio files and real ML models (faster-whisper, pyannote).
-They are slow (minutes) and need HF_TOKEN for pyannote; a GPU makes them faster.
+They are slow (minutes) and need the HF token for pyannote, TAPEBACK_HF_TOKEN in the
+project's .env; a GPU makes them faster.
 The recordings live in tests/data/, outside git.
 
-Run with: TAPEBACK_RUN_E2E=1 HF_TOKEN=... uv run pytest tests/test_e2e_quality.py -v
+Run with: TAPEBACK_RUN_E2E=1 uv run pytest tests/test_e2e_quality.py -v
 """
 
 import os
@@ -16,6 +17,7 @@ from click.testing import CliRunner
 
 from tapeback.cli import cli
 from tapeback.pipeline import process_stereo_file
+from tests.fixtures import PROJECT_ENV
 
 _RUN_E2E = os.environ.get("TAPEBACK_RUN_E2E", "").lower() in ("1", "true", "yes")
 _TEST_DATA = Path(__file__).parent / "data"
@@ -46,7 +48,7 @@ def test_stereo_pipeline_with_diarization(e2e_settings, e2e_output_dir):
     the monitor channel as two speakers — neither merged into one nor split into more.
     """
     if not e2e_settings.hf_token.get_secret_value():
-        pytest.skip("HF_TOKEN required for diarization test")
+        pytest.skip(f"diarization needs TAPEBACK_HF_TOKEN in {PROJECT_ENV}")
 
     segments, _info = process_stereo_file(_STEREO_WAV, e2e_output_dir, e2e_settings, diarize=True)
 

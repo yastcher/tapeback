@@ -164,7 +164,7 @@ exclude_lines = [
 ]
 
 [tool.mutmut]
-# Mutation testing, run from scratch by scripts/pre_release_qa.sh. A slice of modules
+# Mutation testing, run from scratch by scripts/mutation.sh. A slice of modules
 # whose behaviour unit tests pin, widened module by module as each one holds.
 source_paths = ["src/tapeback"]
 only_mutate = [

@@ -45,6 +45,41 @@ What it says:
 Caveat: four one-minute clips. Speech shares are noisy at this length, which is why
 nothing here is tuned to them.
 
+## Measured on long calls (2026-11-21)
+
+Long recorded calls, monitor only, pyannote 3.1 at its defaults, run
+the pipeline's way (loudnorm'ed 16 kHz monitor, then the spectral merge at 0.96), with
+moments checked by ear. Centroids are pyannote's own `speaker_embeddings` (WeSpeaker
+ResNet34), which `_unwrap_diarization` drops; similarity is their cosine.
+
+- **pyannote's large clusters were the voices heard** at every checked moment, except at
+  the edges of short interjections, where a check two seconds wide cannot tell.
+- **The spectral merge lost a speaker.** In one call it joined clusters whose centroids
+  had cosine 0.06–0.24 to each other, distinct voices, into one: the note showed a single
+  remote speaker. Point 1 above, now on a long call.
+- **A voice is recognisable across meetings.** The same voice's centroids in different
+  calls had cosine 0.87–0.97; different voices 0.20–0.29, within a call or across calls.
+  A turn's own embedding, scored against another call's centroids, named the voice heard
+  at every checked moment but those at short interjections.
+- **Small clusters fell between**: each held under 3% of its call's speech, at 0.57–0.68
+  to the voice it was a fragment of, or under 0.25 to every large cluster for one that
+  resembled none of them.
+
+Then on a larger set of recorded calls, short and long (2026-11-24), with the rule of
+ADR-020: one speaker per voice the centroids recognised, in every call; no voice split in
+two, no two merged; 0–3.4% of the speech dropped as fragments. A speaker always had a
+turn of 11.7 s or more, and the small clusters a short call pushed past a twentieth of
+its speech never one longer than 7.4 s, hence the ten-second turn; they resembled their
+speaker at 0.56–0.72 and joined it. In the 49-second recording of the e2e suite no one
+spoke ten seconds at a stretch: the two remote speakers' longest turns were 9.3 s and
+6.2 s, their voices at cosine 0.33. Hence a cluster with a twentieth of the speech and a
+voice like no one's is a speaker too, which changes none of those calls.
+
+So pyannote's centroids tell the speakers apart and recognise them from one meeting to
+the next with a wide margin; the spectral merge is what joins them. On the test laptop
+the GPU clamped within four minutes of diarization, and the CPU took 1.0–1.1x the
+recording.
+
 ## Speed
 
 - In 10 of 12 real runs (September–October) diarization took 0.86–1.18x the
@@ -69,7 +104,8 @@ reached the run record. Fixed on 2026-10-16, below.
    manifest of recordings with known speaker counts, including several meetings of
    20–60 minutes; reports speakers found, error, wall time and GPU clocks.
 3. **Minor clusters absorbed by speech share**, not by spectral similarity — decided
-   from the bench, not from the four clips above.
+   from the bench, not from the four clips above. Now (2026-11-23): pyannote's voice
+   embeddings decide, measured on long calls (ADR-020); the spectral merge is gone.
 4. **Clamp-aware diarization**: measure a clamped GPU against the CPU on a long file,
    then pick the policy transcription already has (check before the stage, fall back
    when the alternative wins). Done without the measurement: ADR-004.
@@ -100,5 +136,5 @@ Only defects, nothing tuned:
   untouched. The remaining over-count is the small third cluster pyannote produces,
   left for the next release.
 - The e2e test lost its recording and now uses `2026-04-02_22-01-53` (two remote
-  speakers), asserting exactly two. It reads the token from `HF_TOKEN` only:
-  `TAPEBACK_HF_TOKEN` never reached it under the settings isolation.
+  speakers), asserting exactly two. Where it takes the HF token from is the
+  `e2e_settings` fixture's to say (`tests/fixtures.py`).

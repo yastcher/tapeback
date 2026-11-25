@@ -2,7 +2,7 @@
 
 **Status:** accepted 2026-10-30 (`tests/test_architecture.py`, `scripts/crap.py`,
 `scripts/mutation_ratchet.py`, `[tool.mutmut]` in `pyproject.toml`,
-`scripts/pre_release_qa.sh`).
+`scripts/pre_release_qa.sh`, `scripts/mutation.sh`).
 
 **Context.** Line coverage says which lines ran, not whether a test would notice them
 change. The boundaries AGENTS.md draws (the masking seam, lazy extras, where models

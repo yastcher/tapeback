@@ -14,7 +14,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `tapeback start` warns when the other side is not being recorded. A meeting app playing to another output leaves the monitor silent; after 20 seconds of that, tapeback names the app and the command that moves it, and after two minutes it warns on the silence alone. A note whose system audio was silent throughout says so, and is not diarized: on a CPU that took longer than the recording, for nothing.
 
 ### Fixed
+- Two people on a call are no longer merged into one speaker of the note. Speakers were joined when their long-term spectra were alike, and a call's codec makes everyone's alike; pyannote's own voice embeddings now tell them apart, and a small cluster of garbled or overlapping speech no longer becomes a speaker of its own.
 - A long stretch of one speaker no longer becomes a single block of the note. With the other side silent, a whole call came out as one block under one timecode; a block now closes at a pause or after a minute, as everywhere else.
+
+### Removed
+- `TAPEBACK_SPECTRAL_MERGE_THRESHOLD`: the spectral merge it tuned is gone.
 
 ## [0.10.2] — 2026-10-30
 

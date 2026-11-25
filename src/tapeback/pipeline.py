@@ -37,12 +37,12 @@ from tapeback.diarizer import (
     assign_speakers,
     diarization_available,
     merge_channel_segments,
-    merge_similar_speakers,
 )
 from tapeback.formatter import TranscriptMeta, format_markdown
-from tapeback.models import DiarizationSegment, Segment
+from tapeback.models import Diarization, Segment
 from tapeback.recorder import Recorder, validate_session_name
 from tapeback.settings import Settings
+from tapeback.speaker_merge import merge_speakers_by_voice
 from tapeback.summarizer import maybe_summarize
 from tapeback.vault import remove_live_markdown, save_audio_to_vault, save_markdown_to_vault
 
@@ -268,15 +268,8 @@ def process_stereo_file(
         else:
             on_status("Diarizing speakers...")
             with stage_timer("diarize", on_status):
-                diarization_segments = _diarize(settings, monitor_16k, on_status)
-                if settings.spectral_merge_threshold > 0:
-                    diarization_segments = merge_similar_speakers(
-                        diarization_segments,
-                        monitor_raw,
-                        raw_sr,
-                        similarity_threshold=settings.spectral_merge_threshold,
-                    )
-                monitor_segments = assign_speakers(monitor_segments, diarization_segments)
+                turns = merge_speakers_by_voice(_diarize(settings, monitor_16k, on_status))
+                monitor_segments = assign_speakers(monitor_segments, turns)
             diarized = True
 
     # Remote diarize already set speaker labels; channel fallback only when unset.
@@ -374,7 +367,7 @@ def _maybe_diarize_segments(
 
     on_status("Diarizing speakers...")
     with stage_timer("diarize", on_status):
-        diarization_segments = _diarize(settings, mono_16k_path, on_status)
+        diarization_segments = _diarize(settings, mono_16k_path, on_status).segments
 
         user_speaker = None
         if stereo_path is not None:
@@ -384,9 +377,7 @@ def _maybe_diarize_segments(
     return result
 
 
-def _diarize(
-    settings: Settings, audio_path: Path, on_status: StatusCallback
-) -> list[DiarizationSegment]:
+def _diarize(settings: Settings, audio_path: Path, on_status: StatusCallback) -> Diarization:
     """Run pyannote, with the GPU sampled as for Whisper, then give its VRAM back.
 
     The Diarizer is the only reference to the pyannote pipeline, so it is garbage as

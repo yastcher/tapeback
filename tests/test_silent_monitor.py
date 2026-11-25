@@ -13,6 +13,8 @@ import pytest
 from tapeback._monitor_watch import MonitorWatch
 from tapeback.channel import is_silent_throughout
 from tapeback.cli import cli
+from tapeback.formatter import TranscriptMeta, format_markdown
+from tapeback.models import Segment
 from tests.fixtures import create_stereo_wav_segments, mock_whisper_transcribe, requires_pyannote
 
 RATE = 16000
@@ -220,6 +222,53 @@ def test_a_channel_is_silent_below_the_silence_floor(level, silent):
     samples = np.concatenate([np.zeros(RATE, dtype=np.int16), np.full(RATE // 2, level, np.int16)])
 
     assert is_silent_throughout(samples, RATE) is silent
+
+
+@pytest.mark.parametrize(("level", "silent"), [(199, True), (200, False), (201, False)])
+def test_a_loud_second_between_silences_is_judged_on_its_own(level, silent):
+    # Averaged with the silence around it, a second at the level would fall under the floor.
+    zeros = np.zeros(RATE, dtype=np.int16)
+    samples = np.concatenate([zeros, np.full(RATE, level, np.int16), zeros])
+
+    assert is_silent_throughout(samples, RATE) is silent
+
+
+def test_a_note_whose_system_audio_was_silent_says_so_above_the_transcript():
+    """The flow test reads the same line, but runs only where pyannote is installed."""
+    markdown = format_markdown(
+        segments=[Segment(start=0.0, end=5.0, text="Hello?", words=None, speaker="You")],
+        meta=TranscriptMeta(
+            session_name="2026-08-06_12-00-00",
+            audio_rel_path="attachments/audio/x.wav",
+            duration_seconds=1800.0,
+            language="en",
+            monitor_silent=True,
+        ),
+    )
+
+    assert markdown == (
+        "---\n"
+        "date: 2026-08-06\n"
+        'time: "12:00"\n'
+        'duration: "00:30:00"\n'
+        "language: en\n"
+        'audio: "[[attachments/audio/x.wav]]"\n'
+        "tags:\n"
+        "  - meeting\n"
+        "  - transcript\n"
+        "---\n"
+        "\n"
+        "# Meeting 2026-08-06 12:00\n"
+        "\n"
+        "**Duration:** 30m 0s | **Language:** en\n"
+        "\n"
+        "> [!warning] The system audio was silent for the whole recording, so only your side "
+        "is here: if others spoke, the meeting app played to an output tapeback did not record.\n"
+        "\n"
+        "---\n"
+        "\n"
+        "[00:00:00] **You:** Hello?\n"
+    )
 
 
 @requires_pyannote

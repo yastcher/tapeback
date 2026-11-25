@@ -20,17 +20,16 @@ from tapeback.diarizer import (
     assign_speakers,
     consolidate_segments,
     merge_channel_segments,
-    merge_similar_speakers,
 )
 from tapeback.models import DiarizationSegment, Segment, Word
 from tapeback.settings import Settings
+from tests.fake_pyannote import FakeAnnotation, pyannote_output
 from tests.fixtures import (
     create_mono_wav,
     create_stereo_wav,
     create_stereo_wav_segments,
     mock_pyannote_annotation,
     requires_pyannote,
-    voice_signal,
 )
 
 # --- Diarizer init / diarize ---
@@ -104,7 +103,7 @@ def test_diarize_returns_segments(tmp_vault):
         mock_pipeline.return_value = mock_annotation
 
         diarizer = Diarizer(settings)
-        result = diarizer.diarize(Path("/fake/audio.wav"))
+        result = diarizer.diarize(Path("/fake/audio.wav")).segments
 
     assert len(result) == 2
     assert result[0].speaker == "SPEAKER_00"
@@ -137,7 +136,7 @@ def test_diarize_falls_back_to_cpu_on_cublas_error(tmp_vault):
         ]
 
         diarizer = Diarizer(settings)
-        result = diarizer.diarize(Path("/fake/audio.wav"))
+        result = diarizer.diarize(Path("/fake/audio.wav")).segments
 
     assert mock_pipeline.call_count == 2  # retried on CPU after fallback
     assert result[0].speaker == "SPEAKER_00"
@@ -258,6 +257,53 @@ def test_diarization_reports_how_far_into_the_recording_each_step_is(tmp_vault, 
         "  diarize segmentation: 50% (0:05 / 0:10)",
         "  diarize embeddings: 50% (0:05 / 0:10)",
     ]
+
+
+@requires_pyannote
+def test_a_speaker_pyannote_has_no_centroid_for_has_no_voice(tmp_vault):
+    settings = Settings(vault_path=tmp_vault, hf_token=SecretStr("hf_fake"), device="cpu")
+    output = pyannote_output(
+        [(0.0, 3.0, "SPEAKER_00"), (3.0, 3.5, "SPEAKER_01")], {"SPEAKER_00": [0.6, 0.8]}
+    )
+    with patch("pyannote.audio.Pipeline") as mock_cls:
+        mock_cls.from_pretrained.return_value = MagicMock(return_value=output)
+        result = Diarizer(settings).diarize(Path("/fake/audio.wav"))
+
+    assert result.voices == {"SPEAKER_00": (0.6, 0.8)}
+
+
+@requires_pyannote
+def test_pyannote_3_is_asked_for_the_voices_it_returns_only_when_asked(tmp_vault):
+    settings = Settings(vault_path=tmp_vault, hf_token=SecretStr("hf_fake"), device="cpu")
+    annotation = FakeAnnotation([(0.0, 3.0, "SPEAKER_00")])
+    pipeline = MagicMock(return_value=(annotation, np.array([[0.6, 0.8]])))
+    with (
+        patch("pyannote.audio.Pipeline") as mock_cls,
+        patch("tapeback.diarizer.version", return_value="3.1.1"),
+    ):
+        mock_cls.from_pretrained.return_value = pipeline
+        result = Diarizer(settings).diarize(Path("/fake/audio.wav"))
+
+    assert pipeline.call_args.kwargs["return_embeddings"] is True
+    assert result.voices == {"SPEAKER_00": (0.6, 0.8)}
+
+
+@requires_pyannote
+def test_voices_that_do_not_fit_the_speakers_are_left_out_and_said_so(tmp_vault):
+    settings = Settings(vault_path=tmp_vault, hf_token=SecretStr("hf_fake"), device="cpu")
+    annotation = FakeAnnotation([(0.0, 3.0, "SPEAKER_00"), (3.0, 6.0, "SPEAKER_01")])
+    output = pyannote_output([(0.0, 3.0, "SPEAKER_00")], {"SPEAKER_00": [0.6, 0.8]})
+    output.speaker_diarization = annotation
+    reported: list[str] = []
+    with patch("pyannote.audio.Pipeline") as mock_cls:
+        mock_cls.from_pretrained.return_value = MagicMock(return_value=output)
+        result = Diarizer(settings, reported.append).diarize(Path("/fake/audio.wav"))
+
+    assert result.voices == {}
+    assert reported[-1] == (
+        "Warning: pyannote gave 1 voice embeddings for 2 speakers; speakers are not "
+        "merged by voice."
+    )
 
 
 # --- identify_user_speaker ---
@@ -678,72 +724,3 @@ def test_split_on_silence_monitor_relative(stereo_wav):
     assert len(result) == 2
     assert result[0].text == "hello"
     assert result[1].text == "world"
-
-
-# --- merge_similar_speakers ---
-
-
-def test_merge_similar_speakers_same_voice():
-    """Two segments from the same voice should be merged into one speaker."""
-    sr = 16000
-    audio = voice_signal(5.0, sr, fundamental=200.0)
-
-    segments = [
-        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=2.0),
-        DiarizationSegment(speaker="SPEAKER_01", start=2.5, end=5.0),
-    ]
-
-    merged = merge_similar_speakers(segments, audio, sr)
-    assert merged == [DiarizationSegment("SPEAKER_00", s.start, s.end) for s in segments]
-
-
-def test_merge_similar_speakers_different_voices():
-    """Two spectrally distinct speakers should NOT be merged."""
-    sr = 16000
-    n_samples = int(5.0 * sr)
-    audio = np.zeros(n_samples, dtype=np.float32)
-
-    # Speaker A: 200 Hz + harmonics (0-2 s)
-    audio[: int(2.0 * sr)] = voice_signal(2.0, sr, fundamental=200.0)
-    # Speaker B: 800 Hz + harmonics (2.5-5 s)
-    start2 = int(2.5 * sr)
-    sig_b = voice_signal(2.5, sr, fundamental=800.0)
-    audio[start2 : start2 + len(sig_b)] = sig_b
-
-    segments = [
-        DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=2.0),
-        DiarizationSegment(speaker="SPEAKER_01", start=2.5, end=5.0),
-    ]
-
-    merged = merge_similar_speakers(segments, audio, sr)
-    speakers = {seg.speaker for seg in merged}
-    assert len(speakers) == 2
-
-
-def test_merge_similar_speakers_zero_length_speakers_pass_through():
-    """No speech to compare: nothing merges, and nothing divides by the zero total."""
-    sr = 16000
-    audio = np.zeros(int(3.0 * sr), dtype=np.float32)
-    segments = [
-        DiarizationSegment(speaker="SPEAKER_00", start=1.0, end=1.0),
-        DiarizationSegment(speaker="SPEAKER_01", start=2.0, end=2.0),
-    ]
-
-    assert merge_similar_speakers(segments, audio, sr, similarity_threshold=0.96) == segments
-
-
-@pytest.mark.parametrize(
-    "segments",
-    [
-        pytest.param([], id="empty"),
-        pytest.param(
-            [DiarizationSegment(speaker="SPEAKER_00", start=0.0, end=3.0)],
-            id="single_speaker",
-        ),
-    ],
-)
-def test_merge_similar_speakers_early_return(segments):
-    """Empty input or single speaker pass through unchanged (no merging to do)."""
-    sr = 16000
-    audio = np.zeros(int(3.0 * sr), dtype=np.float32)
-    assert merge_similar_speakers(segments, audio, sr) == segments

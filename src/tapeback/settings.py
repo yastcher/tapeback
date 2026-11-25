@@ -210,8 +210,6 @@ class Settings(BaseSettings):
     diarize: bool = True
     max_speakers: int | None = None
     clustering_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
-    # merge only near-identical spectral profiles
-    spectral_merge_threshold: float = Field(default=0.96, ge=0.0, le=1.0)
 
     # Post-processing
     pause_threshold: float = Field(default=1.0, ge=0.0)  # split on word gaps >= this

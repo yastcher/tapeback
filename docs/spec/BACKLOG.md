@@ -202,7 +202,9 @@ merge of real speakers is too weak a signal to rely on; diarization ran at rough
 recording's length because it met the thermal clamp with no check, no telemetry and
 warnings that bypassed the run record. 0.9.9 fixed only the bridging defect; the clamp
 check, the telemetry and the warnings came on 2026-10-16. The rest belongs with
-pluggable diarization models, chosen from a bench table.
+pluggable diarization models, chosen from a bench table. Now (2026-11-23): pyannote's
+voice embeddings replaced the spectral merge (ADR-020); the bench and the pluggable
+models remain.
 
 Measured on 2026-10-16 with a recording of about an hour, before that check: the clamp
 latched three minutes into the first channel's transcription and held for the next
@@ -224,14 +226,14 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   packages through `--system-site-packages`. Redesign undecided: build from the lock,
   or create the venv in `post_install`.
 - **The user's own short replies are dropped.** The VAD-artifact rule
-  (`formatter.py:151`, under a second) measures diarization's pieces by the segment
-  they were cut from, but not the mic's: pause splitting (`channel.py:226`) and the
-  trim to loud words (`channel.py:32`) leave a "Да." between the other side's turns
+  (`formatter.py:138`, under a second) measures diarization's pieces by the segment
+  they were cut from, but not the mic's: pause splitting (`channel.py:249`) and the
+  trim to loud words (`channel.py:41`) leave a "Да." between the other side's turns
   shorter than a second, and it is dropped. Needs a decision, not a fix: shown as lines
   of their own, the user's backchannels cut the other side's speech into more blocks,
   and noise Whisper took for a word would show as well.
 - **A note can open with Speaker 2.** Labels are numbered as diarization assigns them
-  (`diarizer.py:346`), before the formatter drops artifacts under a second, so an
+  (`diarizer.py:384`), before the formatter drops artifacts under a second, so an
   artifact that carried a new voice first takes "Speaker 1" with it. Numbering by first
   appearance in the note would fix it.
 - The setup and local-LLM work and the defects it turned up: `2026-10-15-setup-and-local-llm.md`.
@@ -308,8 +310,8 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   sends the transcript to an address the user gives, and `local` downloads its model
   from Hugging Face.
 - **A second stop at the same moment dies with a raw error.** The tray and `tapeback
-  stop` both read `session.json` (`recorder.py:384`); the first removes it after up to
-  5 s of waiting for the recorders (`recorder.py:394`), and the second then fails with
+  stop` both read `session.json` (`recorder.py:410`); the first removes it after up to
+  5 s of waiting for the recorders (`recorder.py:420`), and the second then fails with
   `FileNotFoundError` instead of "No recording in progress". Read from the code, not
   reproduced: no second note should come of it.
 
@@ -387,3 +389,33 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   monitor has no acoustic crosstalk. Needs a decision, from a measurement: a floor
   relative to the channel's own speech level, or a lower one for the monitor, checked
   against the hallucinations it keeps out.
+
+## 16. Found 2026-11-22, reviewing the release QA
+
+- **The mutation ratchet can pass with a survivor uncounted.** Under the memory cap
+  `scripts/pre_release_qa.sh` sets, the kernel kills the scope's largest process, not
+  necessarily the mutant that grew; mutmut records any worker killed by a signal as a
+  segfault, which counts as killed, and a starved worker as a timeout. Nothing runs those
+  mutants again alone, so a survivor among them leaves the ratchet green. The workers'
+  count is a constant too, so a cap above the memory actually free protects nothing.
+  Owed without a decision: after the run, `mutmut run <names>` for each timeout and
+  segfault, one at a time, then export again; size `--max-children` from `free -m`.
+- **No static analysis runs anywhere.** Neither the gate nor CI runs Semgrep or CodeQL,
+  and nothing audits `uv.lock` for known vulnerabilities. Owed: a Semgrep step in the gate
+  and CI (`p/python`, `p/github-actions`), a CodeQL workflow, and a lockfile audit
+  (pip-audit over `uv.lock`, an accepted finding listed with its date). Needs a decision:
+  the audit reads a vulnerability database over the network, and the gate otherwise runs
+  without one.
+
+## 17. Found 2026-11-24, diarizing a batch of recorded calls on the test laptop
+
+- **A quiet CPU beats moving diarization to the CPU.** On the test laptop (4 GB Turing
+  GPU) the embedded controller clamps the GPU on the combined heat of both chips, so a
+  CPU stage running beside the GPU keeps it clamped. With the CPU capped (no turbo, 15/25 W)
+  and the GPU's clock locked at 1050 MHz, the GPU stayed unclamped and diarized a
+  long call in under a tenth of the time the CPU took. ADR-004 sends a
+  clamped stage to the CPU; for diarization, keeping the CPU idle while the GPU works, and
+  waiting out a clamp instead of fleeing it, may finish sooner. Needs a decision, from a
+  measurement of both policies on the same recordings; the caps need root, so tapeback
+  can only document them, not apply them.
+

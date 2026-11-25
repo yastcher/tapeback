@@ -19,6 +19,7 @@ Works with any video call platform: Google Meet, Zoom, Teams, Telegram, Discord,
 - **Optional remote STT**: set `TAPEBACK_STT_BACKEND=openai` to use a remote transcription backend instead of local Whisper. OpenAI is the only remote backend today (requires `tapeback[stt]` + `TAPEBACK_STT_API_KEY`; meeting audio leaves the machine). Uploads retry on timeouts/transient errors with status heartbeats; finished chunks are cached so `tapeback process` on the same WAV only re-uploads what is missing.
 - **Speaker diarization**: pyannote identifies who said what
 - **Stereo channel separation**: your mic (left) vs. others (right) for accurate "You" attribution
+- **Says when the other side is not recorded**: while you record, it names a meeting app that plays to an output tapeback does not record, with the command that moves it ([details](#the-other-side-is-missing-from-the-note))
 - **Obsidian-native output**: Markdown with YAML frontmatter, wikilinks to audio files
 - **LLM summarization**: Anthropic, OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Qwen (with automatic provider fallback), any OpenAI-compatible API, or a model on this machine (`TAPEBACK_LLM_PROVIDER=local`, no key needed); the summary comes in the meeting's language
 - **System tray**: start/stop recording from the tray icon, no terminal needed
@@ -201,6 +202,11 @@ To enable diarization, you need a HuggingFace token with access to pyannote mode
 ```bash
 TAPEBACK_HF_TOKEN=hf_your_token_here
 ```
+
+pyannote splits the other side into clusters and embeds each one's voice; tapeback
+tells the speakers apart by those embeddings. A small cluster — a few words garbled by a
+lagging connection, two people at once — joins the speaker whose voice it clearly is,
+or its words go to the nearest speaker, instead of showing up as a speaker of its own.
 
 > First run downloads the pyannote model (~1 GB). An NVIDIA GPU is strongly
 > recommended: on the CPU, diarization takes about two thirds of the recording's
@@ -506,7 +512,6 @@ setting may start with `~`, your home directory.
 | `TAPEBACK_HF_TOKEN` | *(empty)* | HuggingFace token ([setup](#speaker-diarization)) |
 | `TAPEBACK_MAX_SPEAKERS` | *(auto)* | Maximum number of speakers |
 | `TAPEBACK_CLUSTERING_THRESHOLD` | *(pyannote default)* | Speaker-clustering threshold passed to pyannote. Lower splits speakers more readily, higher merges them |
-| `TAPEBACK_SPECTRAL_MERGE_THRESHOLD` | `0.96` | Spectral speaker merging (0 = off; lower merges more aggressively) |
 
 ### LLM summarization
 

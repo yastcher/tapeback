@@ -1,176 +1,134 @@
-"""Spectral-profile clustering — merges over-segmented pyannote speakers."""
+"""Speakers told apart by their voices, as pyannote embeds them.
 
-from itertools import combinations
+pyannote splits a call into clusters and gives each one's voice an embedding. A cluster
+with a fair share of the speech and a turn of some length is a speaker, and two speakers
+merge only when their voices are one person's. So is a cluster with a fair share whose
+voice is no one else's: someone who only ever answered briefly, or anyone in a short
+recording. Any other is a fragment: a few words of a speaker in other conditions, speech
+a lagging connection garbled, two people at once. It joins the speaker whose voice it
+clearly is, or its turns go, and `assign_speakers` gives its words to the nearest speaker
+left.
+
+Measured on recorded calls (docs/spec/2026-10-06-diarization.md): one voice in two calls
+had cosine 0.87-0.97, different voices 0.20-0.29. The spectral merge this replaces
+compared long-term spectra, which a call's codec makes alike for everyone, and joined
+voices that far apart.
+"""
+
+from collections import defaultdict
+from collections.abc import Iterable
 
 import numpy as np
 
-from tapeback import const
-from tapeback.models import DiarizationSegment
+from tapeback.models import Diarization, DiarizationSegment
 
-# Minor speaker absorption: speakers with very little speech are likely
-# echo/crosstalk artifacts.  Use a lower merge threshold for them.
-MINOR_SPEAKER_MAX_SEC = 15.0
-MINOR_SPEAKER_RATIO = 0.2
-MINOR_SPEAKER_MERGE_THRESHOLD = 0.92
-
-
-def _speaker_spectral_profile(
-    monitor_samples: np.ndarray,
-    sample_rate: int,
-    diarization_segments: list[DiarizationSegment],
-    speaker: str,
-) -> np.ndarray:
-    """Compute average power spectrum for a speaker's segments.
-
-    Focuses on the 100-4000 Hz range which contains voice formant information.
-    Uses Hann-windowed FFT with 50 % overlap.
-    """
-    n_fft = const.SPECTRAL_FFT_SIZE
-    freq_per_bin = sample_rate / n_fft
-    min_bin = max(1, int(const.SPECTRAL_MIN_FREQ_HZ / freq_per_bin))
-    max_bin = min(n_fft // 2 + 1, int(const.SPECTRAL_MAX_FREQ_HZ / freq_per_bin) + 1)
-    n_bins = max_bin - min_bin
-
-    if n_bins <= 0:
-        return np.zeros(1)
-
-    window = np.hanning(n_fft)
-    spectra: list[np.ndarray] = []
-
-    for seg in diarization_segments:
-        if seg.speaker != speaker:
-            continue
-        sf = max(0, int(seg.start * sample_rate))
-        ef = min(len(monitor_samples), int(seg.end * sample_rate))
-        chunk = monitor_samples[sf:ef]
-
-        hop = n_fft // 2
-        for start in range(0, len(chunk) - n_fft + 1, hop):
-            # The float64 window makes the product float64, whatever the samples are.
-            frame = chunk[start : start + n_fft]
-            spectrum = np.abs(np.fft.rfft(frame * window))[min_bin:max_bin]
-            spectra.append(spectrum)
-
-    if not spectra:
-        return np.zeros(n_bins)
-    result: np.ndarray = np.mean(spectra, axis=0)
-    return result
+# A cluster with less of the call's speech than this is a fragment, not a speaker...
+MINOR_SPEECH_SHARE = 0.05
+# ...and one that never spoke this long at a stretch is a speaker only by a voice like
+# no one's: on recorded calls every speaker had a turn of 11.7 s or more, the fragments
+# 7.4 s at most, however short the call made their share.
+MIN_LONGEST_TURN_SECONDS = 10.0
+# A fragment joins the speaker whose voice it resembles this much or more; under it for
+# every speaker, its voice is no one's...
+JOIN_SIMILARITY = 0.5
+# ...and joins only when no other speaker comes within this of it: a fragment of two
+# voices at once resembles both and belongs to neither.
+JOIN_MARGIN = 0.15
+# Two speakers whose voices are this alike are one person pyannote split in two.
+SAME_VOICE_SIMILARITY = 0.8
 
 
-def _similarity(a: np.ndarray, b: np.ndarray) -> float | None:
-    """Cosine similarity of two spectral profiles; None when either is silent."""
-    norm_a = float(np.linalg.norm(a))
-    norm_b = float(np.linalg.norm(b))
-    if norm_a < const.CHANNEL_EPSILON or norm_b < const.CHANNEL_EPSILON:
-        return None
-    return float(np.dot(a, b) / (norm_a * norm_b))
-
-
-def _weakest_link(
-    profiles: dict[str, np.ndarray], first: list[str], second: list[str]
-) -> float | None:
-    """The similarity of the least alike pair across two groups; None if one is silent."""
-    similarities = [_similarity(profiles[a], profiles[b]) for a in first for b in second]
-    known = [similarity for similarity in similarities if similarity is not None]
-    return min(known) if len(known) == len(similarities) else None
-
-
-def _merge_alike(
-    profiles: dict[str, np.ndarray], speakers: list[str], threshold: float
-) -> list[list[str]]:
-    """Group speakers so that every two in a group reach the threshold.
-
-    The most alike groups merge first. Merging any pair that reached it chained the
-    groups: A like B and B like C put A with C, whom A did not resemble.
-    """
-    groups = [[speaker] for speaker in speakers]
-    while True:
-        links = [
-            (link, i, j)
-            for i, j in combinations(range(len(groups)), 2)
-            if (link := _weakest_link(profiles, groups[i], groups[j])) is not None
-            and link >= threshold
-        ]
-        if not links:
-            return groups
-        _, i, j = max(links)
-        groups[i] += groups.pop(j)
-
-
-def merge_similar_speakers(
-    diarization_segments: list[DiarizationSegment],
-    monitor_samples: np.ndarray,
-    sample_rate: int,
-    similarity_threshold: float = 0.95,
-) -> list[DiarizationSegment]:
-    """Merge pyannote speakers with similar spectral profiles.
-
-    Fixes over-segmentation where a single speaker is incorrectly split into
-    multiple speakers.  Uses power-spectrum cosine similarity in the 100-4000 Hz
-    voice frequency range.
-
-    Two-tier thresholds:
-    - Standard merge (similarity_threshold, default 0.96): merges near-identical
-      profiles (over-segmented single speaker, cosine ~0.98-0.99), and only into a
-      group whose every member the speaker resembles.
-    - Minor speaker absorption (MINOR_SPEAKER_MERGE_THRESHOLD = 0.92): when one
-      speaker has very little speech (< 15s and < 20% of dominant), they are likely
-      echo/crosstalk artifacts with unreliable spectral profiles. A lower threshold
-      absorbs each into the one speaker it resembles most — never two, or a cluster
-      that resembles two real speakers would join them through itself.
-
-    Power-spectrum similarity is a weak signal for voice identity — the channel
-    frequency response dominates. Set to 0 to disable.
-    """
-    if similarity_threshold <= 0:
-        return diarization_segments
-
-    speakers = sorted({seg.speaker for seg in diarization_segments})
-    if len(speakers) <= 1:
-        return diarization_segments
-
-    total_speech: dict[str, float] = {
-        sp: sum(s.end - s.start for s in diarization_segments if s.speaker == sp) for sp in speakers
-    }
-
-    profiles: dict[str, np.ndarray] = {
-        sp: _speaker_spectral_profile(monitor_samples, sample_rate, diarization_segments, sp)
-        for sp in speakers
-    }
-
-    # Minor relative to the dominant speaker; with no speech at all, nothing is minor.
-    dominant = max(total_speech.values())
-    minor = {
-        sp
-        for sp in speakers
-        if dominant > 0
-        and total_speech[sp] < MINOR_SPEAKER_MAX_SEC
-        and total_speech[sp] / dominant < MINOR_SPEAKER_RATIO
-    }
-    majors = [sp for sp in speakers if sp not in minor]
-
-    merge_map: dict[str, str] = {s: s for s in speakers}
-
-    # Real speakers merge with each other only at the standard threshold. A group takes
-    # the label of its first speaker in sorted order.
-    for group in _merge_alike(profiles, majors, similarity_threshold):
-        for sp in group:
-            merge_map[sp] = group[0]
-
-    # A minor cluster joins the ONE speaker it resembles most. Merging it pair by pair
-    # let a cluster that resembles two real speakers join them through itself.
-    for sp in sorted(minor):
-        scored = [
-            (similarity, major)
-            for major in majors
-            if (similarity := _similarity(profiles[sp], profiles[major])) is not None
-        ]
-        if scored:
-            best_similarity, best = max(scored)
-            if best_similarity >= MINOR_SPEAKER_MERGE_THRESHOLD:
-                merge_map[sp] = merge_map[best]
-
+def merge_speakers_by_voice(diarization: Diarization) -> list[DiarizationSegment]:
+    """The segments relabeled: one person split in two made one, each other cluster joined
+    to its speaker, kept as a speaker of its own, or dropped. Without the voice of any
+    cluster with a fair share, the segments as they came."""
+    voices = {speaker: _unit(vector) for speaker, vector in diarization.voices.items()}
+    speech = _speech(diarization.segments)
+    longest = _longest_turn(diarization.segments)
+    total = sum(speech.values())
+    by_size = sorted(speech, key=lambda s: (-speech[s], s))
+    fair = {s for s in by_size if speech[s] >= MINOR_SPEECH_SHARE * total}
+    if not any(s in voices for s in fair):
+        return diarization.segments
+    speakers = [s for s in by_size if s in fair and longest[s] >= MIN_LONGEST_TURN_SECONDS]
+    label = _merge_split_speakers(speakers, voices)
+    for cluster in by_size:
+        if cluster not in label:
+            label[cluster] = _owner(cluster, speakers, voices, label, fair)
+            if label[cluster] == cluster:
+                speakers.append(cluster)
     return [
-        DiarizationSegment(speaker=merge_map[seg.speaker], start=seg.start, end=seg.end)
-        for seg in diarization_segments
+        DiarizationSegment(speaker=owner, start=seg.start, end=seg.end)
+        for seg in diarization.segments
+        if (owner := label[seg.speaker]) is not None
     ]
+
+
+def _merge_split_speakers(
+    speakers: list[str], voices: dict[str, np.ndarray]
+) -> dict[str, str | None]:
+    """Each speaker's label: a larger speaker's whose voice it shares, else its own.
+
+    speakers come largest first, so a person keeps the label of their larger part. A
+    speaker without a voice keeps its own: there is nothing to compare.
+    """
+    label: dict[str, str | None] = {}
+    for speaker in speakers:
+        twin = next(
+            (
+                other
+                for other in speakers
+                if label.get(other) == other
+                and speaker in voices
+                and other in voices
+                and float(voices[speaker] @ voices[other]) >= SAME_VOICE_SIMILARITY
+            ),
+            None,
+        )
+        label[speaker] = twin or speaker
+    return label
+
+
+def _owner(
+    cluster: str,
+    speakers: list[str],
+    voices: dict[str, np.ndarray],
+    label: dict[str, str | None],
+    fair: set[str],
+) -> str | None:
+    """The speaker whose voice a cluster clearly is. A voice that is no one's, or none to
+    compare, makes a cluster with a fair share a speaker of its own: the cluster itself.
+    None for a smaller one, and for one like two speakers at once."""
+    closest: dict[str, float] = {}
+    for speaker in speakers:
+        person = label[speaker]
+        if cluster in voices and speaker in voices and person is not None:
+            similarity = float(voices[cluster] @ voices[speaker])
+            closest[person] = max(similarity, closest.get(person, similarity))
+    owner = max(closest, key=closest.__getitem__, default=None)
+    if owner is None or closest[owner] < JOIN_SIMILARITY:
+        return cluster if cluster in fair else None
+    others = [similarity for person, similarity in closest.items() if person != owner]
+    if others and closest[owner] - max(others) < JOIN_MARGIN:
+        return None
+    return owner
+
+
+def _speech(segments: Iterable[DiarizationSegment]) -> dict[str, float]:
+    speech: dict[str, float] = defaultdict(float)
+    for seg in segments:
+        speech[seg.speaker] += seg.end - seg.start
+    return dict(speech)
+
+
+def _longest_turn(segments: Iterable[DiarizationSegment]) -> dict[str, float]:
+    longest: dict[str, float] = defaultdict(float)
+    for seg in segments:
+        longest[seg.speaker] = max(longest[seg.speaker], seg.end - seg.start)
+    return dict(longest)
+
+
+def _unit(vector: Iterable[float]) -> np.ndarray:
+    array = np.asarray(list(vector))
+    norm = float(np.linalg.norm(array))
+    return array / norm if norm else array

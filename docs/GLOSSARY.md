@@ -42,9 +42,11 @@ in [`docs/adr/`](adr/README.md).
   (ADR-005).
 - **Diarization**: telling the remote speakers apart, with pyannote. Its labels are
   **Speaker 1**, **Speaker 2** and so on; without it the monitor side is **Other**.
-- **Spectral merge**: joining two pyannote speakers whose spectra are alike
-  (`speaker_merge.py`, `TAPEBACK_SPECTRAL_MERGE_THRESHOLD`). A **minor cluster** is a
-  speaker with little speech, usually echo or cross-talk.
+- **Voice merge**: deciding the speakers from pyannote's clusters by the voice embedding
+  pyannote gives each (`speaker_merge.py`). A speaker holds a twentieth of the speech and
+  has spoken ten seconds at a stretch, or has a voice like no one else's. A **fragment**
+  (a minor cluster) is any other, usually garbled or overlapping; it joins the speaker
+  whose voice it clearly is, or goes, its words falling to the nearest speaker.
 - **Hallucination markers**: subtitle-corpus phrases Whisper invents on silence
   ("Продолжение следует..."), counted and filtered by `_quality.py`.
 
