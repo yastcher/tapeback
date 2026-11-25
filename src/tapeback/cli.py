@@ -13,6 +13,7 @@ from tapeback._llama_server import find_binary, model_name
 from tapeback._llm import ENDPOINT, LOCAL, endpoint_address, has_api_key
 from tapeback._monitor_watch import MonitorWatch
 from tapeback._stt_caps import allows_local_diarize, openai_capabilities_for
+from tapeback.cli_voices import voices
 from tapeback.recorder import NoActiveRecording, Recorder, detect_devices, session_dir
 from tapeback.settings import LLMProvider, Settings, get_settings
 
@@ -451,3 +452,6 @@ def tray() -> None:
         ) from None
 
     run_tray()
+
+
+cli.add_command(voices)

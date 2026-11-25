@@ -157,3 +157,13 @@ def test_live_min_chunk_gt_interval_allowed_when_live_disabled(tmp_vault):
     """The chunk/interval check only applies when live transcription is enabled."""
     s = Settings(vault_path=tmp_vault, live=False, live_interval=10, live_min_chunk=30.0)
     assert s.live is False
+
+
+def test_you_go_by_you_unless_you_set_a_name():
+    assert Settings().your_name == "You"
+
+
+@pytest.mark.parametrize("name", ["Other", "Speaker 2", "Mira:", "Mi*ra", "", " Mira"])
+def test_your_name_cannot_read_as_a_label_tapeback_uses(name):
+    with pytest.raises(ValidationError, match="cannot stand for you in a note"):
+        Settings(your_name=name)

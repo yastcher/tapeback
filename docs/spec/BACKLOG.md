@@ -393,13 +393,16 @@ the recording. A check made before a stage cannot see a clamp that latches durin
 ## 16. Found 2026-11-22, reviewing the release QA
 
 - **The mutation ratchet can pass with a survivor uncounted.** Under the memory cap
-  `scripts/pre_release_qa.sh` sets, the kernel kills the scope's largest process, not
+  `scripts/mutation.sh` sets, the kernel kills the scope's largest process, not
   necessarily the mutant that grew; mutmut records any worker killed by a signal as a
   segfault, which counts as killed, and a starved worker as a timeout. Nothing runs those
   mutants again alone, so a survivor among them leaves the ratchet green. The workers'
   count is a constant too, so a cap above the memory actually free protects nothing.
   Owed without a decision: after the run, `mutmut run <names>` for each timeout and
   segfault, one at a time, then export again; size `--max-children` from `free -m`.
+  Measured 2026-11-24: one tree gave 8 timeouts in a run and 10 in the next; run alone,
+  the two new ones were a worker that crashed under load, killed when rerun, and a loop
+  that never ends.
 - **No static analysis runs anywhere.** Neither the gate nor CI runs Semgrep or CodeQL,
   and nothing audits `uv.lock` for known vulnerabilities. Owed: a Semgrep step in the gate
   and CI (`p/python`, `p/github-actions`), a CodeQL workflow, and a lockfile audit
@@ -419,3 +422,11 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   measurement of both policies on the same recordings; the caps need root, so tapeback
   can only document them, not apply them.
 
+
+## 18. Found 2026-11-24, naming known voices (ADR-021)
+
+- **A participant under a twentieth of the speech loses their words** (ADR-020) even
+  when a profile knows the voice: the voice merge drops the fragment before naming sees
+  it. Naming could run first and keep a fragment that is clearly a known person.
+- **Mono recordings, a remote STT backend's own speakers and the live note get no
+  names.** The mono path does no voice merge, and the live note does not diarize.

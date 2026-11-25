@@ -4,6 +4,9 @@
 SPEAKER_YOU = "You"
 SPEAKER_OTHER = "Other"
 SPEAKER_LABEL_FMT = "Speaker {}"
+# A name stands in the note as `**Name:**` and in the masker's comma-separated terms: a
+# name holding one of these would break the line or the list.
+SPEAKER_NAME_FORBIDDEN = frozenset("*:[],\n\r")
 
 # Audio file names (within output/temp directories)
 FILE_STEREO = "stereo.wav"

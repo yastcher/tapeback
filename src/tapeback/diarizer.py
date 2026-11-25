@@ -1,7 +1,7 @@
 import contextlib
 import sys
 import wave
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from importlib.metadata import version
 from pathlib import Path
@@ -386,17 +386,18 @@ def _resolve_speaker_label(
     channel: str | None,
     speaker_order: list[str],
     user_speaker: str | None,
+    names: Mapping[str, str],
 ) -> str:
-    """Pick a display label for a pyannote speaker, honouring channel override."""
+    """Pick a display label for a pyannote speaker, honouring channel override: a known
+    voice's name, else "Speaker N" counted among the speakers without one."""
     if channel == "mic":
         return const.SPEAKER_YOU
-    non_user = [s for s in speaker_order if s != user_speaker]
     if channel is None and user_speaker and pyannote_speaker == user_speaker:
         return const.SPEAKER_YOU
-    if pyannote_speaker in non_user:
-        idx = non_user.index(pyannote_speaker) + 1
-    else:
-        idx = len(non_user) + 1
+    if pyannote_speaker in names:
+        return names[pyannote_speaker]
+    unnamed = [s for s in speaker_order if s != user_speaker and s not in names]
+    idx = unnamed.index(pyannote_speaker) + 1 if pyannote_speaker in unnamed else len(unnamed) + 1
     return const.SPEAKER_LABEL_FMT.format(idx)
 
 
@@ -425,6 +426,7 @@ def assign_speakers(
     diarization_segments: list[DiarizationSegment],
     user_speaker: str | None = None,
     stereo_wav: Path | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> list[Segment]:
     """Assign speaker labels to each Segment based on channel energy + pyannote.
 
@@ -437,6 +439,7 @@ def assign_speakers(
 
     Speaker naming:
     - mic-dominant or user_speaker -> "You"
+    - a pyannote speaker in names -> that name (a known voice)
     - Others -> "Speaker 1", "Speaker 2", ... (numbered by appearance order)
 
     Does NOT mutate input segments — creates new ones.
@@ -460,7 +463,7 @@ def assign_speakers(
             channel = _classify_sub_segment(sub_seg, stereo_data)
             if pyannote_speaker:
                 label: str | None = _resolve_speaker_label(
-                    pyannote_speaker, channel, speaker_order, user_speaker
+                    pyannote_speaker, channel, speaker_order, user_speaker, names or {}
                 )
             else:
                 label = _label_from_channel_only(channel)

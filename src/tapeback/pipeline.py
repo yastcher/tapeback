@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,12 +40,13 @@ from tapeback.diarizer import (
     merge_channel_segments,
 )
 from tapeback.formatter import TranscriptMeta, format_markdown
-from tapeback.models import Diarization, Segment
+from tapeback.models import Diarization, DiarizationSegment, Segment
 from tapeback.recorder import Recorder, validate_session_name
 from tapeback.settings import Settings
 from tapeback.speaker_merge import merge_speakers_by_voice
 from tapeback.summarizer import maybe_summarize
 from tapeback.vault import remove_live_markdown, save_audio_to_vault, save_markdown_to_vault
+from tapeback.voice_profiles import ProfileError, load_profiles, name_speakers
 
 StatusCallback = Callable[[str], None]
 
@@ -196,8 +198,8 @@ def process_stereo_file(
 ) -> tuple[list[Segment], dict[str, str | float]]:
     """Process a stereo WAV through the dual-channel pipeline.
 
-    Returns (segments, info): the mic is "You"; the monitor is "Speaker N" when
-    diarized, "Other" when not.
+    Returns (segments, info): the mic is the user's name, "You" unless they set one; the
+    monitor is a known voice's name or "Speaker N" when diarized, "Other" when not.
     """
     with stage_timer("load channels", on_status):
         mic_raw, monitor_raw, raw_sr = load_stereo_channels(stereo_path)
@@ -268,8 +270,10 @@ def process_stereo_file(
         else:
             on_status("Diarizing speakers...")
             with stage_timer("diarize", on_status):
-                turns = merge_speakers_by_voice(_diarize(settings, monitor_16k, on_status))
-                monitor_segments = assign_speakers(monitor_segments, turns)
+                diarization = _diarize(settings, monitor_16k, on_status)
+                turns = merge_speakers_by_voice(diarization)
+                names = _known_speakers(turns, diarization, on_status)
+                monitor_segments = assign_speakers(monitor_segments, turns, names=names)
             diarized = True
 
     # Remote diarize already set speaker labels; channel fallback only when unset.
@@ -286,7 +290,43 @@ def process_stereo_file(
         ]
 
     info["monitor_silent"] = monitor_silent
-    return merge_channel_segments(mic_segments, monitor_segments, settings.pause_threshold), info
+    merged = merge_channel_segments(mic_segments, monitor_segments, settings.pause_threshold)
+    return _with_your_name(merged, settings), info
+
+
+def _known_speakers(
+    turns: list[DiarizationSegment], diarization: Diarization, on_status: StatusCallback
+) -> dict[str, str]:
+    """The speakers whose voices are in the voice profiles, by name.
+
+    Reported by label and similarity, never by name: the run record keeps status lines
+    as they are, and is meant to be shareable.
+    """
+    try:
+        profiles = load_profiles()
+        if not profiles:
+            return {}
+        names, closest = name_speakers(turns, diarization.voices, profiles)
+    except ProfileError as exc:
+        on_status(f"Warning: voice profiles not used: {exc}")
+        return {}
+    if closest:
+        heard = ", ".join(
+            f"{label} {closest[label]:.2f}{' known' if label in names else ''}"
+            for label in sorted(closest)
+        )
+        on_status(f"Voice profiles: {heard}")
+    return names
+
+
+def _with_your_name(segments: list[Segment], settings: Settings) -> list[Segment]:
+    """The mic side under the user's own name, when they set one."""
+    if settings.your_name == const.SPEAKER_YOU:
+        return segments
+    return [
+        replace(s, speaker=settings.your_name) if s.speaker == const.SPEAKER_YOU else s
+        for s in segments
+    ]
 
 
 def process_mono_file(
@@ -328,7 +368,7 @@ def process_mono_file(
         diarize=diarize,
         on_status=on_status,
     )
-    return segments, info
+    return _with_your_name(segments, settings), info
 
 
 def _maybe_diarize_segments(
@@ -375,6 +415,20 @@ def _maybe_diarize_segments(
 
         result = assign_speakers(segments, diarization_segments, user_speaker, stereo_path)
     return result
+
+
+def voices_of_recording(
+    stereo_path: Path, settings: Settings, on_status: StatusCallback = _noop_status
+) -> tuple[list[DiarizationSegment], Diarization]:
+    """The other side of a recording diarized as for its note: the speakers after the
+    voice merge, and pyannote's own output with their voices."""
+    tmp_dir = Path(tempfile.mkdtemp(prefix="tapeback_"))
+    try:
+        _mic_16k, monitor_16k = split_channels_16k(stereo_path, tmp_dir)
+        diarization = _diarize(settings, monitor_16k, on_status)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return merge_speakers_by_voice(diarization), diarization
 
 
 def _diarize(settings: Settings, audio_path: Path, on_status: StatusCallback) -> Diarization:

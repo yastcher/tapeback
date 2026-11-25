@@ -80,6 +80,21 @@ the next with a wide margin; the spectral merge is what joins them. On the test 
 the GPU clamped within four minutes of diarization, and the CPU took 1.0–1.1x the
 recording.
 
+## Naming known voices (2026-11-24)
+
+Each call left out in turn: a person's profile built from their clusters in the other
+calls, matched against this call's speakers after the voice merge (ADR-021).
+
+- **The same person** reached their profile at cosine 0.88 or more by the samples'
+  mean, 0.93 or more by the closest sample.
+- **Another person** reached it at 0.56 at most, by either.
+- **A person with no profile** in the other calls got 0.56 from the closest one: at the
+  threshold of 0.8 they stay "Speaker N", which is the right answer.
+- **No call had two speakers** resembling one profile at 0.8.
+
+Hence the closest sample, not the mean, a threshold of 0.8 and a margin of 0.15 over the
+next person.
+
 ## Speed
 
 - In 10 of 12 real runs (September–October) diarization took 0.86–1.18x the

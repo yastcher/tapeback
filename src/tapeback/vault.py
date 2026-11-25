@@ -92,6 +92,12 @@ def save_markdown_to_vault(
     return md_dest
 
 
+def replace_note(path: Path, markdown: str, settings: Settings) -> None:
+    """Write a note over itself, whole: a reader sees the old note or the new one."""
+    _ensure_within_vault(path, settings.vault_path)
+    _atomic_write(path, markdown)
+
+
 def save_live_markdown(markdown: str, settings: Settings, session_name: str) -> Path:
     """Write live transcript to vault, overwriting on each update."""
     validate_session_name(session_name)
