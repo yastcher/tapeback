@@ -1,12 +1,15 @@
 """Regression tests for test-suite isolation from the developer's configuration."""
 
 import os
+import tempfile
+from pathlib import Path
 
 from tapeback._llm import provider_chain
 from tapeback._resume import default_resume_dir
 from tapeback._runlog import default_run_log_dir
 from tapeback.recorder import Recorder
 from tapeback.settings import Settings, get_settings
+from tapeback.voice_profiles import profiles_path
 
 
 def test_settings_ignore_user_env_file():
@@ -75,3 +78,24 @@ def test_nothing_the_suite_writes_lands_in_the_developers_home(tmp_path_factory)
     assert default_run_log_dir().is_relative_to(base)
     assert default_resume_dir().is_relative_to(base)
     assert Recorder().session_file.is_relative_to(base)
+
+
+def test_code_that_stops_reading_xdg_still_writes_inside_the_suite(monkeypatch):
+    """The XDG redirect holds only while the code under test reads XDG, and a mutation
+    run breaks exactly that code: a mutant that drops it falls back to the home.
+
+    Bug: under such mutants of profiles_path and default_resume_dir, the suite wrote a
+    test's voice profile over the developer's own, and the real resume cache filled
+    with test entries again. Every path that falls back to the home is checked here
+    with its XDG variable gone, as a mutant leaves it, and the default vault, which
+    Settings fixes from the home at import.
+    """
+    monkeypatch.delenv("XDG_DATA_HOME")
+    monkeypatch.delenv("XDG_STATE_HOME")
+    suite = Path(tempfile.gettempdir())
+
+    assert profiles_path().is_relative_to(suite)
+    assert default_resume_dir().is_relative_to(suite)
+    assert default_run_log_dir().is_relative_to(suite)
+    assert Recorder().session_file.is_relative_to(suite)
+    assert Settings().vault_path.is_relative_to(suite)

@@ -15,6 +15,18 @@ _TMP.mkdir(exist_ok=True)
 os.environ["TMPDIR"] = str(_TMP)
 tempfile.tempdir = None
 
+# The run's home is under tmp/ as well. isolate_user_dirs keeps tapeback's files out of
+# the developer's home through the XDG variables, which holds only while the code reads
+# them, and a mutation run breaks exactly that code: a mutant's fallback to the home
+# wrote a test's voice profile over the developer's own. Set before tapeback is imported,
+# so the paths it fixes at import (Settings' default vault) land here too. Only the caches
+# stay the developer's, pinned before HOME moves: the e2e suite loads its Whisper and
+# pyannote models from there, and tapeback keeps nothing in a cache.
+os.environ.setdefault("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+_HOME = _TMP / "home"
+_HOME.mkdir(exist_ok=True)
+os.environ["HOME"] = str(_HOME)
+
 pytest_plugins = [
     "tests.fixtures",
 ]
