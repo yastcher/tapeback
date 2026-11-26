@@ -430,3 +430,53 @@ the recording. A check made before a stage cannot see a clamp that latches durin
   it. Naming could run first and keep a fragment that is clearly a known person.
 - **Mono recordings, a remote STT backend's own speakers and the live note get no
   names.** The mono path does no voice merge, and the live note does not diarize.
+
+## 19. Found 2026-11-25, reprocessing a recorded call on the test laptop
+
+- **The clamp latches inside diarization and holds to its end.** The check runs once, as
+  a stage starts (ADR-004). The embedded controller latched about a minute into
+  diarization's GPU load and releases only after minutes of idle, which pyannote's
+  embedding loop never gives: it submits each batch as the previous one returns. On a
+  recording of about 47 minutes the first 64 of 264 embedding batches took under a second
+  each and every later one 10–12 s, so the stage took 2360 s instead of about four
+  minutes. A second run of the same recording latched within half a minute, and the latch
+  held while the GPU cooled from 82 to 76 °C (P8, 300 MHz SM, 405 MHz memory, reasons
+  0x24).
+- **A CPU stage just before it heats the machine.** Both runs moved the mic channel's
+  transcription to the CPU, 300 s on three to four cores, right before diarization. The
+  clamp check reads only the thermal bit (`_gpu.py`), which the driver also sets for its
+  ordinary slowdown at the card's 87 °C target; the latch alone comes with P8 and the
+  minimum clocks. Telemetry flagged 37% of the transcription samples, where a latch
+  through the mic channel would flag over half, so the mic most likely fled the driver's
+  slowdown, not the latch.
+- **Moving diarization to the CPU buys nothing here.** In the run records diarization on
+  the CPU took 0.9–1.3x the recording's length and on a clamped GPU 0.7–1.0x; the same
+  recording took 2616 s on the CPU and 2360 s on the clamped GPU (`Diarization: … on` and
+  `Stage 'diarize' took` in the run records). ADR-004's premise, a CPU faster than a
+  clamped GPU, holds for Whisper only; see §17.
+- **Diarization can see the latch while it runs.** Its embedding batches are uniform (32
+  windows of 10 s), so the latch is a tenfold step in batch time, read in the hook
+  pyannote calls after every batch, without the noise that keeps §1 from Whisper. The
+  hook runs between batches, so a pause in it leaves the GPU without kernels; whether the
+  controller counts a loaded CUDA context as idle is not measured.
+- **The run record cannot say why a channel left the GPU.** The transcription worker
+  reports its device choice to stderr (`transcriber.py`), which `_isolated.py` does not
+  capture. Telemetry's "throttled" counts the power cap (0x4) with the thermal bits, so
+  "throttled 100%" does not tell a latch from ordinary power limiting, and the P-state is
+  not recorded.
+- **To measure before choosing a policy:** time to the latch for diarization from a cool
+  start and right after a CPU stage; release time while pyannote holds its CUDA context
+  against a released one; then, on the same recordings, the current order against
+  diarization first (it needs only the monitor channel) and against a pause in the hook
+  until the latch clears.
+- **Words at a change of remote speaker go to the neighbour.** With the two remote voices
+  told apart (ADR-020), what remains wrong is mostly at their boundaries: the first words
+  of a turn under the previous speaker, an acknowledgment under the person who was
+  talking. pyannote places a switch up to a second late, and `_fold_short_runs` gives a
+  run under a second to the previous speaker. Owed before changing the rule: the switches
+  checked against word timestamps.
+- **A reaction prints before what it answers.** A Whisper segment can span a long silence
+  of its channel, 16 s in one case; the line keeps the segment's start, so a reply to the
+  other side lands above that side's line. Cutting a line at a long gap between its words
+  would restore the order; the threshold wants measuring, since the 1 s pause cut already
+  splits some sentences.
